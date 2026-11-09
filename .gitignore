@@ -1,0 +1,3 @@
+/target
+# temporary files of design/experiment agents
+src/bin/scratch_*

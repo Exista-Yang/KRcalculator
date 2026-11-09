@@ -1,0 +1,27 @@
+//! krhom: colored Khovanov–Rozansky gl_N link homology.
+
+pub mod dense;
+pub mod field;
+pub mod laurent;
+pub mod poly;
+pub mod sparse;
+pub mod symfun;
+pub mod moy;
+pub mod web;
+pub mod algebra;
+pub mod hom;
+pub mod untrunc;
+pub mod linsys;
+pub mod mpoly;
+pub mod pmat;
+pub mod sbim;
+pub mod crossing;
+pub mod cube;
+pub mod hecke;
+pub mod local;
+pub mod soergel;
+pub mod indec;
+pub mod engine;
+pub mod pd;
+pub mod colored;
+pub mod engine2;

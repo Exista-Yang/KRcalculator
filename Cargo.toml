@@ -1,0 +1,19 @@
+[package]
+name = "krhom"
+version = "0.1.0"
+edition = "2024"
+description = "Colored Khovanov-Rozansky gl_N link homology via truncated singular Bott-Samelson bimodules"
+
+[dependencies]
+num-bigint = "0.4"
+num-integer = "0.1"
+num-rational = "0.4"
+num-traits = "0.2"
+rand = "0.8"
+
+[profile.dev]
+opt-level = 2
+
+[profile.release]
+opt-level = 3
+debug = true
