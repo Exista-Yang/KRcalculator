@@ -8,7 +8,8 @@
 //!
 //! Usage: g4_free [--direct] [--gens] [--max-a A] [--max-n N] [a:N ...]
 //! Default: all 2 ≤ a ≤ 5, a ≤ N ≤ 10, certificate only. Output: one line per pair, and the
-//! certified list in the form of `cclose::G4_CERTIFIED`.
+//! certified list in the form of `cclose::G4_CERTIFIED`. Supported pairs: 1 ≤ a ≤ min(N, 8),
+//! N ≤ 20 (`g4::MAX_N`); any other pair is a usage error (exit status 2).
 
 use krhom::cclose::g4::{binom, check, fact, pi_a};
 use std::collections::BTreeMap;

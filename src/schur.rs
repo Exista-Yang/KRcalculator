@@ -367,6 +367,26 @@ impl Lp {
         r.add_scaled(o, 1, 0);
         r
     }
+    /// self + o, or None if a coefficient overflows i128
+    pub fn checked_add(&self, o: &Lp) -> Option<Lp> {
+        if o.is_zero() {
+            return Some(self.clone());
+        }
+        if self.is_zero() {
+            return Some(o.clone());
+        }
+        let lo = self.lo.min(o.lo);
+        let hi = self.hi().max(o.hi());
+        let mut r = Lp { lo, c: vec![0; (hi - lo + 1) as usize] };
+        for x in [self, o] {
+            let off = (x.lo - lo) as usize;
+            for (i, &a) in x.c.iter().enumerate() {
+                r.c[off + i] = r.c[off + i].checked_add(a)?;
+            }
+        }
+        r.normalize();
+        Some(r)
+    }
     pub fn sub(&self, o: &Lp) -> Lp {
         let mut r = self.clone();
         r.add_scaled(o, -1, 0);
@@ -391,18 +411,24 @@ impl Lp {
     pub fn parse_ec(s: &str) -> Lp {
         Lp::try_parse_ec(s).unwrap_or_else(|e| panic!("{}", e))
     }
-    /// inverse of `fmt_ec`; Err on a malformed token or an exponent outside ±2^20 (dense storage)
+    /// inverse of `fmt_ec`; Err on a malformed token, a coefficient overflow or an exponent
+    /// outside ±2^20 (dense storage)
     pub fn try_parse_ec(s: &str) -> Result<Lp, String> {
+        Lp::try_parse_ec_in(s, -(1 << 20), 1 << 20)
+    }
+    /// As [`Lp::try_parse_ec`], with every exponent required to lie in [lo, hi] (the dense
+    /// storage then has at most min(hi − lo, 2^20) + 1 coefficients).
+    pub fn try_parse_ec_in(s: &str, lo: i32, hi: i32) -> Result<Lp, String> {
         let mut r = Lp::zero();
         for tok in s.split_whitespace() {
             let (e, k) = tok.split_once(':').ok_or_else(|| format!("bad term {:?}", tok))?;
             let k = k.parse::<i128>().map_err(|_| format!("bad coefficient in {:?}", tok))?;
             let e = e.parse::<i32>().map_err(|_| format!("bad exponent in {:?}", tok))?;
-            if e.unsigned_abs() > 1 << 20 {
-                return Err(format!("exponent out of range in {:?}", tok));
+            if e < lo || e > hi {
+                return Err(format!("exponent out of range [{}, {}] in {:?}", lo, hi, tok));
             }
-            if let (Some(lo), Some(hi)) = (r.min_exp(), r.max_exp()) {
-                if (hi.max(e) - lo.min(e)) as u32 > 1 << 20 {
+            if let (Some(a), Some(b)) = (r.min_exp(), r.max_exp()) {
+                if b.max(e) as i64 - a.min(e) as i64 > 1 << 20 {
                     return Err(format!("exponent range too wide at {:?}", tok));
                 }
             }
@@ -546,6 +572,11 @@ impl Elt {
     }
 }
 
+/// sum of the absolute values of the coefficients (saturating)
+fn l1_norm(c: &Lp) -> u128 {
+    c.c.iter().fold(0u128, |s, &a| s.saturating_add(a.unsigned_abs()))
+}
+
 fn finish_acc(mu: Comp, acc: FxMap<Tid, Lp>) -> Elt {
     let mut t: Vec<(Tid, Lp)> = acc
         .into_iter()
@@ -610,9 +641,10 @@ fn parse_comp(s: &str) -> Option<Comp> {
 }
 /// labels after applying a rung, or None if the rung leaves the labels or its giver is too small
 fn try_rung_labels(mu: &[u8], r: &Rung) -> Option<Comp> {
+    let next = r.i.checked_add(1)?;
     let (rec, giv) = match r.dir {
-        Dir::E => (r.i, r.i + 1),
-        Dir::F => (r.i + 1, r.i),
+        Dir::E => (r.i, next),
+        Dir::F => (next, r.i),
     };
     if giv >= mu.len() || rec >= mu.len() || (mu[giv] as usize) < r.r || mu[rec] as usize + r.r > u8::MAX as usize {
         return None;
@@ -929,6 +961,33 @@ impl Schur {
     pub fn ladder_char(&mut self, rs: &[Rung]) -> Elt {
         let u = self.unit();
         self.mul_rungs(&u, rs)
+    }
+    /// [`Schur::rung`], or None if a coefficient could overflow i128. Every coefficient of every
+    /// partial sum is bounded by |rung(x)|_1 ≤ Σ_p |x_p|_1 · |rung(h_p)|_1 (|·|_1 = sum of the
+    /// absolute values of all coefficients), which is checked first.
+    fn try_rung(&mut self, x: &Elt, r: &Rung) -> Option<Elt> {
+        if r.r == 0 {
+            return Some(x.clone());
+        }
+        let mut bound: u128 = 0;
+        for (p, c) in &x.t {
+            let key = self.ensure_rung_image(*p, r);
+            let img = self.rcache[&key].iter().fold(0u128, |s, (_, k)| s.saturating_add(l1_norm(k)));
+            bound = bound.saturating_add(l1_norm(c).saturating_mul(img));
+        }
+        if bound > i128::MAX as u128 {
+            return None;
+        }
+        Some(self.rung(x, r))
+    }
+    /// [`Schur::ladder_char`] of an untrusted ladder of valid rungs: None if a coefficient could
+    /// overflow i128 (e.g. a long ladder read from a file).
+    fn try_ladder_char(&mut self, rs: &[Rung]) -> Option<Elt> {
+        let mut y = self.unit();
+        for r in rs {
+            y = self.try_rung(&y, r)?;
+        }
+        Some(y)
     }
 
     /// leading tables (maximal lmax) and whether the element is clean (unique leading table, coefficient 1)
@@ -1331,11 +1390,18 @@ impl Schur {
     /// Returns `Err(InvalidData)` (never panics) on malformed input, and verifies the basis:
     /// * the header's lambda equals this instance's, and `check_block(lambda, mu)` holds;
     /// * every table (of a CB, LAD or LADMF line and of every CB entry) lies in the block
-    ///   (lambda, mu); every table of the block has exactly one CB, LAD and LADMF line;
+    ///   (lambda, mu) (row and column sums compared in u32, so u8 entries cannot wrap around);
+    ///   every table of the block has exactly one CB, LAD and LADMF line;
+    /// * every exponent of a CB entry lies in [0, L], L the largest lmax of the block (a loose
+    ///   bound: the coefficient of h_q in b_p has degree ≤ lmax(p) − lmax(q), as for
+    ///   Kazhdan–Lusztig polynomials, checked on computed bases of up to 5 strands); this
+    ///   bounds the dense storage of a coefficient before any other check; repeated entries of
+    ///   one table are added with overflow checks;
     /// * b_p has coefficient exactly 1 at h_p and every other coefficient is nonzero, in vZ[v]
     ///   and sits at a table q with lmax(q) < lmax(p);
     /// * every ladder is a valid rung sequence on lambda ending at mu, and its character has the
-    ///   unique leading term h_p (coefficient 1);
+    ///   unique leading term h_p (coefficient 1); a character whose coefficients could
+    ///   overflow i128 (e.g. a long ladder) is an error;
     /// * b_p equals the canonical element peeled from the character of its LAD ladder with the
     ///   loaded lower b_q (`peel`, in ascending lmax). By induction on lmax this holds only for the
     ///   true canonical basis, so it subsumes a bar-invariance check: a corrupted b_p is
@@ -1356,10 +1422,19 @@ impl Schur {
             return Err(bad(format!("basis file is for lam {:?}, this instance has {:?}", lam, self.lam)));
         }
         check_block(&lam, &mu).map_err(bad)?;
-        // parse and check that every table lies in the block before interning it
+        // the tables of the block; every exponent of a b_p lies in [0, largest lmax of the block]
+        let block = tables(&lam, &mu);
+        let emax = i32::try_from(block.iter().map(|t| t.lmax()).max().unwrap_or(0)).map_err(|_| bad("block too large".into()))?;
+        // parse and check that every table lies in the block before interning it (row and
+        // column sums in u32: u8 sums could wrap around, e.g. 128 + 130 = 2 mod 256)
         let in_block = |s: &str| -> Result<Table, std::io::Error> {
             let t = Table::try_parse(s).map_err(bad)?;
-            if t.nr as usize != lam.len() || t.nc as usize != mu.len() || t.rows() != lam || t.cols() != mu {
+            let (n, m) = (t.nr as usize, t.nc as usize);
+            let sums_ok = n == lam.len()
+                && m == mu.len()
+                && (0..n).all(|i| t.e[i * m..(i + 1) * m].iter().map(|&x| x as u32).sum::<u32>() == lam[i] as u32)
+                && (0..m).all(|j| (0..n).map(|i| t.e[i * m + j] as u32).sum::<u32>() == mu[j] as u32);
+            if !sums_ok {
                 return Err(bad(format!("table {} is outside the block {:?} -> {:?}", s.trim(), lam, mu)));
             }
             Ok(t)
@@ -1386,7 +1461,7 @@ impl Schur {
                             continue;
                         }
                         let (tq, poly) = ent.split_once(' ').ok_or_else(|| bad(format!("bad entry {:?}", ent)))?;
-                        ents.push((in_block(tq)?, Lp::try_parse_ec(poly).map_err(bad)?));
+                        ents.push((in_block(tq)?, Lp::try_parse_ec_in(poly, 0, emax).map_err(bad)?));
                     }
                     raw_b.push((pt, ents));
                 }
@@ -1416,7 +1491,10 @@ impl Schur {
             let mut acc: FxMap<Tid, Lp> = FxMap::default();
             for (qt, c) in ents {
                 let q = self.intern(qt);
-                acc.entry(q).or_default().add_scaled(&c, 1, 0);
+                let slot = acc.entry(q).or_default();
+                *slot = slot
+                    .checked_add(&c)
+                    .ok_or_else(|| bad(format!("b_{}: coefficient overflow in the repeated entries of h_{}", self.tabs[p as usize].fmt(), self.tabs[q as usize].fmt())))?;
             }
             if b.insert(p, finish_acc(mu.clone(), acc)).is_some() {
                 return Err(bad(format!("two CB lines for table {}", self.tabs[p as usize].fmt())));
@@ -1429,7 +1507,7 @@ impl Schur {
                 return Err(bad(format!("two {} lines for table {}", if is_bfs { "LAD" } else { "LADMF" }, self.tabs[p as usize].fmt())));
             }
         }
-        let order: Vec<Tid> = tables(&self.lam, &mu).into_iter().map(|t| self.intern(t)).collect();
+        let order: Vec<Tid> = block.into_iter().map(|t| self.intern(t)).collect();
         for p in &order {
             if !b.contains_key(p) || !lb.contains_key(p) || !lm.contains_key(p) {
                 return Err(bad(format!("basis file misses table {}", self.tabs[*p as usize].fmt())));
@@ -1460,7 +1538,7 @@ impl Schur {
         for &p in &order {
             let pf = self.tabs[p as usize].fmt();
             for (tag, lads) in [("LADMF", &lm), ("LAD", &lb)] {
-                let x = self.ladder_char(&lads[&p]);
+                let x = self.try_ladder_char(&lads[&p]).ok_or_else(|| bad(format!("{} ladder of {}: its character overflows i128 coefficients", tag, pf)))?;
                 let (tops, clean) = self.leading(&x);
                 if !clean || tops != [p] {
                     return Err(bad(format!("{} ladder of {} does not have the leading term h_p", tag, pf)));

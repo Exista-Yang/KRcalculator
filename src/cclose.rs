@@ -35,7 +35,9 @@
 //! * Resource limits. Both closures estimate their memory before any work and return Err
 //!   above [`mem_cap_bytes`] (default [`DEFAULT_MEM_CAP_MB`] = 768 MB, environment variable
 //!   `KRHOM_MEM_CAP_MB`): [`exact_mem_estimate`] for the oracle (A_λ tables and state spaces),
-//!   [`delta_tower_estimate`] for the adapter (before the expansion in root variables). The
+//!   [`delta_tower_estimate`] for the adapter (before the expansion in root variables). Both
+//!   are heuristic bounds: empirical models times a safety factor, calibrated on measured
+//!   peaks (the calibration sets are listed in their docs), not proven bounds. The
 //!   adapter also refuses Δ·G or F entries of total degree > 63 (the tower's packed
 //!   monomials) and returns a panic inside the tower as Err. The `try_*` functions return
 //!   every refusal as Err; `close_exact_colored` and `exact_type_dims_colored` panic on it.
@@ -739,9 +741,11 @@ pub const DEFAULT_MEM_CAP_MB: u64 = 768;
 /// Memory cap (bytes) for one call of the exact oracle ([`GrAlg::try_new`],
 /// [`try_close_exact_colored`], [`try_exact_type_dims_colored`]) and of the (Δ G) adapter
 /// ([`close_delta_tower`]): the environment variable `KRHOM_MEM_CAP_MB` if it is set (for
-/// example on a cloud machine), else [`DEFAULT_MEM_CAP_MB`], which keeps one call below about
+/// example on a cloud machine), else [`DEFAULT_MEM_CAP_MB`], meant to keep one call well below
 /// 1 GB RSS on a laptop. A call whose estimate ([`exact_mem_estimate`],
-/// [`delta_tower_estimate`]) exceeds the cap is refused with Err before allocating.
+/// [`delta_tower_estimate`]) exceeds the cap is refused with Err before allocating. The
+/// estimates are heuristic bounds with a safety factor: on their calibration sets every
+/// admitted call stayed below half its estimate, so below about 400 MB at the default cap.
 pub fn mem_cap_bytes() -> u128 {
     let mb = std::env::var("KRHOM_MEM_CAP_MB").ok().and_then(|v| v.trim().parse::<u64>().ok()).unwrap_or(DEFAULT_MEM_CAP_MB);
     mb as u128 * (1 << 20)
@@ -811,8 +815,17 @@ fn alg_dim(lam: &[u8], nn: usize, marked: Option<usize>) -> u128 {
         .fold(1u128, |x, y| x.saturating_mul(y))
 }
 
-/// Estimated bytes of [`GrAlg::new`]: the blocks (see `gr_block_mem_estimate`) plus 64 bytes per
-/// element of the box basis of A_λ (`by_weight` stores (u64, u128) pairs, with Vec growth).
+/// Safety factor of the exact-oracle estimates ([`gr_alg_mem_estimate`],
+/// [`exact_mem_estimate`]) over their fitted models, see [`exact_mem_estimate`].
+const EXACT_SAFETY: u128 = 2;
+/// Fixed overhead added by [`exact_mem_estimate`] (allocator; the RSS of repeated small runs
+/// varies by a few MB).
+const EXACT_FIXED_BYTES: u128 = 16 << 20;
+
+/// Heuristic bound of the bytes of [`GrAlg::new`]: the safety factor 2 of
+/// [`exact_mem_estimate`] times the model "blocks (see `gr_block_mem_estimate`) plus 64 bytes
+/// per element of the box basis of A_λ" (`by_weight` stores (u64, u128) pairs, with Vec
+/// growth).
 pub fn gr_alg_mem_estimate<F: Field>(lam: &[u8], nn: usize, marked: Option<usize>) -> u128 {
     let blocks: u128 = lam
         .iter()
@@ -820,7 +833,7 @@ pub fn gr_alg_mem_estimate<F: Field>(lam: &[u8], nn: usize, marked: Option<usize
         .filter(|&(i, &l)| l > 0 && Some(i) != marked)
         .map(|(_, &l)| gr_block_mem_estimate::<F>(l as usize, nn))
         .fold(0u128, |x, y| x.saturating_add(y));
-    blocks.saturating_add(alg_dim(lam, nn, marked).saturating_mul(64))
+    blocks.saturating_add(alg_dim(lam, nn, marked).saturating_mul(64)).saturating_mul(EXACT_SAFETY)
 }
 
 /// Err unless `GrAlg` supports A_λ at gl_N (labels ≤ N assumed): labels ≤ 16 and top weight
@@ -1183,24 +1196,38 @@ const EXACT_BYTES_PER_GRAM_TERM: u128 = 150;
 /// and their index, the per-(h, q) echelon forms), see [`exact_mem_estimate`].
 const EXACT_BYTES_PER_OBJ_COORD: u128 = 60;
 
-/// Estimated peak bytes of the exact oracle on `data` at gl_N:
-///   [`gr_alg_mem_estimate`] + dim A_λ · (150 · Σ_types #terms(G) + 60 · Σ_objects #ins).
-/// A row of a type's state space is m·G_{·a} for a box monomial m, so its size grows with the
-/// number of terms of the Gram matrix; an object of type x has at most #ins(x) · dim A_λ
-/// chain coordinates. The constants are the smallest of a grid that bounds the measured peak
-/// RSS above the process baseline (laptop, one thread, watchdog) of every case of a
+/// Heuristic bound of the peak bytes of the exact oracle on `data` at gl_N: an empirical model
+/// times a safety factor, not a proven bound. The model is
+///   M = (A_λ tables, see [`gr_alg_mem_estimate`]) + dim A_λ · (150 · Σ_types #terms(G) + 60 · Σ_objects #ins)
+/// and the estimate is 2·M + 16 MB. A row of a type's state space is m·G_{·a} for a box
+/// monomial m, so its size grows with the number of terms of the Gram matrix; an object of type
+/// x has at most #ins(x) · dim A_λ chain coordinates. The constants of M are the smallest of a
+/// grid that bounds the measured peak RSS (laptop, one thread, watchdog polling every 50 ms,
+/// minus the peak of the smallest run of the same closure data) of every case of the first
 /// calibration set: the identity type on λ = (3,3), (4,4), (5,5), (2,2,2), (3,3,3), (2,2,2,2),
-/// (1^5) up to dim A_λ ≈ 4·10^6 (unreduced and reduced; estimate/measured 1.0–1.6), five closed
-/// ladders up to N = 16, the Conway knot (engine2 data) at N ≤ 8 (1.1) and colored Hopf links
-/// and a 3-strand braid up to N = 14. Ladders whose Gram matrices have many terms are
-/// overestimated (up to about 10×). Rank stages running on k threads (`KRHOM_THREADS`) hold
+/// (1^5) up to dim A_λ ≈ 4·10^6 (unreduced and reduced), five closed ladders up to N = 16, the
+/// Conway knot (engine2 data) at N ≤ 8 and colored Hopf links and a 3-strand braid up to
+/// N = 14. The second set (review of the CL1 fixes) adds closed ladders with many ins or Gram
+/// terms, unreduced and with block 0 marked, at odd N up to 23 (until a run passed 450 MB or
+/// 60 s): [1,1,3] with rungs E11 E01 F01 F11 E11 F11 (24 ins, 2439 Gram terms) and E11 E01 F01
+/// F11 (also at N = 10, 11), [3,1] F02 F01 E03 F03 E03, [3,2] F02 E02 F03 E03, [2,3] F02 E03
+/// E01 E01 F03, [2,2] E01 F02 E02 F01, [1,1,2,1] F21 E11 E02 F01 F01 F11 E21, [2,1,2] E11 E02
+/// F01 F01 F11, [3,1,2] F01 F12 F01 E01 E14 E01 F12, [1,2,3] E11 E11 F12 and [3,3] F02 E02;
+/// 314 runs in all. The largest measured/M is 0.95 (identity type on (3,3) at N = 22, block 0
+/// marked) and 0.92 on the ladders ([1,1,3] E11 E01 F01 F11 at N = 11 unreduced, 339 MB): the
+/// memory per box element of that ladder grows with N (10, 15, 17 KB at N = 9, 10, 11) while
+/// M charges 19 KB, which is why the safety factor 2 is applied. Every run is below its
+/// estimate, and every completed run above 20 MB below 1/2.2 of it (binding: that ladder,
+/// 339 MB measured, 754 MB estimated). Ladders whose Gram matrices have many terms are
+/// overestimated (up to about 40×). Rank stages running on k threads (`KRHOM_THREADS`) hold
 /// k echelon forms at once, which the one-thread calibration does not cover.
 pub fn exact_mem_estimate<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>) -> u128 {
     let dim = alg_dim(&data.lam, nn, marked);
     let gterms: u128 = data.types.values().map(|t| t.gram.iter().flatten().map(|p| p.t.len() as u128).sum::<u128>()).sum();
     let oins: u128 = data.objs.iter().map(|o| data.types.get(&o.0).map_or(0, |t| t.ins.len()) as u128).sum();
     let per = EXACT_BYTES_PER_GRAM_TERM.saturating_mul(gterms).saturating_add(EXACT_BYTES_PER_OBJ_COORD.saturating_mul(oins));
-    gr_alg_mem_estimate::<F>(&data.lam, nn, marked).saturating_add(dim.saturating_mul(per))
+    // gr_alg_mem_estimate already includes the safety factor
+    gr_alg_mem_estimate::<F>(&data.lam, nn, marked).saturating_add(EXACT_SAFETY.saturating_mul(dim.saturating_mul(per))).saturating_add(EXACT_FIXED_BYTES)
 }
 
 /// Common checks of the exact oracle: valid data and marked block; Ok(false) if a label
@@ -1235,10 +1262,15 @@ pub fn exact_type_dims_colored<F: Field>(data: &ClosureDataC<F>, nn: usize, mark
 /// Chain-level dimension dim Φ_N(B_p) of every type, or Err on invalid data (`validate`), an
 /// invalid marked block or a memory estimate above [`mem_cap_bytes`]. A label > N gives 0.
 pub fn try_exact_type_dims_colored<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>) -> Result<BTreeMap<u32, usize>, String> {
-    if !exact_precheck(data, nn, marked, mem_cap_bytes())? {
+    try_exact_type_dims_colored_capped(data, nn, marked, mem_cap_bytes())
+}
+
+/// As [`try_exact_type_dims_colored`] with an explicit memory cap in bytes.
+pub fn try_exact_type_dims_colored_capped<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>, cap: u128) -> Result<BTreeMap<u32, usize>, String> {
+    if !exact_precheck(data, nn, marked, cap)? {
         return Ok(data.types.keys().map(|&x| (x, 0)).collect());
     }
-    let alg = GrAlg::<F>::try_new(&data.lam, nn, marked)?;
+    let alg = GrAlg::<F>::try_new_capped(&data.lam, nn, marked, cap)?;
     Ok(data.types.iter().map(|(&x, tb)| (x, type_state_space(&alg, tb).reps.values().map(|v| v.len()).sum())).collect())
 }
 
@@ -1481,15 +1513,21 @@ pub mod g4 {
         monos(a, j, 1).into_iter().map(|m| (m, F31::one())).collect()
     }
 
+    /// Largest N supported by [`check`]: N! must fit in usize (20! < 2^64 < 21!) for the
+    /// staircase count N!/(N−a)!.
+    pub const MAX_N: usize = 20;
+
+    /// C(n, k); panics if an intermediate product overflows usize (not for n ≤ [`MAX_N`]).
     pub fn binom(n: usize, k: usize) -> usize {
         if k > n {
             return 0;
         }
-        (0..k).fold(1usize, |r, i| r * (n - i) / (i + 1))
+        (0..k).fold(1usize, |r, i| r.checked_mul(n - i).expect("g4::binom overflows usize") / (i + 1))
     }
 
+    /// n!; panics if it overflows usize (n > [`MAX_N`]).
     pub fn fact(n: usize) -> usize {
-        (1..=n).product()
+        (1..=n).try_fold(1usize, |r, k| r.checked_mul(k)).expect("g4::fact: n! overflows usize (n > 20)")
     }
 
     /// Coefficients of π_a(t) = Π_{i=1}^{a} (1 + t + … + t^{i−1}).
@@ -1528,11 +1566,12 @@ pub mod g4 {
     }
 
     /// Runs the certificate (A), (B) for (a, N), and the cross-checks (C) with `direct` and
-    /// (C), (D) with `gens`. Err for unsupported sizes (1 ≤ a ≤ min(N, 8), N ≤ 64; the
-    /// staircase has N!/(N−a)! elements, so large pairs are slow).
+    /// (C), (D) with `gens`. Err for unsupported sizes: 1 ≤ a ≤ min(N, 8) and N ≤ [`MAX_N`] = 20
+    /// (the count N!/(N−a)! of (B) is computed in usize; beyond 20 it wrapped around and gave a
+    /// false "NOT certified"). The staircase has N!/(N−a)! elements, so large pairs are slow.
     pub fn check(a: usize, nn: usize, direct: bool, gens: bool) -> Result<Report, String> {
-        if !(a >= 1 && a <= nn && a <= 8 && nn <= 64) {
-            return Err(format!("unsupported (a, N) = ({}, {})", a, nn));
+        if !(a >= 1 && a <= nn && a <= 8 && nn <= MAX_N) {
+            return Err(format!("unsupported (a, N) = ({}, {}): g4::check needs 1 <= a <= min(N, 8) and N <= {}", a, nn, MAX_N));
         }
         let cap = (nn - 1) as u8;
         let d = delta(a);
@@ -1852,43 +1891,75 @@ pub struct DeltaTowerEstimate {
     pub max_ins_outs: usize,
     /// Σ over objects of #ins
     pub sum_ins: usize,
-    /// estimated peak bytes, see [`delta_tower_estimate`]
+    /// heuristic bound of the peak bytes, see [`delta_tower_estimate`]
     pub bytes: u128,
 }
 
-/// The (Δ G) estimate charges 1/TOWER_DENSE_DIV bytes per slot of the dense final Hankel
-/// matrix #ins·#outs·root_dim² of the largest type (see [`delta_tower_estimate`]).
-const TOWER_DENSE_DIV: u128 = 10;
-/// ... plus this many bytes per F-coordinate of the closed complex (Σ_objects #ins · root_dim).
+/// The (Δ G) estimate charges io·⌈√io⌉ / TOWER_DENSE_DIV bytes per R², io = #ins·#outs of the
+/// largest type (see [`delta_tower_estimate`]) ...
+const TOWER_DENSE_DIV: u128 = 20;
+/// ... plus this many bytes per F-coordinate of the closed complex (Σ_objects #ins · root_dim)
 const TOWER_BYTES_PER_COORD: u128 = 64;
+/// ... plus a fixed 32 MB (allocator and working-set overhead; the RSS of repeated small runs
+/// varies by up to about 14 MB).
+const TOWER_FIXED_BYTES: u128 = 32 << 20;
 
-/// Size estimate of the (Δ G) adapter on `data` at gl_N, from the closure data alone.
+/// Heuristic size bound of the (Δ G) adapter on `data` at gl_N, from the closure data alone
+/// (before the expansion in root variables). It is an empirical bound with a safety factor,
+/// not a proven one: see the calibration set below.
 ///
 /// The tower closes the roots one at a time. Closing a root multiplies the coordinates of an
 /// object (and the rows of its generator matrix) by N while its entries lose one variable, so a
 /// type that never splits ends with a dense (#outs·R) × (#ins·R) matrix over F, R = root_dim =
-/// N^roots: #ins·#outs·R² entries. Types usually split early, but how far is data-dependent:
-/// between consecutive N the measured peak grew like R^1.0 … R^2.4. The estimate is
-///   bytes = max_type(#ins·#outs) · R² / 10 + 64 · Σ_objects #ins · R,
-/// an upper bound for the peak RSS above the process baseline (about 40 MB) of every case
-/// measured on the laptop (one thread, peak RSS by a watchdog: 60 closed ladders of
-/// tests/cclose.rs `random_ladders` seeds 7 and 99 at N ≤ 8, unreduced and with block 0
-/// marked; the Conway knot (engine2 data) at N ≤ 8; the colored Hopf links (2,1), (2,2), (3,1)
-/// at N ≤ 9, 8, 8 and the braid σ2σ1σ1σ2^{-1} on (2,1,1) at N ≤ 7; the largest
-/// measured/estimated ratio was 0.99). It refuses every case that passed 750 MB, e.g. the
-/// closed ladder [3,3] with rungs F2 E2 at N = 7 (R = 7^6, 3 ins, passed 1.2 GB in 7 s) or
-/// [1,1,3] with 6 ins at N = 7 (756 MB after 4 minutes, still growing), and admits every
-/// adapter call of the default tests (the largest estimate there is about 210 MB). It is
-/// conservative for types that split early: some calls that would fit are refused (raise
-/// `KRHOM_MEM_CAP_MB` or use the exact oracle).
+/// N^roots: #ins·#outs·R² entries. Types usually split early, but how far is data-dependent
+/// (the closure data do not show it): between consecutive N the measured peak grew like
+/// R^1.0 … R^2.4, and the peak per slot of the dense matrix grows with the size of the type,
+/// roughly like (#ins·#outs)^{1/2} (at most 0.02, 0.09 and 0.34 bytes per slot measured for
+/// closed ladders with 3, 6 and 24 ins). With io = max_type #ins·#outs, the estimate is
+///   bytes = io·⌈√io⌉ · R² / 20 + 64 · Σ_objects #ins · R + 32 MB   (io·⌈√io⌉ ≥ io^{3/2}).
+///
+/// Calibration (laptop, KRHOM_THREADS=1, peak RSS by a watchdog polling every 50 ms, minus
+/// the peak of the smallest run of the same closure data (data preparation); 1157 runs, 69
+/// of them above 20 MB or killed):
+/// * 60 closed ladders of tests/cclose.rs `random_ladders` seeds 7 and 99 at N ≤ 8 (unreduced
+///   and with block 0 marked), the Conway knot (engine2 data) at N ≤ 8, the colored Hopf links
+///   (2,1), (2,2), (3,1) at N ≤ 9, 8, 8 and the braid σ2σ1σ1σ2^{-1} on (2,1,1) at N ≤ 7;
+/// * 15 closed ladders with 2 to 24 ins at N ≤ 9, unreduced and with the first or the last
+///   block marked: [1,1,3] with rungs E11 E01 F01 F11 E11 F11 (24 ins; 639 MB at N = 5
+///   unreduced, 619 MB at N = 7 with block 0 marked, both above the former estimate) and
+///   E11 E01 F01 F11 (6 ins), [3,1] F02 F01 E03 F03 E03 (12 ins), [3,2] F02 E02 F03 E03 (18),
+///   [2,3] F02 E03 E01 E01 F03 (20), [2,2] E01 F02 E02 F01 (10), [3,1] F01 F02 E04 F02 E01 (9),
+///   [2,1] F01 E01 F02 E01 E01 (8), [2,2] F02 E01 F01 E03 F01 (8), [1,1,2,1] F21 E11 E02 F01
+///   F01 F11 E21, [2,1,2] E11 E02 F01 F01 F11, [3,1,2] F01 F12 F01 E01 E14 E01 F12,
+///   [1,2,3] E11 E11 F12, [2,3] E02 F01 F01 and [2,2,1] F12 F02 E11 E01 E01 E11.
+///
+/// Safety factor: the constant 1/20 is 2.27 times the smallest one for which the dense and
+/// coordinate terms alone bound every run above 20 MB. Every run is below its estimate, and
+/// every run above 20 MB is below 1/3.2 of it (binding: [1,1,3] E11 E01 F01 F11 at N = 6
+/// unreduced, 202 MB measured, 658 MB estimated). The reviewed cases [1,1,3] with 24 ins are
+/// estimated at 6.5 GB (N = 5, 642 MB measured) and 3.8 GB (N = 7, block 0 marked, 622 MB).
+/// Runs killed above 1.2 GB or after the time limit (e.g. [1,1,3] with 6 ins at N = 7: 720 MB
+/// after 157 s, still growing; estimate 2.9 GB) are estimated far above the default cap. Every
+/// adapter call of the default tests is admitted (the largest estimate there is about 350 MB,
+/// [3,3] E02 F02 at N = 5). The bound is conservative for types that split early: 74 of the
+/// 1141 runs below 384 MB are refused at the default cap (e.g. [3,2] F02 E02 F03 E03 with 18
+/// ins at N = 9: 37 MB measured); raise `KRHOM_MEM_CAP_MB` (or use the `*_capped` functions,
+/// or the exact oracle, which is usually far cheaper) for such calls. Ladders far outside the
+/// calibration set may still exceed the estimate.
 pub fn delta_tower_estimate<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>) -> DeltaTowerEstimate {
     let roots: usize = data.lam.iter().enumerate().filter(|&(i, _)| Some(i) != marked).map(|(_, &l)| l as usize).sum();
     let root_dim = (nn as u128).checked_pow(roots as u32).unwrap_or(u128::MAX);
     let max_ins = data.types.values().map(|t| t.ins.len()).max().unwrap_or(0);
     let max_ins_outs = data.types.values().map(|t| t.ins.len() * t.outs.len()).max().unwrap_or(0);
     let sum_ins: usize = data.objs.iter().map(|o| data.types.get(&o.0).map_or(0, |t| t.ins.len())).sum();
-    let dense = (max_ins_outs as u128).saturating_mul(root_dim).saturating_mul(root_dim) / TOWER_DENSE_DIV;
-    let bytes = dense.saturating_add(TOWER_BYTES_PER_COORD.saturating_mul(sum_ins as u128).saturating_mul(root_dim));
+    // io · ⌈√io⌉ ≥ io^{3/2}
+    let io = max_ins_outs as u128;
+    let mut s = (io as f64).sqrt() as u128;
+    while s.saturating_mul(s) < io {
+        s += 1;
+    }
+    let dense = io.saturating_mul(s).saturating_mul(root_dim).saturating_mul(root_dim) / TOWER_DENSE_DIV;
+    let bytes = dense.saturating_add(TOWER_BYTES_PER_COORD.saturating_mul(sum_ins as u128).saturating_mul(root_dim)).saturating_add(TOWER_FIXED_BYTES);
     DeltaTowerEstimate { roots, root_dim, max_ins, max_ins_outs, sum_ins, bytes }
 }
 

@@ -661,6 +661,17 @@ fn g4_certificate_holds_for_every_listed_pair() {
     }
     assert!(g4::check(9, 10, false, false).is_err());
     assert!(g4::check(3, 2, false, false).is_err());
+    // N <= 20: the count N!/(N−a)! is computed in usize (for N >= 21 it wrapped around and
+    // reported a false "NOT certified"); 20 itself works
+    assert!(g4::check(2, 20, false, false).unwrap().certified());
+    for (a, nn) in [(2usize, 21usize), (3, 21), (2, 22), (2, 64)] {
+        let e = g4::check(a, nn, false, false).unwrap_err();
+        assert!(e.contains("N <= 20"), "({}, {}): {}", a, nn, e);
+    }
+    // the front end reports it as a usage error
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_g4_free")).arg("2:21").output().expect("cannot run g4_free");
+    assert_eq!(out.status.code(), Some(2), "stdout: {}", String::from_utf8_lossy(&out.stdout));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("N <= 20"));
 }
 
 #[test]
@@ -684,30 +695,53 @@ fn delta_tower_refuses_realistic_uncertified_pairs() {
     assert_eq!(close_delta_tower(&data, 11, Some(0), TowerOpts::new(EndPolicy::Left)).unwrap(), close_exact_colored(&data, 11, Some(0)));
 }
 
+/// The default cap in bytes: the guard tests use it explicitly, so they do not depend on
+/// KRHOM_MEM_CAP_MB (see `mem_cap_reads_the_environment` for the variable itself).
+fn default_cap() -> u128 {
+    (DEFAULT_MEM_CAP_MB as u128) << 20
+}
+
 #[test]
 fn delta_tower_resource_guard() {
     // the closed ladder [3,3] with rungs F2 E2 (random_ladders seed 99): at N = 7 the adapter
     // passed 1.2 GB RSS in the review of CL1, while the exact oracle takes 0.04 s
+    let cap = default_cap();
     let mut l = Ladder::new(6, vec![3, 3]);
     l.push(krhom::web::Rung::f(0, 2)).push(krhom::web::Rung::e(0, 2));
     let (data, _) = closure_data_from_ladder::<F31>(&l).unwrap();
     let est = delta_tower_estimate(&data, 7, None);
     assert_eq!((est.roots, est.root_dim, est.max_ins), (6, 117_649, 3));
-    assert!(est.bytes > mem_cap_bytes(), "estimate {} MB", est.bytes >> 20);
+    assert!(est.bytes > cap, "estimate {} MB", est.bytes >> 20);
     let t = std::time::Instant::now();
-    let e = close_delta_tower(&data, 7, None, TowerOpts::new(EndPolicy::Right)).unwrap_err();
+    let e = close_delta_tower_capped(&data, 7, None, TowerOpts::new(EndPolicy::Right), cap).unwrap_err();
     assert!(e.contains("memory cap"), "{}", e);
     assert!(t.elapsed().as_secs_f64() < 1.0, "the guard must refuse before the expansion");
-    let _ = close_exact_colored(&data, 7, None); // the oracle is cheap here
+    let _ = try_close_exact_colored_capped(&data, 7, None, cap).unwrap(); // the oracle is cheap here
     // N = 5 (the top of its test range) is admitted and agrees with the oracle
     let est5 = delta_tower_estimate(&data, 5, None);
-    assert!(est5.bytes <= mem_cap_bytes(), "estimate {} MB", est5.bytes >> 20);
-    assert_eq!(close_delta_tower(&data, 5, None, TowerOpts::new(EndPolicy::Right)).unwrap(), close_exact_colored(&data, 5, None));
+    assert!(est5.bytes <= cap, "estimate {} MB", est5.bytes >> 20);
+    assert_eq!(close_delta_tower_capped(&data, 5, None, TowerOpts::new(EndPolicy::Right), cap).unwrap(), try_close_exact_colored_capped(&data, 5, None, cap).unwrap());
     // the cap is configurable
     let e = close_delta_tower_capped(&data, 5, None, TowerOpts::new(EndPolicy::Right), 1 << 20).unwrap_err();
     assert!(e.contains("memory cap"), "{}", e);
     // reduced mode drops the marked block's roots
     assert_eq!(delta_tower_estimate(&data, 7, Some(0)).roots, 3);
+    // the review of the CL1 fixes: [1,1,3] with rungs E11 E01 F01 F11 E11 F11 (24 ins) took
+    // 642 MB (N = 5) and 622 MB (N = 7, block 0 marked) above its data preparation, about 1.8x
+    // the former estimate, inside the default cap. The heuristic bound is now at least twice
+    // the measured peak (in fact 6-10x), so both calls are refused before any work.
+    let mut l = Ladder::new(5, vec![1, 1, 3]);
+    for (e, i) in [(true, 1), (true, 0), (false, 0), (false, 1), (true, 1), (false, 1)] {
+        l.push(if e { krhom::web::Rung::e(i, 1) } else { krhom::web::Rung::f(i, 1) });
+    }
+    let (data, _) = closure_data_from_ladder::<F31>(&l).unwrap();
+    for (nn, marked, measured_mb) in [(5usize, None, 642u128), (7, Some(0), 622)] {
+        let est = delta_tower_estimate(&data, nn, marked);
+        assert_eq!(est.max_ins_outs, 576);
+        assert!(est.bytes >= 2 * (measured_mb << 20), "N = {} marked {:?}: estimate {} MB", nn, marked, est.bytes >> 20);
+        let e = close_delta_tower_capped(&data, nn, marked, TowerOpts::new(EndPolicy::Right), cap).unwrap_err();
+        assert!(e.contains("memory cap"), "{}", e);
+    }
 }
 
 #[test]
@@ -725,7 +759,7 @@ fn delta_tower_refuses_degree_above_63() {
     data.validate().unwrap();
     assert!(g4_certified(5, 10));
     // at the default cap the size guard refuses first (N^roots = 10^10)
-    let e = close_delta_tower(&data, 10, None, TowerOpts::new(EndPolicy::Right)).unwrap_err();
+    let e = close_delta_tower_capped(&data, 10, None, TowerOpts::new(EndPolicy::Right), default_cap()).unwrap_err();
     assert!(e.contains("memory cap"), "{}", e);
     // without the size guard, the degree pre-check refuses before the tower
     let e = close_delta_tower_capped(&data, 10, None, TowerOpts::new(EndPolicy::Right), u128::MAX).unwrap_err();
@@ -766,16 +800,17 @@ fn exact_type_dims_colored_validates_its_data() {
 #[test]
 fn exact_oracle_memory_cap() {
     // λ = (5,5,5) at N = 10: dim A_λ = 252^3 ≈ 1.6e7, by_weight alone about 0.5 GB
+    let cap = default_cap();
     let d = unit_data(&[5, 5, 5]);
     let est = exact_mem_estimate(&d, 10, None);
-    assert!(est > mem_cap_bytes(), "estimate {} MB", est >> 20);
+    assert!(est > cap, "estimate {} MB", est >> 20);
     let t = std::time::Instant::now();
-    assert!(try_close_exact_colored(&d, 10, None).unwrap_err().contains("memory cap"));
-    assert!(try_exact_type_dims_colored(&d, 10, None).unwrap_err().contains("memory cap"));
-    assert!(GrAlg::<F31>::try_new(&[5, 5, 5], 10, None).err().unwrap().contains("memory cap"));
+    assert!(try_close_exact_colored_capped(&d, 10, None, cap).unwrap_err().contains("memory cap"));
+    assert!(try_exact_type_dims_colored_capped(&d, 10, None, cap).unwrap_err().contains("memory cap"));
+    assert!(GrAlg::<F31>::try_new_capped(&[5, 5, 5], 10, None, cap).err().unwrap().contains("memory cap"));
     assert!(t.elapsed().as_secs_f64() < 1.0, "refused before allocating");
     // reduced mode (one block marked) fits: 252^2 box elements
-    assert!(exact_mem_estimate(&d, 10, Some(0)) < mem_cap_bytes());
+    assert!(exact_mem_estimate(&d, 10, Some(0)) < cap);
     // the cap is configurable: refused under a tiny cap, accepted under a large one
     let d2 = unit_data(&[2, 2]);
     assert!(try_close_exact_colored_capped(&d2, 4, None, 1 << 10).unwrap_err().contains("memory cap"));
@@ -783,4 +818,31 @@ fn exact_oracle_memory_cap() {
     let p = try_close_exact_colored_capped(&d2, 4, None, u128::MAX).unwrap();
     assert_eq!(p, close_exact_colored(&d2, 4, None));
     assert_eq!(p.total_rank(), 36); // [4 choose 2]^2: two 2-colored unknots at gl_4
+}
+
+/// Helper of `mem_cap_reads_the_environment`: checks `mem_cap_bytes` only in the child
+/// processes started by that test (KRHOM_TEST_EXPECT_CAP_MB set); a no-op otherwise.
+#[test]
+fn mem_cap_env_child() {
+    if let Ok(want) = std::env::var("KRHOM_TEST_EXPECT_CAP_MB") {
+        assert_eq!(mem_cap_bytes(), want.parse::<u128>().unwrap() << 20, "KRHOM_MEM_CAP_MB = {:?}", std::env::var("KRHOM_MEM_CAP_MB").ok());
+    }
+}
+
+#[test]
+fn mem_cap_reads_the_environment() {
+    // KRHOM_MEM_CAP_MB, in child processes of this test binary (this process's environment is
+    // left alone; the guard tests above use explicit caps); unparsable values give the default
+    let exe = std::env::current_exe().expect("test binary path");
+    for (val, want) in [(Some("100"), 100u64), (Some(" 4096 "), 4096), (Some("junk"), DEFAULT_MEM_CAP_MB), (None, DEFAULT_MEM_CAP_MB)] {
+        let mut c = std::process::Command::new(&exe);
+        c.args(["--exact", "mem_cap_env_child", "--test-threads", "1"]).env("KRHOM_TEST_EXPECT_CAP_MB", want.to_string());
+        match val {
+            Some(v) => c.env("KRHOM_MEM_CAP_MB", v),
+            None => c.env_remove("KRHOM_MEM_CAP_MB"),
+        };
+        let out = c.output().expect("cannot run the test binary");
+        let so = String::from_utf8_lossy(&out.stdout);
+        assert!(out.status.success() && so.contains("1 passed"), "KRHOM_MEM_CAP_MB = {:?}:\n{}\n{}", val, so, String::from_utf8_lossy(&out.stderr));
+    }
 }

@@ -1237,29 +1237,40 @@ fn load_basis_rejects_malformed_or_corrupted_files() {
     Schur::new(&lam).load_basis(&src).expect("the untouched file loads");
     let line_of = |prefix: &str| text.lines().find(|l| l.starts_with(prefix)).unwrap_or_else(|| panic!("no line {:?}", prefix)).to_string();
     let lad_p1 = line_of("LADMF 2,2|1,1/1,1|").rsplit('|').next().unwrap().to_string();
-    let cases: Vec<(&str, String, String)> = vec![
+    let i128_max = i128::MAX.to_string();
+    // (what, fixture text, its replacement, a substring of the expected error): each corruption
+    // must be rejected for its own reason, not by an earlier unrelated check
+    let cases: Vec<(&str, String, String, &str)> = vec![
         // semantic corruptions that keep every coefficient in vZ[v] (accepted before)
-        ("b_p1: (v + v^3) -> (v + 7 v^3)", "2,0/0,2 1:1 3:1".into(), "2,0/0,2 1:1 3:7".into()),
-        ("b_p2: v^4 h_p0 -> v^2 h_p0 (expansions stay non-negative)", "2,0/0,2 4:1".into(), "2,0/0,2 2:1".into()),
-        ("coefficient of h_p is 2", "|1,1/1,1 0:1".into(), "|1,1/1,1 0:2".into()),
-        ("lower coefficient not in vZ[v]", "2,0/0,2 1:1 3:1".into(), "2,0/0,2 0:1 3:1".into()),
-        ("table outside the block", "|2,0/0,2 4:1".into(), "|3,0/0,1 4:1".into()),
-        ("LADMF ladder with another leading term", line_of("LADMF 2,2|0,2/2,0|"), format!("LADMF 2,2|0,2/2,0|{}", lad_p1)),
-        ("LAD ladder ending outside mu", line_of("LAD 2,2|0,2/2,0|"), "LAD 2,2|0,2/2,0|0E1".into()),
-        ("missing CB line", format!("{}\n", line_of("CB 2,2|0,2/2,0|")), String::new()),
-        ("duplicate CB line", line_of("CB 2,2|2,0/0,2|"), format!("{}\n{}", line_of("CB 2,2|2,0/0,2|"), line_of("CB 2,2|2,0/0,2|"))),
-        ("mu of another length", "mu=2,2".into(), "mu=2,2,0".into()),
-        ("bad version", "schur-cb v1".into(), "schur-cb v2".into()),
+        ("b_p1: (v + v^3) -> (v + 7 v^3)", "2,0/0,2 1:1 3:1".into(), "2,0/0,2 1:1 3:7".into(), "b_1,1/1,1 is not the canonical basis element"),
+        ("b_p2: v^4 h_p0 -> v^2 h_p0 (expansions stay non-negative)", "2,0/0,2 4:1".into(), "2,0/0,2 2:1".into(), "b_0,2/2,0 is not the canonical basis element"),
+        ("coefficient of h_p is 2", "|1,1/1,1 0:1".into(), "|1,1/1,1 0:2".into(), "b_1,1/1,1: coefficient of h_p is 0:2, not 1"),
+        ("lower coefficient not in vZ[v]", "2,0/0,2 1:1 3:1".into(), "2,0/0,2 0:1 3:1".into(), "of h_2,0/0,2 is not in vZ[v]"),
+        ("table outside the block", "|2,0/0,2 4:1".into(), "|3,0/0,1 4:1".into(), "table 3,0/0,1 is outside the block"),
+        ("LADMF ladder with another leading term", line_of("LADMF 2,2|0,2/2,0|"), format!("LADMF 2,2|0,2/2,0|{}", lad_p1), "LADMF ladder of 0,2/2,0 does not have the leading term h_p"),
+        ("LAD ladder ending outside mu", line_of("LAD 2,2|0,2/2,0|"), "LAD 2,2|0,2/2,0|0E1".into(), "ladder ends at [3, 1], not at mu"),
+        ("missing CB line", format!("{}\n", line_of("CB 2,2|0,2/2,0|")), String::new(), "basis file misses table 0,2/2,0"),
+        ("duplicate CB line", line_of("CB 2,2|2,0/0,2|"), format!("{}\n{}", line_of("CB 2,2|2,0/0,2|"), line_of("CB 2,2|2,0/0,2|")), "two CB lines for table 2,0/0,2"),
+        ("mu of another length", "mu=2,2".into(), "mu=2,2,0".into(), "mu must have as many entries as lambda"),
+        ("bad version", "schur-cb v1".into(), "schur-cb v2".into(), "bad header"),
         // malformed tokens (panicked before)
-        ("table cell 2,x", "|2,0/0,2 4:1".into(), "|2,x/0,2 4:1".into()),
-        ("ragged table", "|2,0/0,2 4:1".into(), "|2,0,0/0,2 4:1".into()),
-        ("bad coefficient", "2,0/0,2 4:1".into(), "2,0/0,2 4:z".into()),
-        ("bad exponent", "2,0/0,2 4:1".into(), "2,0/0,2 q:1".into()),
-        ("exponent too large for dense storage", "2,0/0,2 4:1".into(), "2,0/0,2 5000000:1".into()),
-        ("coefficient overflow", "2,0/0,2 4:1".into(), "2,0/0,2 4:170141183460469231731687303715884105727 4:1".into()),
-        ("invalid rung", line_of("LAD 2,2|0,2/2,0|"), "LAD 2,2|0,2/2,0|0E9".into()),
+        ("table cell 2,x", "|2,0/0,2 4:1".into(), "|2,x/0,2 4:1".into(), "bad table \"2,x/0,2\""),
+        ("ragged table", "|2,0/0,2 4:1".into(), "|2,0,0/0,2 4:1".into(), "ragged table"),
+        ("bad coefficient", "2,0/0,2 4:1".into(), "2,0/0,2 4:z".into(), "bad coefficient in \"4:z\""),
+        ("bad exponent", "2,0/0,2 4:1".into(), "2,0/0,2 q:1".into(), "bad exponent in \"q:1\""),
+        ("exponent too large for dense storage", "2,0/0,2 4:1".into(), "2,0/0,2 5000000:1".into(), "exponent out of range [0, 6] in \"5000000:1\""),
+        ("coefficient overflow", "2,0/0,2 4:1".into(), format!("2,0/0,2 4:{} 4:1", i128_max), "coefficient overflow at \"4:1\""),
+        ("invalid rung", line_of("LAD 2,2|0,2/2,0|"), "LAD 2,2|0,2/2,0|0E9".into(), "invalid rung 0E9"),
+        // crafted inputs of the review of the M3a fixes (panicked before)
+        ("u8 row and column sums wrap around (128 + 130 = 2 mod 256)", "|2,0/0,2 4:1".into(), "|2,0/0,2 4:1|128,130/130,128 5:1".into(), "table 128,130/130,128 is outside the block"),
+        ("repeated entries whose sum overflows i128", "2,0/0,2 1:1 3:1".into(), format!("2,0/0,2 1:1 3:1|2,0/0,2 1:{}", i128_max), "b_1,1/1,1: coefficient overflow in the repeated entries of h_2,0/0,2"),
+        ("rung index 2^64 - 1", line_of("LAD 2,2|0,2/2,0|"), format!("LAD 2,2|0,2/2,0|{}E1", u64::MAX), "invalid rung"),
+        ("exponent above the largest lmax of the block (6)", "2,0/0,2 4:1".into(), "2,0/0,2 7:1".into(), "exponent out of range [0, 6] in \"7:1\""),
+        ("negative exponent", "2,0/0,2 4:1".into(), "2,0/0,2 -1:1".into(), "exponent out of range [0, 6] in \"-1:1\""),
+        // a valid but long ladder: its character is computed with an i128 overflow pre-check
+        ("long ladder whose character overflows i128", line_of("LADMF 2,2|1,1/1,1|"), format!("LADMF 2,2|1,1/1,1|{}", vec!["0E1 0F1"; 400].join(" ")), "LADMF ladder of 1,1/1,1: its character overflows i128 coefficients"),
     ];
-    for (i, (what, from, to)) in cases.into_iter().enumerate() {
+    for (i, (what, from, to, want)) in cases.into_iter().enumerate() {
         assert!(text.contains(&from), "{}: fixture text {:?} not found", what, from);
         let p = dir.join(format!("schur_cb_corrupt_{}.txt", i));
         std::fs::write(&p, text.replacen(&from, &to, 1)).unwrap();
@@ -1267,11 +1278,21 @@ fn load_basis_rejects_malformed_or_corrupted_files() {
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| t.load_basis(&p))) {
             Ok(Err(e)) => {
                 assert_eq!(e.kind(), std::io::ErrorKind::InvalidData, "{}", what);
-                println!("{}: {}", what, e);
+                assert!(e.to_string().contains(want), "{}: rejected for another reason: {}", what, e);
             }
             Ok(Ok(())) => panic!("{}: corrupted basis accepted", what),
             Err(_) => panic!("{}: load_basis panicked instead of returning Err", what),
         }
+    }
+    // the CLI exits with an error (status 1) instead of a panic (101) on the crafted files
+    let cli = dir.join("schur_cb_crafted_cli");
+    let _ = std::fs::remove_dir_all(&cli);
+    std::fs::create_dir_all(&cli).unwrap();
+    for (from, to) in [("|2,0/0,2 4:1".to_string(), "|2,0/0,2 4:1|128,130/130,128 5:1".to_string()), ("2,0/0,2 1:1 3:1".into(), format!("2,0/0,2 1:1 3:1|2,0/0,2 1:{}", i128_max))] {
+        std::fs::write(cli.join("cb_2-2_2-2.txt"), text.replacen(&from, &to, 1)).unwrap();
+        let out = schur_scan(&["scan", "--labels", "2,2", "--word", "1 1 1", "--load", cli.to_str().unwrap()]);
+        assert_eq!(out.status.code(), Some(1), "{:?}: {}", to, String::from_utf8_lossy(&out.stderr));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("schur_scan: error: load_basis"));
     }
 }
 
