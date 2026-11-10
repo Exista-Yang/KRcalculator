@@ -349,3 +349,47 @@ stay small; this is the Bar-Natan principle of closing as early as possible.
 - Open: 5-strand braids whose first end does not split grow ~N^6-7 in the tower (block pivots,
   M1b.2); data preparation is slow and erratic for long 5-strand words (M1c); B_{w0} start
   objects on 5 strands do not get through preparation.
+
+## Priorities after M1b.1 (2026-11-09, user)
+
+- Primary goal: compute colored (wedge^a per component) gl_N link homology itself. Engineering and
+  scale are secondary (decided by the implementer); concordance invariants are a side goal.
+- Consequence: the critical path is the singular (colored) engine (old M3-M6). M1b.2 block pivots
+  and M1c data-preparation speed for uncolored 5-strand braids are demoted to secondary tasks.
+- Scale reality check for the showcase target (5-colored gl_10 of the Conway knot): Wedrich
+  (arXiv:1602.02769, Thm 4) gives reduced wedge^5 HOMFLY-PT rank >= 49^5 for large N; 2-colored
+  measurements (cabling engine: unreduced rank / C(N,2) at N=2k is about 30-40% of r^k) suggest
+  about 1e7 reduced and 1e9-1e10 unreduced generators at N=10. Stretch goal, not the next milestone.
+- Localized singular calculus: rank of an indecomposable = number of cosets in its double coset,
+  at most prod (a_i)! (2-colored 4 strands: 16; 3-colored: 1296; 5-colored 4 strands: about 1.3e7).
+- Design workflow (research, three competing designs, adversarial critiques, synthesis) started;
+  outputs in the scratchpad folder colored_design/.
+
+## Colored engine: design decision and first milestones (2026-11-10)
+
+- Design workflow (3 research notes, 3 competing designs, 3 adversarial critiques, synthesis; kept
+  outside the repo in the session scratchpad, colored_design/SYNTHESIS.md). Chosen: D1, localized
+  singular Soergel calculus (objects B_p for contingency tables p, coset-wise localized maps, scalar
+  elimination, Hom bases certified against the EKLP Hom formula), with D2's induction bridge as an
+  oracle layer and D3's Hom-basis coordinates as a later scale-out layer. Order:
+  M3a (q-Schur oracle) || CL1 (colored closure) -> M6.0 (exact small colored engine) ->
+  M4a/M4b/M5 (localized substrate, Hom provider, decompositions) -> M6a (2-colored 3-strand,
+  3-colored 2-strand) -> M6b/M6c -> CL2/CL3/M7a (scale-out, gated by measurements).
+- Corrected scale: the localized rank of B_p is sum_{q<=p} h(1) N(q), not the coset count
+  (2-colored 4 strands: max 25 920; 5-colored 4 strands: single objects >= 1.2e10). 2-colored Conway:
+  >= 11 029 objects in any minimal complex, peak about 1e5 objects / 3.4e8 sum S per point,
+  1.6e5 closure unknowns per Gram entry: the hardest near-term target. 5-colored on >= 3 strands is
+  out of reach for every design (showcase stays a stretch goal).
+- Multi-strand oracle: duality at N = a+1 (wedge^a gl_{a+1} = uncolored gl_{a+1} on the reversed
+  braid; expected from Queffelec-Rose, labelled "via duality (expected)").
+- Cabling reference tool: src/bin/colored_cable.rs, krhom --colored-method cable|cube; equal to the
+  full cube for colors (2,1), (2,2), (3,1); (3,2) and (3,3) cables do not fit in memory.
+- M3a done: src/schur.rs (contingency tables, canonical bases, minimal-flow ladders, EKLP Hom formula,
+  expansions, Rickard rigidity, decategorified scans with lower bound and peak, Gram weights,
+  decategorified Euler characteristic), schur_scan CLI, tests/schur.rs. Identical to the Python
+  reference on all fixtures; (2,2,2,2) basis 1.7 s / 100 MB; 2-colored Conway scan with peak 2.2 s.
+  T-n confirms v -> q. 5-strand bases grow fast ((2,2,2,2,1) > 1.5 GB): cloud.
+- CL1 done: src/cclose.rs (ring R^lambda, contract v2, exact colored closure oracle over
+  (x)_i H*(Gr(lambda_i, N)), reduced mode, global_q, (Delta G) adapter to the restriction tower,
+  exact closure data of small ladders), g4_free (gate G4 certified for 2 <= a <= 5, a <= N <= 10),
+  tests/cclose.rs. Checked against MOY, StateSpace, Wang's Hopf formula, the full cube and engine2.
