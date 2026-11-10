@@ -28,6 +28,7 @@ pub mod engine2;
 pub mod tower;
 pub mod schur;
 pub mod cclose;
+pub mod xengine;
 
 /// Number of worker threads: the environment variable KRHOM_THREADS if set
 /// (useful to keep a shared machine responsive), otherwise all available cores.

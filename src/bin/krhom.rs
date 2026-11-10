@@ -3,8 +3,8 @@
 //! usage:
 //!   krhom N --pd "[[1,4,2,5],[3,6,4,1],[5,2,6,3]]" [--colors 1,2,...] [--cube] [--field q]
 //!   krhom N --braid "1 1 2 -3" --strands 4 [--colors ...] [--cube] [--field q]
-//!   uncolored only: [--reduced]
-//!   colored only: [--colored-method cable|cube]
+//!   uncolored (Soergel engine) or --colored-method singular: [--reduced]
+//!   colored: [--colored-method cable|cube|singular]
 //!   Soergel engine (uncolored, and colored with the cable method): [--closure tower|exact] [--end right|left|alt]
 //! N may be a comma-separated list (e.g. 2,3,4,10): uncolored links, and colored links with
 //! the cable method, are then computed from a single tangle-level scan.
@@ -16,6 +16,11 @@
 //!   (exponential). Default: cable when `colored::cable_default` holds (at most 4 cable strands,
 //!   or 5 with all colors <= 2), else cube: larger cables did not get through the Soergel scan
 //!   (0.4-6 GB within seconds to minutes). --cube is the same as --colored-method cube.
+//!   singular: the exact singular Soergel engine (src/xengine.rs, milestone M6.0): braids on at
+//!   most 2 strands, colors 1..=3, one N-independent scan for all N, exact closure data;
+//!   also accepts uncolored input and --reduced (the strand at bottom position 0 is marked).
+//!   Computed over F_p for p = 2^31-1 and p = 4294967291 (SYNTHESIS §2.3, §4.2: final results
+//!   over two primes); the run fails if the two disagree. --single-prime skips the second prime.
 //! --closure: gl_N closure of the Soergel engine: the restriction tower (default) or the
 //!   exact pairing-matrix closure (the oracle). --end: strand end the tower closes first.
 //! --reduced: reduced homology, marking the strand at bottom position 0 of the braid
@@ -24,14 +29,15 @@ use krhom::crossing::{Gen, QConv};
 use krhom::colored::{cable_default, khr_colored_cable};
 use krhom::cube::{khr_full_cube, BraidLink};
 use krhom::engine2::Closure;
-use krhom::field::{F31, Q};
+use krhom::field::{F31, F32b, Q};
 use krhom::pd::{parse_pd, pd_to_braid, BraidWord};
 use krhom::tower::EndPolicy;
+use krhom::xengine::khr_singular_exact;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
-        eprintln!("usage: krhom N (--pd PD | --braid WORD --strands n) [--colors c1,c2,..] [--cube] [--colored-method cable|cube] [--field q] [--closure tower|exact] [--end right|left|alt] [--reduced]");
+        eprintln!("usage: krhom N (--pd PD | --braid WORD --strands n) [--colors c1,c2,..] [--cube] [--colored-method cable|cube|singular [--single-prime]] [--field q] [--closure tower|exact] [--end right|left|alt] [--reduced]");
         std::process::exit(1);
     }
     let ns: Vec<usize> = args[1].split(',').map(|x| x.parse().expect("N")).collect();
@@ -75,9 +81,14 @@ fn main() {
             std::process::exit(1)
         }),
     };
-    let soergel = uncolored && !flag("--cube");
-    if reduced && !soergel {
-        eprintln!("--reduced is only supported for uncolored links with the Soergel engine");
+    let singular = get("--colored-method").as_deref() == Some("singular") && !flag("--cube");
+    let soergel = uncolored && !flag("--cube") && !singular;
+    if reduced && !soergel && !singular {
+        eprintln!("--reduced is only supported for uncolored links with the Soergel engine and with --colored-method singular");
+        std::process::exit(1);
+    }
+    if singular && bw.strands > 2 {
+        eprintln!("--colored-method singular handles braids on at most 2 strands (this braid has {}); use cable or cube", bw.strands);
         std::process::exit(1);
     }
     let cable_strands: usize = labels.iter().sum();
@@ -85,23 +96,51 @@ fn main() {
         && match get("--colored-method").as_deref() {
             _ if flag("--cube") => false,
             Some("cable") => true,
-            Some("cube") => false,
+            Some("cube") | Some("singular") => false,
             None => cable_default(&labels),
             Some(m) => {
-                eprintln!("--colored-method must be cable or cube, not {}", m);
+                eprintln!("--colored-method must be cable, cube or singular, not {}", m);
                 std::process::exit(1)
             }
         };
     if soergel || cable {
         println!("closure: {}{}", match closure { Closure::Exact => "exact".to_string(), Closure::Tower(e) => format!("tower ({:?} end first)", e) }, if reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
     }
-    if !uncolored {
+    if singular {
+        println!("method: singular (exact 2-strand singular Soergel engine){}", if reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
+    } else if !uncolored {
         println!("colored method: {}", if cable { format!("cable ({} strands)", cable_strands) } else { "full cube".to_string() });
         if cable && !cable_default(&labels) {
             eprintln!("warning: a cable of this size ({} strands, colors {:?}) used 0.4-6 GB within seconds in tests", cable_strands, colors);
         }
     }
-    let results: Vec<(usize, krhom::laurent::Poincare)> = if cable {
+    let results: Vec<(usize, krhom::laurent::Poincare)> = if singular {
+        let single = flag("--single-prime");
+        if field_q {
+            eprintln!("note: the singular method runs over F_p (p = 2^31-1{})", if single { "" } else { " and p = 4294967291" });
+        }
+        let fail = |e: String| -> ! {
+            eprintln!("singular method failed: {}", e);
+            std::process::exit(2)
+        };
+        let r = khr_singular_exact::<F31>(&labels, &word, &ns, reduced).unwrap_or_else(|e| fail(e));
+        if single {
+            println!("fields: F_2147483647 only (--single-prime)");
+        } else {
+            let r2 = khr_singular_exact::<F32b>(&labels, &word, &ns, reduced).unwrap_or_else(|e| fail(e));
+            if r != r2 {
+                for &nn in &ns {
+                    if r.get(&nn) != r2.get(&nn) {
+                        eprintln!("N = {}: F_2147483647 gives {:?}, F_4294967291 gives {:?}", nn, r.get(&nn).map(|p| p.to_string()), r2.get(&nn).map(|p| p.to_string()));
+                    }
+                }
+                eprintln!("singular method: the two primes disagree (torsion or a bug); no result printed");
+                std::process::exit(3);
+            }
+            println!("fields: F_2147483647 and F_4294967291 (results agree)");
+        }
+        r.into_iter().collect()
+    } else if cable {
         if field_q {
             eprintln!("note: the cable method runs over F_p (p = 2^31-1); use --colored-method cube for exact Q");
         }
