@@ -665,3 +665,101 @@ fn tower_adds_parallel_edges() {
         }
     }
 }
+
+// ---------------------------------------------------------------- colored homology by cabling
+
+use krhom::colored::{colored_euler_moy, khr_colored_cable};
+
+/// Colored homology by cabling (uncolored Soergel engine + tower closure), all N at once;
+/// also checks the Euler characteristic against the MOY state sum.
+fn cable_colored(labels: &[usize], w: &[i32], ns: &[usize], closure: Closure) -> std::collections::BTreeMap<usize, Poincare> {
+    let word = gens(w);
+    let r = khr_colored_cable::<F31>(labels, &word, ns, 7, closure).unwrap_or_else(|e| panic!("cable {:?} {:?}: {}", labels, w, e));
+    for (&nn, p) in &r.colored {
+        let chi = colored_euler_moy(labels, &word, nn, 100_000).unwrap().expect("too many resolutions");
+        assert_eq!(p.euler(), chi, "Euler characteristic vs MOY: labels {:?} braid {:?} N={}", labels, w, nn);
+    }
+    r.colored
+}
+
+#[test]
+fn cable_matches_cube_tiny_colored() {
+    // (bottom labels, braid, N values): crossings (2,2) with m = 2; (2,1), (1,2) with m = 1, T = 1;
+    // (3,1) with m = 1, T = 2; both signs; links with 2 and 3 components.
+    let cases: Vec<(Vec<usize>, Vec<i32>, Vec<usize>)> = vec![
+        (vec![2, 2], vec![1], vec![2, 3, 4]),
+        (vec![2, 2], vec![-1], vec![2, 3, 4]),
+        (vec![2, 1], vec![1, 1], vec![2, 3, 4]),
+        (vec![2, 1], vec![-1, -1], vec![2, 3, 4]),
+        (vec![1, 2], vec![1, 1], vec![2, 3, 4]),
+        (vec![1, 2], vec![-1, -1], vec![2, 3, 4]),
+        (vec![2, 1, 1], vec![1, 1, -2, -2], vec![2, 3, 4]),
+        (vec![1, 2, 1], vec![-1, -1, 2, 2], vec![2, 3, 4]),
+        (vec![3, 1], vec![1, 1], vec![2, 3, 4]),
+        (vec![3, 1], vec![-1, -1], vec![3, 4]),
+        (vec![2, 2], vec![1, 1], vec![3, 4]),
+    ];
+    for (labels, w, ns) in cases {
+        let cab = cable_colored(&labels, &w, &ns, Closure::Tower(EndPolicy::Right));
+        for &nn in &ns {
+            let cube = poincare(nn, &labels, &w);
+            assert_eq!(cab[&nn], cube, "cable vs cube: labels {:?} braid {:?} N={}", labels, w, nn);
+        }
+    }
+    // the exact closure (oracle) on cabled data with a start object
+    let ex = cable_colored(&[2, 1], &[1, 1], &[2, 3, 4], Closure::Exact);
+    for nn in 2..=4usize {
+        assert_eq!(ex[&nn], poincare(nn, &[2, 1], &[1, 1]), "exact closure N={}", nn);
+    }
+}
+
+#[test]
+fn cable_colored_unknot_trefoil_and_uncolored() {
+    let ns: Vec<usize> = (2..=6).collect();
+    // 2-colored unknot (one (2,2) crossing of either sign) = [N choose 2] in degree 0
+    for w in [[1], [-1]] {
+        let r = cable_colored(&[2, 2], &w, &ns, Closure::Tower(EndPolicy::Right));
+        for &nn in &ns {
+            let mut expect = Poincare::default();
+            for (e, k) in LPoly::qbinom(nn as i64, 2).c {
+                expect.add_term(0, e, k);
+            }
+            assert_eq!(r[&nn], expect, "2-colored unknot braid {:?} N={}", w, nn);
+        }
+    }
+    // 2-colored trefoil, gl_3 (the full cube of the colored Rickard complexes, 42 min, gave this)
+    // and gl_2 (∧^2 C^2 is the determinant: one-dimensional); the positive trefoil is the mirror.
+    let mut neg3 = Poincare::default();
+    for &(h, q) in &[(-3, 12), (-3, 14), (-2, 6), (-2, 8), (0, 2), (0, 4), (0, 6)] {
+        neg3.add_term(h, q, 1);
+    }
+    let mut one = Poincare::default();
+    one.add_term(0, 0, 1);
+    let neg = cable_colored(&[2, 2], &[-1, -1, -1], &[2, 3], Closure::Tower(EndPolicy::Right));
+    assert_eq!(neg[&3], neg3);
+    assert_eq!(neg[&2], one);
+    let pos = cable_colored(&[2, 2], &[1, 1, 1], &[3], Closure::Tower(EndPolicy::Right));
+    let mut mirror = Poincare::default();
+    for (&(h, q), &k) in &neg3.c {
+        mirror.add_term(-h, -q, k);
+    }
+    assert_eq!(pos[&3], mirror);
+    // all colors 1: the cable is the braid itself and the shifts vanish (trefoil KR formula)
+    let un = cable_colored(&[1, 1], &[1, 1, 1], &[2, 3, 4], Closure::Tower(EndPolicy::Right));
+    for nn in 2..=4usize {
+        assert_eq!(un[&nn], poincare(nn, &[1, 1], &[1, 1, 1]), "uncolored N={}", nn);
+    }
+}
+
+#[test]
+fn cable_two_colored_t25_and_three_colored_t24_euler() {
+    // larger cables, checked against the MOY Euler characteristic (inside cable_colored) and the
+    // homological range of the colored complex (inside khr_colored_cable); colors > N give 0.
+    let t25 = cable_colored(&[2, 2], &[1, 1, 1, 1, 1], &[2, 3, 4, 5, 6], Closure::Tower(EndPolicy::Right));
+    let ranks: Vec<i128> = (2..=6).map(|nn| t25[&nn].total_rank()).collect();
+    assert_eq!(ranks, vec![1, 11, 46, 106, 191]);
+    // ∧^2 C^3 is the dual of C^3 and T(2,5) is invertible: 2-colored gl_3 = uncolored gl_3 (full cube)
+    assert_eq!(t25[&3], poincare(3, &[1, 1], &[1, 1, 1, 1, 1]));
+    let t24 = cable_colored(&[3, 1], &[1, 1, 1, 1], &[2, 3, 4, 5], Closure::Tower(EndPolicy::Right));
+    assert!(t24[&2].c.is_empty());
+}

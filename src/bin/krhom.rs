@@ -3,16 +3,25 @@
 //! usage:
 //!   krhom N --pd "[[1,4,2,5],[3,6,4,1],[5,2,6,3]]" [--colors 1,2,...] [--cube] [--field q]
 //!   krhom N --braid "1 1 2 -3" --strands 4 [--colors ...] [--cube] [--field q]
-//!   uncolored only: [--closure tower|exact] [--end right|left|alt] [--reduced]
-//! N may be a comma-separated list (e.g. 2,3,4,10): uncolored links are then computed
-//! from a single tangle-level scan.
+//!   uncolored only: [--reduced]
+//!   colored only: [--colored-method cable|cube]
+//!   Soergel engine (uncolored, and colored with the cable method): [--closure tower|exact] [--end right|left|alt]
+//! N may be a comma-separated list (e.g. 2,3,4,10): uncolored links, and colored links with
+//! the cable method, are then computed from a single tangle-level scan.
 //! Colors are given per link component (default all 1). Uncolored links use the
-//! localized Soergel engine; colored links currently use the full cube.
+//! localized Soergel engine (--cube: the full cube instead).
+//! --colored-method: colored links are computed by cabling (src/colored.rs: a-colored strand =
+//!   a parallel strands with one B_{w0(S_a)} insertion, uncolored Soergel engine, division by
+//!   Π[a]! and per-crossing shifts; F_p only) or by the full cube of colored Rickard complexes
+//!   (exponential). Default: cable when `colored::cable_default` holds (at most 4 cable strands,
+//!   or 5 with all colors <= 2), else cube: larger cables did not get through the Soergel scan
+//!   (0.4-6 GB within seconds to minutes). --cube is the same as --colored-method cube.
 //! --closure: gl_N closure of the Soergel engine: the restriction tower (default) or the
 //!   exact pairing-matrix closure (the oracle). --end: strand end the tower closes first.
 //! --reduced: reduced homology, marking the strand at bottom position 0 of the braid
 //!   (normalized so that the reduced unknot is q^0).
 use krhom::crossing::{Gen, QConv};
+use krhom::colored::{cable_default, khr_colored_cable};
 use krhom::cube::{khr_full_cube, BraidLink};
 use krhom::engine2::Closure;
 use krhom::field::{F31, Q};
@@ -22,11 +31,10 @@ use krhom::tower::EndPolicy;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
-        eprintln!("usage: krhom N (--pd PD | --braid WORD --strands n) [--colors c1,c2,..] [--cube] [--field q] [--closure tower|exact] [--end right|left|alt] [--reduced]");
+        eprintln!("usage: krhom N (--pd PD | --braid WORD --strands n) [--colors c1,c2,..] [--cube] [--colored-method cable|cube] [--field q] [--closure tower|exact] [--end right|left|alt] [--reduced]");
         std::process::exit(1);
     }
     let ns: Vec<usize> = args[1].split(',').map(|x| x.parse().expect("N")).collect();
-    let nn = ns[0];
     let get = |k: &str| args.iter().position(|a| a == k).and_then(|i| args.get(i + 1)).cloned();
     let flag = |k: &str| args.iter().any(|a| a == k);
     let bw: BraidWord = if let Some(pd) = get("--pd") {
@@ -43,6 +51,7 @@ fn main() {
         None => vec![1; ncomp],
     };
     assert_eq!(colors.len(), ncomp, "need one color per component ({} components)", ncomp);
+    assert!(colors.iter().all(|&c| c >= 1), "colors must be at least 1");
     let labels: Vec<usize> = bw.components.iter().map(|&c| colors[c]).collect();
     let word: Vec<Gen> = bw.word.clone();
     println!("gl_N for N in {:?}  strands {}  crossings {}  components {}  colors {:?}", ns, bw.strands, word.len(), ncomp, colors);
@@ -71,10 +80,37 @@ fn main() {
         eprintln!("--reduced is only supported for uncolored links with the Soergel engine");
         std::process::exit(1);
     }
-    if soergel {
+    let cable_strands: usize = labels.iter().sum();
+    let cable = !uncolored
+        && match get("--colored-method").as_deref() {
+            _ if flag("--cube") => false,
+            Some("cable") => true,
+            Some("cube") => false,
+            None => cable_default(&labels),
+            Some(m) => {
+                eprintln!("--colored-method must be cable or cube, not {}", m);
+                std::process::exit(1)
+            }
+        };
+    if soergel || cable {
         println!("closure: {}{}", match closure { Closure::Exact => "exact".to_string(), Closure::Tower(e) => format!("tower ({:?} end first)", e) }, if reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
     }
-    let results: Vec<(usize, krhom::laurent::Poincare)> = if soergel {
+    if !uncolored {
+        println!("colored method: {}", if cable { format!("cable ({} strands)", cable_strands) } else { "full cube".to_string() });
+        if cable && !cable_default(&labels) {
+            eprintln!("warning: a cable of this size ({} strands, colors {:?}) used 0.4-6 GB within seconds in tests", cable_strands, colors);
+        }
+    }
+    let results: Vec<(usize, krhom::laurent::Poincare)> = if cable {
+        if field_q {
+            eprintln!("note: the cable method runs over F_p (p = 2^31-1); use --colored-method cube for exact Q");
+        }
+        let r = khr_colored_cable::<F31>(&labels, &word, &ns, 7, closure).unwrap_or_else(|e| {
+            eprintln!("cable method failed: {}", e);
+            std::process::exit(2)
+        });
+        r.colored.into_iter().collect()
+    } else if soergel {
         if field_q {
             eprintln!("note: the Soergel engine runs over F_p (p = 2^31-1); use --cube for exact Q");
         }
