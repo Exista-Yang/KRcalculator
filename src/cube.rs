@@ -31,18 +31,25 @@ impl BraidLink {
     }
 }
 
-struct LocalCx<F: Field> {
-    cx: CrossingCx,
+/// The colored Rickard complex of one crossing on two uprights: term ladders and the unique
+/// degree-1 differentials as exact polynomial matrices over the local ring R^{(c,d)}
+/// (variables e_{0,1..c}, e_{1,1..d}).
+pub struct LocalCx<F: Field> {
+    /// terms (rungs re-indexed to the generator's uprights g.i, g.i+1)
+    pub cx: CrossingCx,
     /// local differential maps: maps[j] goes from term j to j+1 (positive)
     /// or from term j+1 to term j (negative)
-    maps: Vec<PMat<F>>,
+    pub maps: Vec<PMat<F>>,
     /// unnormalized degrees of maps[j]
-    udeg: Vec<i32>,
-    fsizes: Vec<usize>,
-    shifts: Vec<i32>,
+    pub udeg: Vec<i32>,
+    pub fsizes: Vec<usize>,
+    pub shifts: Vec<i32>,
 }
 
-fn local_cx<F: Field>(g: Gen, c: usize, d: usize, n: usize) -> LocalCx<F> {
+/// Rickard complex of the crossing g on labels (c, d) at gl_N; terms whose web has a label
+/// outside 0..=n are pruned (`crossing_cx`), so n >= c + d gives the untruncated,
+/// N-independent complex. Asserts that every differential is the unique degree-1 map.
+pub fn local_cx<F: Field>(g: Gen, c: usize, d: usize, n: usize) -> LocalCx<F> {
     let cx = crossing_cx(Gen { i: 0, positive: g.positive }, c, d, n);
     let id = SBim::<F>::identity(n, &[c, d]);
     let webs: Vec<SBim<F>> = cx.terms.iter().map(|t| id.add_rungs(&t.rungs)).collect();
@@ -69,7 +76,7 @@ fn local_cx<F: Field>(g: Gen, c: usize, d: usize, n: usize) -> LocalCx<F> {
 
 /// Apply a polynomial in the local variables (two uprights i,i+1 of P) to a
 /// vector of P by substituting P's top operators.
-fn apply_local_poly<F: Field>(p: &SBim<F>, i: usize, c: usize, d: usize, poly: &Poly<F>, v: &PVec<F>) -> PVec<F> {
+pub fn apply_local_poly<F: Field>(p: &SBim<F>, i: usize, c: usize, d: usize, poly: &Poly<F>, v: &PVec<F>) -> PVec<F> {
     let mut acc = PAcc::new();
     for (m, coef) in &poly.t {
         let mut w = v.clone();
@@ -108,7 +115,8 @@ pub fn khr_full_cube<F: Field>(link: &BraidLink, conv: QConv) -> CubeResult {
     let nc = locals.len();
     // enumerate states with prefix bimodules (DFS)
     let id = SBim::<F>::identity(n, &link.labels);
-    let closure_norm: i32 = link.labels.iter().map(|&l| (l * (n - l)) as i32).sum();
+    // signed: a label > N (whose complex is empty) must not underflow (debug builds panicked here)
+    let closure_norm: i32 = link.labels.iter().map(|&l| l as i32 * (n as i32 - l as i32)).sum();
     // prefix cache: state prefix -> SBim
     let mut prefix: HashMap<Vec<usize>, SBim<F>> = HashMap::new();
     prefix.insert(vec![], id.clone());
