@@ -9,7 +9,7 @@ use crate::hecke::Hecke;
 use crate::indec::{decompose, indecomposable, kl_mult, ops_to_lmat, Indec, LMat, Summand};
 use crate::laurent::Poincare;
 use crate::linsys::Echelon;
-use crate::soergel::{double_leaves, Ctx, Op};
+use crate::soergel::{double_leaves_all, Ctx, Op};
 use crate::sparse::SpVec;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -261,18 +261,23 @@ impl<F: Field> PointEngine<F> {
         let mut ins = vec![];
         let mut outs = vec![];
         let maxd = 2 * word.len() as i32 + 2;
-        for d in -maxd..=maxd {
-            for (_, _, ops) in double_leaves(&self.ctx, &[], &word, d) {
-                let m = e.compose(&ops_to_lmat(&mut self.ctx, &[], &ops));
-                if !m.is_zero() {
-                    ins.push((d, m));
-                }
+        // one pass over all degrees (sorted by degree, then leaf), as degree-by-degree calls
+        for (d, _, _, ops) in double_leaves_all(&self.ctx, &[], &word) {
+            if d.abs() > maxd {
+                continue;
             }
-            for (_, _, ops) in double_leaves(&self.ctx, &word, &[], d) {
-                let m = ops_to_lmat(&mut self.ctx, &word, &ops).compose(&e);
-                if !m.is_zero() {
-                    outs.push((d, m));
-                }
+            let m = e.compose(&ops_to_lmat(&mut self.ctx, &[], &ops));
+            if !m.is_zero() {
+                ins.push((d, m));
+            }
+        }
+        for (d, _, _, ops) in double_leaves_all(&self.ctx, &word, &[]) {
+            if d.abs() > maxd {
+                continue;
+            }
+            let m = ops_to_lmat(&mut self.ctx, &word, &ops).compose(&e);
+            if !m.is_zero() {
+                outs.push((d, m));
             }
         }
         (ins, outs)
@@ -342,7 +347,7 @@ pub fn khr_engine_start<F: Field>(n: usize, nn: usize, word: &[Gen], seed: u64, 
     let rhs: Vec<F> = monos.iter().map(|m| if *m == target { F::one() } else { F::zero() }).collect();
     let w = crate::dense::solve(&vmat, mpts, &rhs).expect("weights");
     // run the scanning at every point (in parallel)
-    let nthreads = std::thread::available_parallelism().map(|x| x.get()).unwrap_or(4);
+    let nthreads = crate::num_threads();
     let chunks: Vec<Vec<usize>> = (0..nthreads).map(|t| (t..mpts).step_by(nthreads).collect()).collect();
     type PerPoint<F> = (usize, Vec<(Obj, usize)>, Vec<(usize, usize, Vec<Vec<F>>)>, usize, Vec<(usize, Vec<(i32, F)>, Vec<(i32, F)>, Vec<Vec<F>>)>);
     let results: Vec<Vec<PerPoint<F>>> = std::thread::scope(|scope| {

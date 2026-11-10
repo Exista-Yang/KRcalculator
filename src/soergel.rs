@@ -121,6 +121,8 @@ pub struct Ctx<F: Field> {
     pub x: Vec<F>,
     templates: HashMap<u8, Template<F>>,
     cache: HashMap<(u8, Vec<u8>), Vec<(u64, u64, F)>>,
+    /// memoized `rex_path` (point-independent breadth-first search over reduced words)
+    rex_paths: std::cell::RefCell<HashMap<(Word, Word), Vec<(Op, usize)>>>,
 }
 
 fn kind_of(op: &Op) -> (u8, Vec<usize>) {
@@ -155,7 +157,7 @@ impl<F: Field> Ctx<F> {
             t.insert(6, make_template::<F>(3, vec![0, 1, 0], vec![1, 0, 1], 0));
             t.insert(7, make_template::<F>(3, vec![1, 0, 1], vec![0, 1, 0], 0));
         }
-        Ctx { n, g: SymGroup::new(n), x, templates: t, cache: HashMap::new() }
+        Ctx { n, g: SymGroup::new(n), x, templates: t, cache: HashMap::new(), rex_paths: Default::default() }
     }
 
     /// Localized local matrix entries (tgt bits, src bits, value) for template k at local roots.
@@ -238,11 +240,21 @@ impl<F: Field> Ctx<F> {
         self.g.from_word(word)
     }
 
-    /// Shortest sequence of braid moves from reduced word u to reduced word v.
+    /// Shortest sequence of braid moves from reduced word u to reduced word v (memoized).
     pub fn rex_path(&self, u: &[usize], v: &[usize]) -> Vec<(Op, usize)> {
         if u == v {
             return vec![];
         }
+        let key = (u.to_vec(), v.to_vec());
+        if let Some(p) = self.rex_paths.borrow().get(&key) {
+            return p.clone();
+        }
+        let path = self.rex_path_bfs(u, v);
+        self.rex_paths.borrow_mut().insert(key, path.clone());
+        path
+    }
+
+    fn rex_path_bfs(&self, u: &[usize], v: &[usize]) -> Vec<(Op, usize)> {
         let mut prev: HashMap<Word, (Word, Op, usize)> = HashMap::new();
         let mut seen: HashSet<Word> = HashSet::new();
         let mut q = VecDeque::new();
@@ -337,6 +349,25 @@ impl<F: Field> Ctx<F> {
         (ops, w, deg)
     }
 
+    /// End element w_e and degree of the light leaf LL_{word, e}, without building its
+    /// operations (the same recursion as `light_leaf`).
+    pub fn light_leaf_wd(&self, word: &[usize], e: u64) -> (usize, i32) {
+        let mut w = 0usize;
+        let mut deg = 0;
+        for (i, &s) in word.iter().enumerate() {
+            let up = self.g.len[self.g.rmul[w][s]] > self.g.len[w];
+            let bit = e >> i & 1 == 1;
+            if bit {
+                w = self.g.rmul[w][s];
+            } else if up {
+                deg += 1;
+            } else {
+                deg -= 1;
+            }
+        }
+        (w, deg)
+    }
+
     /// Double leaf LL_{y,f}^flip ∘ LL_{x,e} as a list of operations on BS(x).
     pub fn double_leaf_ops(&self, x: &[usize], e: u64, y: &[usize], f: u64) -> Option<(Vec<(Op, usize)>, i32)> {
         let (o1, w1, d1) = self.light_leaf(x, e);
@@ -369,22 +400,42 @@ impl<F: Field> Ctx<F> {
 
 /// All double leaves Hom(BS(x), BS(y)) of a given degree (op sequences).
 pub fn double_leaves<F: Field>(ctx: &Ctx<F>, x: &[usize], y: &[usize], deg: i32) -> Vec<(u64, u64, Vec<(Op, usize)>)> {
+    double_leaves_filtered(ctx, x, y, Some(deg)).into_iter().map(|(_, e, f, ops)| (e, f, ops)).collect()
+}
+
+/// All double leaves Hom(BS(x), BS(y)) of every degree, as (degree, e, f, ops), sorted by
+/// (degree, e, f): the concatenation of `double_leaves` over increasing degrees.
+pub fn double_leaves_all<F: Field>(ctx: &Ctx<F>, x: &[usize], y: &[usize]) -> Vec<(i32, u64, u64, Vec<(Op, usize)>)> {
+    double_leaves_filtered(ctx, x, y, None)
+}
+
+/// Matching uses only the end element and degree of each light leaf (cheap); the
+/// operations are built once per leaf and only for leaves that occur in a double leaf.
+fn double_leaves_filtered<F: Field>(ctx: &Ctx<F>, x: &[usize], y: &[usize], deg: Option<i32>) -> Vec<(i32, u64, u64, Vec<(Op, usize)>)> {
+    let lx: Vec<(usize, i32)> = (0..(1u64 << x.len())).map(|e| ctx.light_leaf_wd(x, e)).collect();
+    let mut by_w: HashMap<usize, Vec<(u64, i32)>> = HashMap::new();
+    for f in 0..(1u64 << y.len()) {
+        let (w, d) = ctx.light_leaf_wd(y, f);
+        by_w.entry(w).or_default().push((f, d));
+    }
+    let mut ops_y: HashMap<u64, Vec<(Op, usize)>> = HashMap::new();
     let mut out = vec![];
-    let lx: Vec<(u64, usize, i32)> = (0..(1u64 << x.len())).map(|e| {
-        let (_, w, d) = ctx.light_leaf(x, e);
-        (e, w, d)
-    }).collect();
-    let ly: Vec<(u64, usize, i32)> = (0..(1u64 << y.len())).map(|f| {
-        let (_, w, d) = ctx.light_leaf(y, f);
-        (f, w, d)
-    }).collect();
-    for &(e, w1, d1) in &lx {
-        for &(f, w2, d2) in &ly {
-            if w1 == w2 && d1 + d2 == deg {
-                let (ops, _) = ctx.double_leaf_ops(x, e, y, f).unwrap();
-                out.push((e, f, ops));
+    for (e, &(w1, d1)) in lx.iter().enumerate() {
+        let Some(fs) = by_w.get(&w1) else { continue };
+        let mut ops_x: Option<Vec<(Op, usize)>> = None;
+        for &(f, d2) in fs {
+            if deg.is_some_and(|d| d != d1 + d2) {
+                continue;
             }
+            let ox = ops_x.get_or_insert_with(|| ctx.light_leaf(x, e as u64).0);
+            let oy = ops_y.entry(f).or_insert_with(|| ctx.light_leaf(y, f).0);
+            let mut ops = ox.clone();
+            for &(op, j) in oy.iter().rev() {
+                ops.push((op.flip(), j));
+            }
+            out.push((d1 + d2, e as u64, f, ops));
         }
     }
+    out.sort_by_key(|t| (t.0, t.1, t.2));
     out
 }

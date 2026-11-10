@@ -25,3 +25,14 @@ pub mod engine;
 pub mod pd;
 pub mod colored;
 pub mod engine2;
+pub mod tower;
+
+/// Number of worker threads: the environment variable KRHOM_THREADS if set
+/// (useful to keep a shared machine responsive), otherwise all available cores.
+pub fn num_threads() -> usize {
+    std::env::var("KRHOM_THREADS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .filter(|&k| k > 0)
+        .unwrap_or_else(|| std::thread::available_parallelism().map(|x| x.get()).unwrap_or(4))
+}

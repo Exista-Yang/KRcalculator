@@ -198,3 +198,154 @@ New bottleneck: the closed complex has dimension ~ N^(strands) while the homolog
 is linear in N. Remedy (proposed M1b): close strands one at a time with the Foam_N
 partial trace (Markov trace) and Gaussian-eliminate after each step, so complexes
 stay small; this is the Bar-Natan principle of closing as early as possible.
+
+## M1b decision (2026-11-09, design panel: 4 designs + 4 adversarial critiques + synthesis)
+
+* Chosen: algebraic "restriction tower" closure (close one end variable at a time by
+  restriction of scalars A_k -> A_{k-1}, Hankel/Toeplitz matrices, Gaussian elimination
+  over A_{k-1}; exact at stage 0). Proofs (P1-P6) checked by two reviewers; correctness
+  does not depend on splitting quality. Not the refuted relative trace (B_s gives N-1).
+* Reserve: Foam_N partial-trace Smith data (for non-split types), SAC extrapolation
+  (knots only, labelled "predicted", never mixed into computed tables), drop sets.
+* Synthesis: scratchpad closure_synthesis.md; full designs/critiques: design_panel.json.
+* M0 done: removed dead inverse Gram / index map, scan data freed after interpolation,
+  per-variable cap vector, reduced mode (marked strand cap 0, reduced unknot = q^0),
+  phase timings, KRHOM_THREADS. Checks: reduced trefoil = q^{-2(N-1)} + t^2 q^{-2(N+1)} +
+  t^3 q^{-4N}; Conway reduced ranks 33, then 49 for N>=3; Lewark-type relation
+  [N]·P_red - P_unred divisible by (1+t) with nonnegative quotient (N=2..6).
+  Conway N=2..10 with 2 threads: unreduced 85 s / 995 MB peak; reduced 2.5 s / 86 MB.
+* New findings: closure-data preparation (bases + Gram) is slow for 5 strands (~160 s);
+  the ordinary Soergel scan of a 6-strand 15-crossing braid reached ~77 GB, so 6-7
+  strands need the singular calculus (M4-M6) regardless of the closure.
+
+## M1b.1 status (2026-11-09): restriction tower implemented (src/tower.rs)
+
+* `src/tower.rs`: packed polynomials (6 bits per variable, n ≤ 10, untruncated products
+  asserted to degree ≤ 63, truncated products tested by one add + mask), Hankel
+  restriction of one end variable (order Right / Left / Alternate; `Middle` is a
+  diagnostic interior-first order), 1x1 exact-division pivots (unit pivots first), junk
+  coordinates, connected components of the remainder, Markowitz-ordered elimination with
+  lazy cost updates; isomorphism test = matching coordinate degrees + invertible F_0 +
+  equal dimension (same interned generator matrix, else `gdim` by recursive
+  decomposition); inverse over A by the Neumann series; stage 0 asserts that no map is
+  left and every object is one-dimensional. Decompositions and dimensions are cached per
+  interned generator matrix; N values run sequentially, caches freed per N.
+* `src/engine2.rs`: `prepare_closure_data` (scan, bases, Gram, F; scan data freed) +
+  `close_with(data, N, reduced, Closure::{Exact, Tower(end)})`; `close_exact` kept as the
+  oracle; `khr_engine2` / `khr_engine2_mode` unchanged (exact); `khr_engine2_closure`
+  chooses. CLIs: `engine2 ... --closure tower|exact|both --end right|left|alt --reduced
+  [--unit-pivots]`, `krhom ... --closure tower|exact --end ... --reduced` (default tower).
+* Tests (tests/acceptance.rs, all against close_exact or independent data): tower == exact
+  on the full-cube regression braids, trefoil, figure-eight, Hopf, T(2,-4), a 3-component
+  chain and the 2-component unlink, N=2..6, unreduced and reduced, right/left/alternate
+  ends; tower == full cube (N=2,3) inside soergel_engine_matches_full_cube; Conway
+  N=2..10 ranks 34..426, ends agree, tower == exact for N ≤ 8 (also checked once at
+  N=9,10); reduced trefoil formula N=2..10; Conway reduced 33, then 49, == exact N=2..10;
+  Lewark check ([N]P_red − P_unred divisible by 1+t, quotient ≥ 0) for Conway and three
+  small knots, N=2..6; chain level: tower gdim per type == close_exact state-space dims,
+  dim_unreduced = N·dim_reduced per type (Conway N=2..5); stress mode with unit pivots
+  only (non-split blocks) == exact; synthetic non-minimal complex with a non-cyclic
+  isomorphism between different generator matrices (Neumann inverse, gdim certificate,
+  elimination update) == exact; second prime F_4294967291. Unit tests: division, caps
+  test, end orders, inverse over A, dim Φ_N(B_s) = N(N-1); 6-strand braid with a
+  non-splitting right end (below). Full suite 43 tests, 35 s wall with KRHOM_THREADS=2
+  (peak RSS 0.9 GB with the tests running concurrently).
+* Measurements (Apple M5, KRHOM_THREADS=2, nice 19, one process per row, Conway N=2..10):
+
+  | closure | mode | N=10 closure | whole run N=2..10 | peak RSS |
+  |---|---|---|---|---|
+  | tower | unreduced | 0.11 s | 1.55 s (scan 1.1 s) | 54 MB |
+  | tower | reduced | 0.11 s | 1.71 s | 62 MB |
+  | exact | unreduced | 79 s | 130 s | 951 MB |
+  | exact | reduced | 1.06 s | 3.97 s | 83 MB |
+
+  Stage sizes at N=10 (right end): 1890 objects / 31672 maps / 87k terms → 120 → 68 → 49
+  → 426 (as predicted by O4). 5-strand braid "-3 -4 2 -3 2 1 3 4 -1 4 -1 -3": tower ==
+  exact for N=2..5, ranks 10 + 9(N−2) up to N=10, N=10 closure 0.06 s (2356 → 56 → 36 →
+  18 → 9), but data preparation 19 s (scan 8 s, bases + Gram 6–7 s): the end-to-end
+  bottleneck is now M1c.
+* 6-strand braid "-2 -3 -1 -5 2 4 -5 -2 1 -2 1 -2 5" (92 final objects): data 30 s (scan
+  12 s, bases + Gram 18 s at 800 points), 156 MB. Tower == exact for N=2,3,4 (exact N=4:
+  3.0 s); ranks 3N−2; right and left ends identical for N=4..10. Right end: non-split
+  blocks as predicted by the critique (156 → 876 non-split coordinates for N=4 → 10,
+  peak 6662 objects before elimination), N=10 closure 2.37 s, 405 MB; left end: no
+  non-split coordinates, N=10 0.01 s, 179 MB. So the adaptive end choice of M1b.2 matters
+  for cost, not for correctness. (Correction after verification: the right end grows like
+  N^7–7.5 here for N=7..10, not ~N^4.)
+* Observed: with exact-division pivots every type of the 4- and 5-strand examples split
+  into cyclic children at either end; only one real isomorphism between non-cyclic
+  objects occurred (6-strand braid, right end), so the synthetic test covers that path. The interior-first order (`Middle`) and
+  the unit-pivot stress mode leave hundreds to thousands of non-split coordinates and
+  still agree with exact (stress mode at N=6 peaks at 1.3 GB: correctness does not depend
+  on splitting, cost does).
+
+## M1b.1 fixes after independent verification (2026-11-09)
+
+* Oracle crash (wrong-result risk): `close_exact` packed monomials with 5 bits per variable;
+  the sum of a representative and a P_ab term (each ≤ N-1 per variable) carried into the
+  next field for N ≥ 17 (bogus columns, RankEchelon index panic, possibly wrong ranks).
+  Now u128 packing with w = bitlen(2·max cap) bits per variable (≥ 5), asserted n·w ≤ 128;
+  dual index keyed by (object, b, monomial). Regression tests: monomial-map complexes on
+  2 and 3 variables at N = 16, 17, 18, 20, 32 (closed-form rank, tower == exact) and N = 64
+  (oracle only, beyond the tower's N ≤ 32); figure-eight and "1 1 1 2" at N = 17, 20, 32.
+* Tower memory: `norm` kept the capacity of the uncombined product list (up to |a|·|b|)
+  in every stored polynomial (5-strand N=10: 4.2 GB RSS, swapping). It now compacts in
+  place and shrinks.
+* Tower speed: long homogeneous products and long accumulations are combined by direct
+  addressing in the exponent box (lowest varying variable implied by the degree; index
+  order = packed order, so no sort), falling back to sorting when the box is large; the
+  untruncated Schur update of `decompose_raw` is fused (a − q·b by shifted merges for a
+  short factor). `gdim` is keyed by the set of closed variables and no longer follows the
+  tower's order through non-split blocks: it takes the next tower variable if that splits
+  completely, else an end of the open interval that does, else the fewest non-split
+  coordinates; constant matrices and 1x1 monomials are counted directly.
+* Data preparation: light-leaf matching uses only (end element, degree), computed without
+  braid-move searches; op lists are built once per occurring leaf; `rex_path` is memoized
+  per context; `closure_gens` enumerates all degrees in one pass (it used to redo all 2^ℓ
+  light leaves for each of 4ℓ+5 degrees). Gens-only interpolation points are evaluated
+  only for the types whose own Gram weight needs them (5-strand: one type needs 723
+  points, most need ≤ 218). Closure data are unchanged (byte-identical files).
+* `engine2 --save-data FILE / --load-data FILE` (text format, prime fields): re-close a
+  prepared braid without rescanning (`save_closure_data` / `load_closure_data`).
+* Measurements (Apple M5, KRHOM_THREADS=2, nice 19, one process per row):
+
+  | case | before | after |
+  |---|---|---|
+  | 5-strand "1 -2 3 -4 2 1 -3 4 -2 3 1 -4", tower right N=7/8/9/10 | 0.95/2.56/6.42/15.1 s, 4.2 GB RSS | 0.62/1.44/3.23/6.91 s, 0.96 GB RSS |
+  | same braid, data preparation | 262–410 s | 114–153 s (bases+Gram 89–120 s; varies with machine load) |
+  | 6-strand "-2 -3 -1 -5 2 4 -5 -2 1 -2 1 -2 5", right end N=10 | 2.87 s (x6 stage 2.63 s) | 1.92 s (x6 stage 0.012 s) |
+  | same braid, data preparation | 30–37 s | 10.5–12.7 s (bases+Gram 2.9 s) |
+  | Conway N=2..10 tower unreduced / reduced (whole run) | 1.55 / 1.71 s | 1.24 / 1.35 s, 50 / 60 MB |
+  | Conway N=2..10 exact unreduced / reduced (whole run) | 130 / 3.97 s | 110 / 2.95 s, 1.04 GB / 96 MB |
+
+* Tests: 48 (17 unit, 20 acceptance, 11 pd), all pass; new: the two oracle regression
+  tests, closure-data save/load round trip, and unit tests of `norm` (dense and sorted
+  paths), fused and dense products (homogeneous or not, truncated or not).
+* Still open (not clear fixes): when neither end splits (5-strand braid above) a non-split
+  block at one stage becomes thousands of cyclic children with dense block-Toeplitz maps at
+  the next (x4 stage at N=10: 6010 objects, 541k maps, 12.7M terms), so the closure still
+  grows ~N^7; this needs block pivots (or another reduction of non-split blocks), not the
+  adaptive end choice. For the 6-strand right end the cost moved from `gdim` to the x4
+  stage (decomposing the x5 non-split blocks, which the tower needs anyway); the left end
+  avoids it. The remaining preparation cost is the per-point idempotent of the largest
+  types (`indecomposable`: all degree-0 double leaves as 2^ℓ-column localized matrices),
+  e.g. B_{w0} on 5 strands as a start object; that is M1c. `Middle` stays a diagnostic order.
+
+## M1b.1 wrap-up (2026-11-09 evening)
+
+- The verification workflow was stopped during its second fix round because its local experiments
+  (up to 2.5 GB, earlier 6.7 GB) made the laptop lag. Sources were restored to the state that
+  passed re-verification 1. The unfinished round-2 work (2x2 block pivots in tower.rs, which made
+  the 6-strand right end split; a 5-strand attempt in progress with debug code) is archived, not
+  merged, under the scratchpad folder `fix2_partial/` (tower.rs.round2, tower_round2.diff,
+  acceptance.rs.round2). It is the starting point for M1b.2 block pivots.
+- Fixed by hand after re-verification 1, each with a regression test:
+  - close_exact's state-space degree loop now runs over [min(ins), topdeg - min(outs)]; the old
+    upper bound dropped top degrees when min(outs) < min(ins) (never in braid data).
+  - The tower adds parallel edges (same source and target) like close_exact; it used to keep only
+    the last one (never in braid data).
+  - prepare_closure_data counts the extra scan points needed for F as scan time and prints them.
+- cargo test --release: 50 passed (17 lib, 22 acceptance, 11 pd), peak RSS 0.8 GB.
+- Open: 5-strand braids whose first end does not split grow ~N^6-7 in the tower (block pivots,
+  M1b.2); data preparation is slow and erratic for long 5-strand words (M1c); B_{w0} start
+  objects on 5 strands do not get through preparation.

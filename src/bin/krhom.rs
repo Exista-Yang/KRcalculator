@@ -3,19 +3,26 @@
 //! usage:
 //!   krhom N --pd "[[1,4,2,5],[3,6,4,1],[5,2,6,3]]" [--colors 1,2,...] [--cube] [--field q]
 //!   krhom N --braid "1 1 2 -3" --strands 4 [--colors ...] [--cube] [--field q]
+//!   uncolored only: [--closure tower|exact] [--end right|left|alt] [--reduced]
 //! N may be a comma-separated list (e.g. 2,3,4,10): uncolored links are then computed
 //! from a single tangle-level scan.
 //! Colors are given per link component (default all 1). Uncolored links use the
 //! localized Soergel engine; colored links currently use the full cube.
+//! --closure: gl_N closure of the Soergel engine: the restriction tower (default) or the
+//!   exact pairing-matrix closure (the oracle). --end: strand end the tower closes first.
+//! --reduced: reduced homology, marking the strand at bottom position 0 of the braid
+//!   (normalized so that the reduced unknot is q^0).
 use krhom::crossing::{Gen, QConv};
 use krhom::cube::{khr_full_cube, BraidLink};
+use krhom::engine2::Closure;
 use krhom::field::{F31, Q};
 use krhom::pd::{parse_pd, pd_to_braid, BraidWord};
+use krhom::tower::EndPolicy;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
-        eprintln!("usage: krhom N (--pd PD | --braid WORD --strands n) [--colors c1,c2,..] [--cube] [--field q]");
+        eprintln!("usage: krhom N (--pd PD | --braid WORD --strands n) [--colors c1,c2,..] [--cube] [--field q] [--closure tower|exact] [--end right|left|alt] [--reduced]");
         std::process::exit(1);
     }
     let ns: Vec<usize> = args[1].split(',').map(|x| x.parse().expect("N")).collect();
@@ -43,11 +50,35 @@ fn main() {
     let t0 = std::time::Instant::now();
     let uncolored = labels.iter().all(|&l| l == 1);
     let field_q = get("--field").map(|f| f == "q").unwrap_or(false);
-    let results: Vec<(usize, krhom::laurent::Poincare)> = if uncolored && !flag("--cube") {
+    let reduced = flag("--reduced");
+    let end = match get("--end") {
+        Some(e) => EndPolicy::parse(&e).unwrap_or_else(|| {
+            eprintln!("--end must be right, left or alt");
+            std::process::exit(1)
+        }),
+        None => EndPolicy::Right,
+    };
+    let closure = match get("--closure").as_deref() {
+        None | Some("tower") => Closure::Tower(end),
+        Some("exact") => Closure::Exact,
+        Some(c) => Closure::parse(c).unwrap_or_else(|| {
+            eprintln!("--closure must be tower or exact");
+            std::process::exit(1)
+        }),
+    };
+    let soergel = uncolored && !flag("--cube");
+    if reduced && !soergel {
+        eprintln!("--reduced is only supported for uncolored links with the Soergel engine");
+        std::process::exit(1);
+    }
+    if soergel {
+        println!("closure: {}{}", match closure { Closure::Exact => "exact".to_string(), Closure::Tower(e) => format!("tower ({:?} end first)", e) }, if reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
+    }
+    let results: Vec<(usize, krhom::laurent::Poincare)> = if soergel {
         if field_q {
             eprintln!("note: the Soergel engine runs over F_p (p = 2^31-1); use --cube for exact Q");
         }
-        let r = krhom::engine2::khr_engine2::<F31>(bw.strands, &word, &ns, &[], 7);
+        let r = krhom::engine2::khr_engine2_closure::<F31>(bw.strands, &word, &ns, &[], 7, reduced, closure);
         r.poincare.into_iter().collect()
     } else {
         ns.iter()

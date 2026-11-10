@@ -5,7 +5,7 @@ use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::fmt;
 
-pub trait Field: Clone + PartialEq + fmt::Debug + fmt::Display + Send + Sync + 'static {
+pub trait Field: Clone + PartialEq + Eq + std::hash::Hash + fmt::Debug + fmt::Display + Send + Sync + 'static {
     fn zero() -> Self;
     fn one() -> Self;
     fn is_zero(&self) -> bool;

@@ -14,6 +14,7 @@ use crate::hecke::Hecke;
 use crate::laurent::Poincare;
 use crate::linsys::Echelon;
 use crate::sparse::SpVec;
+use crate::tower::{EndPolicy, TowerOpts};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -70,7 +71,7 @@ fn gens_point<F: Field>(n: usize, x: Vec<F>, hecke: Arc<Hecke>, types: &[usize])
 }
 
 fn par_map<T: Send + Sync, R: Send, Fun: Fn(&T) -> R + Sync>(items: &[T], f: Fun) -> Vec<R> {
-    let nth = std::thread::available_parallelism().map(|x| x.get()).unwrap_or(4);
+    let nth = crate::num_threads();
     let chunks: Vec<Vec<usize>> = (0..nth).map(|t| (t..items.len()).step_by(nth).collect()).collect();
     let mut out: Vec<Option<R>> = (0..items.len()).map(|_| None).collect();
     let res: Vec<Vec<(usize, R)>> = std::thread::scope(|s| {
@@ -153,12 +154,13 @@ fn pmul<F: Field>(a: &EPoly<F>, b: &EPoly<F>) -> EPoly<F> {
 }
 
 /// Chosen R-bases for one object type.
-struct TypeBasis<F: Field> {
-    /// indices into in-candidates and their degrees
-    ins: Vec<(usize, i32)>,
-    outs: Vec<(usize, i32)>,
-    /// G[b][a] polynomials
-    gram: Vec<Vec<EPoly<F>>>,
+pub struct TypeBasis<F: Field> {
+    /// indices into in-candidates and their degrees (R-basis g_a of Hom(R,B_x))
+    pub ins: Vec<(usize, i32)>,
+    /// R-basis h_b of Hom(B_x,R)
+    pub outs: Vec<(usize, i32)>,
+    /// G[b][a] = h_b∘g_a polynomials
+    pub gram: Vec<Vec<EPoly<F>>>,
 }
 
 /// Graded Nakayama selection: returns chosen candidate indices with degrees.
@@ -227,11 +229,137 @@ pub struct Engine2Result {
     pub points: usize,
     pub max_objects: usize,
     pub final_objects: usize,
+    /// (scan, data preparation after the scan: bases + Gram + F, closure of all N)
     pub timings: (f64, f64, f64),
 }
 
-/// Uncolored gl_N homology for every N in `ns` from one tangle-level scan.
+/// Which gl_N closure to run on the prepared data.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Closure {
+    /// `close_exact`: one pairing matrix per (h, q) block of the whole closed complex (the oracle).
+    Exact,
+    /// Restriction tower (src/tower.rs), closing end variables in the given order.
+    Tower(EndPolicy),
+}
+
+impl Closure {
+    /// "exact", "tower" (right end), or "tower-left" / "tower-right" / "tower-alt".
+    pub fn parse(s: &str) -> Option<Closure> {
+        match s {
+            "exact" => Some(Closure::Exact),
+            "tower" => Some(Closure::Tower(EndPolicy::Right)),
+            _ => s.strip_prefix("tower-").and_then(EndPolicy::parse).map(Closure::Tower),
+        }
+    }
+}
+
+/// The N-independent output of the scan: final complex, R-bases, Gram and edge polynomials.
+pub struct ClosureData<F: Field> {
+    pub n: usize,
+    pub word: Vec<Gen>,
+    pub objs: Vec<Obj>,
+    /// (source, target) object indices of the final differential components
+    pub edges: Vec<(usize, usize)>,
+    /// fpolys[e][c][a]: f∘g_a = Σ_c F_ca g'_c
+    pub fpolys: Vec<Vec<Vec<EPoly<F>>>>,
+    pub bases: BTreeMap<usize, TypeBasis<F>>,
+    pub points: usize,
+    pub max_objects: usize,
+    /// (scan, bases + Gram, F interpolation) seconds
+    pub timings: (f64, f64, f64),
+}
+
+/// Truncation caps: N-1 per strand; the marked strand (bottom position 0) gets 0 in reduced mode.
+pub fn closure_caps(n: usize, nn: usize, reduced: bool) -> Vec<u32> {
+    assert!(nn >= 1);
+    let mut top = vec![(nn - 1) as u32; n];
+    if reduced {
+        top[0] = 0;
+    }
+    top
+}
+
+/// Global q-shift of the closure (crossing shifts and the per-strand normalization).
+pub fn closure_q_shift(n: usize, word: &[Gen], nn: usize, reduced: bool) -> i32 {
+    let marked = if reduced { 1 } else { 0 };
+    word.iter().map(|g| if g.positive { -((nn - 1) as i32) } else { (nn - 1) as i32 }).sum::<i32>() - ((n - marked) * (nn - 1)) as i32
+}
+
+/// gl_N homology (Poincaré polynomial) of the prepared data for one N.
+pub fn close_with<F: Field>(data: &ClosureData<F>, nn: usize, reduced: bool, closure: Closure) -> Poincare {
+    match closure {
+        Closure::Exact => {
+            let n = data.n;
+            let top = closure_caps(n, nn, reduced);
+            let global_q = closure_q_shift(n, &data.word, nn, reduced);
+            close_exact(n, nn, &top, global_q, &data.objs, &data.edges, &data.fpolys, &data.bases)
+        }
+        Closure::Tower(policy) => close_tower_with(data, nn, reduced, TowerOpts::new(policy)).poincare,
+    }
+}
+
+/// The tower closure with explicit options; returns per-stage statistics as well.
+pub fn close_tower_with<F: Field>(data: &ClosureData<F>, nn: usize, reduced: bool, opts: TowerOpts) -> crate::tower::TowerResult {
+    let n = data.n;
+    let top = closure_caps(n, nn, reduced);
+    let global_q = closure_q_shift(n, &data.word, nn, reduced);
+    let t = std::time::Instant::now();
+    let r = crate::tower::close_tower(n, &top, global_q, &data.objs, &data.edges, &data.fpolys, &data.bases, opts);
+    let peak = r.stages.iter().map(|s| s.objects).max().unwrap_or(0);
+    let alive: Vec<String> = r.stages.iter().map(|s| s.after_objects.to_string()).collect();
+    let nonsplit: usize = r.stages.iter().map(|s| s.nonsplit).sum();
+    eprintln!(
+        "[tower N={}] {:?} end{}, objects after each stage {} (peak {} before elimination, {} non-split coords), {:.2}s",
+        nn, opts.policy, if opts.unit_pivots_only { " (unit pivots only)" } else { "" }, alive.join(","), peak, nonsplit, t.elapsed().as_secs_f64()
+    );
+    r
+}
+
+/// Chain-level dimension dim Φ_N(B_x) of every type, computed by the tower decomposition.
+pub fn tower_type_dims<F: Field>(data: &ClosureData<F>, nn: usize, reduced: bool, opts: TowerOpts) -> BTreeMap<usize, usize> {
+    crate::tower::type_dims(&closure_caps(data.n, nn, reduced), &data.bases, opts)
+}
+
+/// Chain-level dimension dim Φ_N(B_x) of every type, from the state spaces of `close_exact`.
+pub fn exact_type_dims<F: Field>(data: &ClosureData<F>, nn: usize, reduced: bool) -> BTreeMap<usize, usize> {
+    let top = closure_caps(data.n, nn, reduced);
+    data.bases.iter().map(|(&x, tb)| (x, exact_state_space(data.n, &top, tb).0.values().map(|v| v.len()).sum())).collect()
+}
+
+/// Uncolored gl_N homology for every N in `ns` from one tangle-level scan (exact closure).
 pub fn khr_engine2<F: Field>(n: usize, word: &[Gen], ns: &[usize], start_word: &[usize], seed: u64) -> Engine2Result {
+    khr_engine2_mode::<F>(n, word, ns, start_word, seed, false)
+}
+
+/// As `khr_engine2`; with `reduced = true` the strand at bottom position 0 is
+/// marked (reduced homology x_1^{N-1}·Φ_N, normalized so the reduced unknot is q^0).
+pub fn khr_engine2_mode<F: Field>(n: usize, word: &[Gen], ns: &[usize], start_word: &[usize], seed: u64, reduced: bool) -> Engine2Result {
+    khr_engine2_closure::<F>(n, word, ns, start_word, seed, reduced, Closure::Exact)
+}
+
+/// One scan and data preparation, then the chosen closure for every N in `ns` (sequentially).
+pub fn khr_engine2_closure<F: Field>(n: usize, word: &[Gen], ns: &[usize], start_word: &[usize], seed: u64, reduced: bool, closure: Closure) -> Engine2Result {
+    let data = prepare_closure_data::<F>(n, word, start_word, seed);
+    let mut results = BTreeMap::new();
+    let tc = std::time::Instant::now();
+    for &nn in ns {
+        let t1 = std::time::Instant::now();
+        let p = close_with(&data, nn, reduced, closure);
+        eprintln!("[engine2] N={} closed in {:.2}s, rank {}", nn, t1.elapsed().as_secs_f64(), p.total_rank());
+        results.insert(nn, p);
+    }
+    Engine2Result {
+        poincare: results,
+        points: data.points,
+        max_objects: data.max_objects,
+        final_objects: data.objs.len(),
+        timings: (data.timings.0, data.timings.1 + data.timings.2, tc.elapsed().as_secs_f64()),
+    }
+}
+
+/// Scan at enough points, choose R-bases (graded Nakayama), interpolate Gram and edge
+/// polynomials. N-independent; the scan data is released before returning.
+pub fn prepare_closure_data<F: Field>(n: usize, word: &[Gen], start_word: &[usize], seed: u64) -> ClosureData<F> {
     use rand::{rngs::StdRng, Rng, SeedableRng};
     let t0 = std::time::Instant::now();
     let hecke = Arc::new(Hecke::new(n));
@@ -251,32 +379,50 @@ pub fn khr_engine2<F: Field>(n: usize, word: &[Gen], ns: &[usize], start_word: &
     // graded ranks of Hom(R,B_x) = h_{e,x}(v)
     let target = |x: usize| -> BTreeMap<i32, usize> { hecke.kl[x][0].c.iter().map(|(&e, &c)| (e, c as usize)).collect() };
     // ---- choose bases (may need more gens-only points) ----
+    // Every type x uses the first np[x] points of gpts. A type gets more points only when
+    // its own basis selection or Gram interpolation needs them (dense interpolation of
+    // weight k needs C(k+n-1, n-1) points, plus 8 for the residual check), so the many
+    // low-degree types are not evaluated at the hundreds of points the top types need.
     let mut gpts: Vec<Vec<F>> = pts.clone();
     let mut gdata: Vec<BTreeMap<usize, (Vec<(i32, Vec<F>)>, Vec<(i32, Vec<F>)>)>> = scans.iter().map(|s| s.gens.clone()).collect();
+    let mut np: BTreeMap<usize, usize> = types.iter().map(|&x| (x, gpts.len())).collect();
+    let t_bases_start = t0.elapsed().as_secs_f64();
     let mut bases: BTreeMap<usize, TypeBasis<F>> = BTreeMap::new();
     let mut interp = Interp::<F>::new(n);
     loop {
-        let mut ok = true;
-        bases.clear();
-        let mut need_pts = gpts.len();
+        let mut want: BTreeMap<usize, usize> = BTreeMap::new();
         for &x in &types {
-            let incs: Vec<Vec<(i32, Vec<F>)>> = gdata.iter().map(|g| g[&x].0.clone()).collect();
-            let outcs: Vec<Vec<(i32, Vec<F>)>> = gdata.iter().map(|g| g[&x].1.clone()).collect();
-            let ins = match select_basis(&incs, &gpts, &target(x), n) { Ok(b) => b, Err(_) => { ok = false; need_pts = need_pts * 2; break; } };
-            let outs = match select_basis(&outcs, &gpts, &target(x), n) { Ok(b) => b, Err(_) => { ok = false; need_pts = need_pts * 2; break; } };
+            if bases.contains_key(&x) {
+                continue;
+            }
+            let npx = np[&x];
+            let px = &gpts[..npx];
+            let incs: Vec<Vec<(i32, Vec<F>)>> = gdata[..npx].iter().map(|g| g[&x].0.clone()).collect();
+            let outcs: Vec<Vec<(i32, Vec<F>)>> = gdata[..npx].iter().map(|g| g[&x].1.clone()).collect();
+            let (ins, outs) = match (select_basis(&incs, px, &target(x), n), select_basis(&outcs, px, &target(x), n)) {
+                (Ok(i), Ok(o)) => (i, o),
+                _ => {
+                    want.insert(x, 2 * npx);
+                    continue;
+                }
+            };
+            let mut need = 0;
+            for &(_, ad) in &ins {
+                for &(_, bd) in &outs {
+                    need = need.max(interp.needed(((ad + bd) / 2) as usize));
+                }
+            }
+            if need > npx {
+                want.insert(x, need + 8);
+                continue;
+            }
             // Gram polynomials
             let mut gram = vec![];
             for &(bi, bd) in &outs {
                 let mut row = vec![];
                 for &(ai, ad) in &ins {
                     let k = ((ad + bd) / 2) as usize;
-                    if interp.needed(k) > gpts.len() {
-                        ok = false;
-                        need_pts = need_pts.max(interp.needed(k) + 8);
-                        row.push(HashMap::new());
-                        continue;
-                    }
-                    let vals: Vec<F> = (0..gpts.len())
+                    let vals: Vec<F> = (0..npx)
                         .map(|j| {
                             let a = &incs[j][ai].1;
                             let b = &outcs[j][bi].1;
@@ -285,22 +431,37 @@ pub fn khr_engine2<F: Field>(n: usize, word: &[Gen], ns: &[usize], start_word: &
                             s
                         })
                         .collect();
-                    row.push(interp.interpolate(k, &gpts, &vals).unwrap());
+                    row.push(interp.interpolate(k, px, &vals).unwrap());
                 }
                 gram.push(row);
             }
             bases.insert(x, TypeBasis { ins, outs, gram });
         }
-        if ok {
+        if want.is_empty() {
             break;
         }
-        // add gens-only points
-        let extra: Vec<Vec<F>> = (gpts.len()..need_pts).map(|_| newpt()).collect();
-        let more = par_map(&extra, |p| gens_point::<F>(n, p.clone(), hecke.clone(), &types));
-        gpts.extend(extra);
-        gdata.extend(more);
-        interp = Interp::<F>::new(n);
+        // add gens-only points, evaluating at each only the types that want it
+        let total = *want.values().max().unwrap();
+        while gpts.len() < total {
+            gpts.push(newpt());
+            gdata.push(BTreeMap::new());
+        }
+        let lo = want.keys().map(|x| np[x]).min().unwrap();
+        let jobs: Vec<(usize, Vec<usize>)> = (lo..total)
+            .map(|j| (j, want.iter().filter(|&(x, &w)| np[x] <= j && j < w).map(|(&x, _)| x).collect::<Vec<usize>>()))
+            .filter(|(_, ts)| !ts.is_empty())
+            .collect();
+        let more = par_map(&jobs, |(j, ts)| gens_point::<F>(n, gpts[*j].clone(), hecke.clone(), ts));
+        for ((j, _), m) in jobs.iter().zip(more) {
+            gdata[*j].extend(m);
+        }
+        for (x, w) in want {
+            np.insert(x, w);
+        }
     }
+    let t_bases = t0.elapsed().as_secs_f64() - t_bases_start;
+    eprintln!("[engine2] scan {:.2}s ({} points), bases+Gram {:.2}s ({} gens points)", t_scan, pts.len(), t_bases, gpts.len());
+    drop(gdata);
     // ---- F matrices for each edge (may need more scan points) ----
     let deg_f = |e: &(usize, usize, Vec<Vec<F>>)| -> i32 { objs[e.0].q - objs[e.1].q };
     let mut maxk = 0usize;
@@ -317,6 +478,8 @@ pub fn khr_engine2<F: Field>(n: usize, word: &[Gen], ns: &[usize], start_word: &
         }
     }
     let need = monomials(n, maxk).len() + 4;
+    let t_extra_start = t0.elapsed().as_secs_f64();
+    let n_before_extra = pts.len();
     if need > pts.len() {
         let extra: Vec<Vec<F>> = (pts.len()..need).map(|_| newpt()).collect();
         let more = par_map(&extra, |p| scan_point::<F>(n, word, p.clone(), hecke.clone(), start));
@@ -328,6 +491,12 @@ pub fn khr_engine2<F: Field>(n: usize, word: &[Gen], ns: &[usize], start_word: &
         m = pts.len();
     }
     let _ = m;
+    // Extra scan points needed only for the F interpolation count as scan time.
+    let t_extra = t0.elapsed().as_secs_f64() - t_extra_start;
+    if pts.len() > n_before_extra {
+        eprintln!("[engine2] extra scan for F: {} more points in {:.2}s", pts.len() - n_before_extra, t_extra);
+    }
+    let t_scan = t_scan + t_extra;
     let t_interp_start = t0.elapsed().as_secs_f64();
     // F polynomials: fmat[edge][c][a]
     let mut fpolys: Vec<Vec<Vec<EPoly<F>>>> = vec![];
@@ -374,36 +543,154 @@ pub fn khr_engine2<F: Field>(n: usize, word: &[Gen], ns: &[usize], start_word: &
         fpolys.push(fm);
     }
     let t_interp = t0.elapsed().as_secs_f64() - t_interp_start;
-    // ---- exact closure for each N ----
-    let mut results = BTreeMap::new();
-    let tc = std::time::Instant::now();
-    for &nn in ns {
-        let t1 = std::time::Instant::now();
-        let p = close_exact(n, nn, word, &objs, &scans[0].edges.iter().map(|e| (e.0, e.1)).collect::<Vec<_>>(), &fpolys, &bases);
-        eprintln!("[engine2] N={} closed in {:.2}s, rank {}", nn, t1.elapsed().as_secs_f64(), p.total_rank());
-        results.insert(nn, p);
-    }
-    Engine2Result {
-        poincare: results,
-        points: pts.len(),
-        max_objects,
-        final_objects: objs.len(),
-        timings: (t_scan, t_interp, tc.elapsed().as_secs_f64()),
-    }
+    eprintln!("[engine2] F interpolation {:.2}s", t_interp);
+    // the per-point scan data is no longer needed: keep only the edge list
+    let edges: Vec<(usize, usize)> = scans[0].edges.iter().map(|e| (e.0, e.1)).collect();
+    drop(scans);
+    ClosureData { n, word: word.to_vec(), objs, edges, fpolys, bases, points: pts.len(), max_objects, timings: (t_scan, t_bases, t_interp) }
 }
 
-fn close_exact<F: Field>(
-    n: usize,
-    nn: usize,
-    word: &[Gen],
-    objs: &[Obj],
-    edges: &[(usize, usize)],
-    fpolys: &[Vec<Vec<EPoly<F>>>],
-    bases: &BTreeMap<usize, TypeBasis<F>>,
-) -> Poincare {
-    let top = vec![(nn - 1) as u32; n];
-    let topdeg = 2 * (n * (nn - 1)) as i32;
-    let global_q: i32 = word.iter().map(|g| if g.positive { -((nn - 1) as i32) } else { (nn - 1) as i32 }).sum::<i32>() - (n * (nn - 1)) as i32;
+/// Write prepared closure data to a text file (prime fields only), so that expensive
+/// preparations can be closed again later without rescanning (`load_closure_data`).
+pub fn save_closure_data<F: Field>(data: &ClosureData<F>, path: &str) -> std::io::Result<()> {
+    use std::fmt::Write as _;
+    assert!(F::characteristic() > 0, "save_closure_data supports prime fields only");
+    let n = data.n;
+    let mut s = String::new();
+    let poly = |s: &mut String, p: &EPoly<F>| {
+        let mut terms: Vec<(&Vec<u32>, &F)> = p.iter().collect();
+        terms.sort_by(|a, b| a.0.cmp(b.0));
+        write!(s, "{}", terms.len()).unwrap();
+        for (e, c) in terms {
+            assert_eq!(e.len(), n);
+            for x in e {
+                write!(s, " {}", x).unwrap();
+            }
+            write!(s, " {}", c).unwrap();
+        }
+        s.push('\n');
+    };
+    writeln!(s, "krhom-closure-data 1 {} {}", F::characteristic(), n).unwrap();
+    writeln!(s, "{}", data.word.iter().map(|g| format!("{}", if g.positive { g.i as i64 + 1 } else { -(g.i as i64 + 1) })).collect::<Vec<_>>().join(" ")).unwrap();
+    writeln!(s, "{} {} {} {} {}", data.points, data.max_objects, data.timings.0, data.timings.1, data.timings.2).unwrap();
+    writeln!(s, "{}", data.objs.len()).unwrap();
+    for o in &data.objs {
+        writeln!(s, "{} {} {}", o.x, o.q, o.h).unwrap();
+    }
+    writeln!(s, "{}", data.edges.len()).unwrap();
+    for (ei, &(a, b)) in data.edges.iter().enumerate() {
+        let fm = &data.fpolys[ei];
+        writeln!(s, "{} {} {} {}", a, b, fm.len(), fm.first().map(|r| r.len()).unwrap_or(0)).unwrap();
+        for row in fm {
+            for p in row {
+                poly(&mut s, p);
+            }
+        }
+    }
+    writeln!(s, "{}", data.bases.len()).unwrap();
+    for (x, tb) in &data.bases {
+        let pairs = |v: &[(usize, i32)]| v.iter().map(|(i, d)| format!("{} {}", i, d)).collect::<Vec<_>>().join(" ");
+        writeln!(s, "{} {} {}", x, tb.ins.len(), tb.outs.len()).unwrap();
+        writeln!(s, "{}", pairs(&tb.ins)).unwrap();
+        writeln!(s, "{}", pairs(&tb.outs)).unwrap();
+        for row in &tb.gram {
+            for p in row {
+                poly(&mut s, p);
+            }
+        }
+    }
+    std::fs::write(path, s)
+}
+
+/// Read closure data written by `save_closure_data` (the same prime field).
+pub fn load_closure_data<F: Field>(path: &str) -> Result<ClosureData<F>, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {}", path, e))?;
+    let mut lines = text.lines();
+    let mut next = || lines.next().ok_or_else(|| "unexpected end of file".to_string());
+    let nums = |l: &str| -> Result<Vec<i64>, String> { l.split_whitespace().map(|t| t.parse::<i64>().map_err(|e| format!("{:?}: {}", t, e))).collect() };
+    let head: Vec<String> = next()?.split_whitespace().map(|t| t.to_string()).collect();
+    if head.len() != 4 || head[0] != "krhom-closure-data" || head[1] != "1" {
+        return Err("not a krhom closure data file (version 1)".into());
+    }
+    if head[2].parse::<u64>().ok() != Some(F::characteristic()) {
+        return Err(format!("field mismatch: file has characteristic {}, expected {}", head[2], F::characteristic()));
+    }
+    let n: usize = head[3].parse().map_err(|_| "bad strand count")?;
+    let word: Vec<Gen> = nums(next()?)?.into_iter().map(|k| Gen { i: (k.unsigned_abs() - 1) as usize, positive: k > 0 }).collect();
+    let meta: Vec<String> = next()?.split_whitespace().map(|t| t.to_string()).collect();
+    if meta.len() != 5 {
+        return Err("bad metadata line".into());
+    }
+    let points: usize = meta[0].parse().map_err(|_| "bad points")?;
+    let max_objects: usize = meta[1].parse().map_err(|_| "bad max_objects")?;
+    let tm = |k: usize| meta[k].parse::<f64>().map_err(|_| "bad timing".to_string());
+    let timings = (tm(2)?, tm(3)?, tm(4)?);
+    let parse_poly = |l: &str| -> Result<EPoly<F>, String> {
+        let v = nums(l)?;
+        let k = *v.first().ok_or("empty polynomial line")? as usize;
+        if v.len() != 1 + k * (n + 1) {
+            return Err(format!("bad polynomial line ({} numbers for {} terms)", v.len(), k));
+        }
+        let mut p: EPoly<F> = HashMap::new();
+        for t in 0..k {
+            let base = 1 + t * (n + 1);
+            let e: Vec<u32> = v[base..base + n].iter().map(|&x| x as u32).collect();
+            p.insert(e, F::from_i64(v[base + n]));
+        }
+        Ok(p)
+    };
+    let no = nums(next()?)?[0] as usize;
+    let mut objs = Vec::with_capacity(no);
+    for _ in 0..no {
+        let v = nums(next()?)?;
+        objs.push(Obj { x: v[0] as usize, q: v[1] as i32, h: v[2] as i32 });
+    }
+    let ne = nums(next()?)?[0] as usize;
+    let (mut edges, mut fpolys) = (Vec::with_capacity(ne), Vec::with_capacity(ne));
+    for _ in 0..ne {
+        let v = nums(next()?)?;
+        edges.push((v[0] as usize, v[1] as usize));
+        let (r, c) = (v[2] as usize, v[3] as usize);
+        let mut fm = Vec::with_capacity(r);
+        for _ in 0..r {
+            let mut row = Vec::with_capacity(c);
+            for _ in 0..c {
+                row.push(parse_poly(next()?)?);
+            }
+            fm.push(row);
+        }
+        fpolys.push(fm);
+    }
+    let nb = nums(next()?)?[0] as usize;
+    let mut bases = BTreeMap::new();
+    for _ in 0..nb {
+        let v = nums(next()?)?;
+        let (x, ni, nout) = (v[0] as usize, v[1] as usize, v[2] as usize);
+        let pairs = |l: &str| -> Result<Vec<(usize, i32)>, String> { Ok(nums(l)?.chunks(2).map(|c| (c[0] as usize, c[1] as i32)).collect()) };
+        let ins = pairs(next()?)?;
+        let outs = pairs(next()?)?;
+        if ins.len() != ni || outs.len() != nout {
+            return Err(format!("type {}: bad basis lines", x));
+        }
+        let mut gram = Vec::with_capacity(nout);
+        for _ in 0..nout {
+            let mut row = Vec::with_capacity(ni);
+            for _ in 0..ni {
+                row.push(parse_poly(next()?)?);
+            }
+            gram.push(row);
+        }
+        bases.insert(x, TypeBasis { ins, outs, gram });
+    }
+    Ok(ClosureData { n, word, objs, edges, fpolys, bases, points, max_objects, timings })
+}
+
+/// State space of one type for close_exact: per degree d, representatives (a, m1) and
+/// dual representatives (b, m2) of Φ_N(B_x) (rank of the pairing matrix).
+type StateSpace = (BTreeMap<i32, Vec<(usize, Vec<u32>)>>, BTreeMap<i32, Vec<(usize, Vec<u32>)>>);
+
+fn exact_state_space<F: Field>(n: usize, top: &[u32], tb: &TypeBasis<F>) -> StateSpace {
+    let topdeg = 2 * top.iter().sum::<u32>() as i32;
     let coeff = |p: &EPoly<F>, m1: &[u32], m2: &[u32]| -> F {
         let mut e = Vec::with_capacity(n);
         for i in 0..n {
@@ -415,52 +702,70 @@ fn close_exact<F: Field>(
         }
         p.get(&e).cloned().unwrap_or_else(F::zero)
     };
-    // state spaces per object type and degree: reps (a, mono), duals (b, mono), ginv
-    struct SS<F: Field> {
+    let mut reps = BTreeMap::new();
+    let mut duals = BTreeMap::new();
+    // A representative of degree d needs d >= min(ins); its dual partner has degree
+    // topdeg - d, which needs topdeg - d >= min(outs). So d runs over [min(ins), topdeg - min(outs)].
+    // (The old upper bound used max(outs) and silently dropped the top degrees when
+    // min(outs) < min(ins); braid data never has that, synthetic data can.)
+    let gmin = tb.ins.iter().map(|g| g.1).min().unwrap_or(0);
+    let omin = tb.outs.iter().map(|g| g.1).min().unwrap_or(0);
+    for d in gmin..=(topdeg - omin) {
+        let mut span = vec![];
+        for (a, &(_, ad)) in tb.ins.iter().enumerate() {
+            let rd = d - ad;
+            if rd < 0 || rd % 2 != 0 { continue; }
+            for mo in monomials(n, (rd / 2) as usize) {
+                if mo.iter().zip(top.iter()).all(|(&e, &t)| e <= t) { span.push((a, mo)); }
+            }
+        }
+        let dd = topdeg - d;
+        let mut dspan = vec![];
+        for (b, &(_, bd)) in tb.outs.iter().enumerate() {
+            let rd = dd - bd;
+            if rd < 0 || rd % 2 != 0 { continue; }
+            for mo in monomials(n, (rd / 2) as usize) {
+                if mo.iter().zip(top.iter()).all(|(&e, &t)| e <= t) { dspan.push((b, mo)); }
+            }
+        }
+        if span.is_empty() || dspan.is_empty() { continue; }
+        let gram: Vec<Vec<F>> = span.iter().map(|(a, m1)| dspan.iter().map(|(b, m2)| coeff(&tb.gram[*b][*a], m1, m2)).collect()).collect();
+        let rows = indep_rows(&gram);
+        if rows.is_empty() { continue; }
+        let sub: Vec<Vec<F>> = rows.iter().map(|&k| gram[k].clone()).collect();
+        let cols = indep_rows(&transpose(&sub));
+        reps.insert(d, rows.iter().map(|&k| span[k].clone()).collect::<Vec<_>>());
+        duals.insert(d, cols.iter().map(|&c| dspan[c].clone()).collect::<Vec<_>>());
+    }
+    (reps, duals)
+}
+
+/// Exact closure. `top[i]` is the truncation cap of variable x_i (N-1 for an
+/// unreduced strand, 0 for the marked strand in reduced mode); τ = coefficient of x^top.
+fn close_exact<F: Field>(
+    n: usize,
+    nn: usize,
+    top: &[u32],
+    global_q: i32,
+    objs: &[Obj],
+    edges: &[(usize, usize)],
+    fpolys: &[Vec<Vec<EPoly<F>>>],
+    bases: &BTreeMap<usize, TypeBasis<F>>,
+) -> Poincare {
+    let top: Vec<u32> = top.to_vec();
+    // state spaces per object type and degree: reps (a, mono), duals (b, mono).
+    // (rank of d = rank of the pairing matrix, so no inverse Gram is needed)
+    struct SS {
         reps: BTreeMap<i32, Vec<(usize, Vec<u32>)>>,
         duals: BTreeMap<i32, Vec<(usize, Vec<u32>)>>,
-        ginv: BTreeMap<i32, Vec<Vec<F>>>,
     }
-    let mut ss: BTreeMap<usize, SS<F>> = BTreeMap::new();
+    let mut ss: BTreeMap<usize, SS> = BTreeMap::new();
     let tss = std::time::Instant::now();
     let mut ssdim = 0usize;
     for (&x, tb) in bases {
-        let mut reps = BTreeMap::new();
-        let mut duals = BTreeMap::new();
-        let mut ginvs = BTreeMap::new();
-        let gmin = tb.ins.iter().map(|g| g.1).min().unwrap_or(0);
-        let gmax = tb.outs.iter().map(|g| g.1).max().unwrap_or(0);
-        for d in gmin..=(topdeg - gmin.min(gmax)).max(topdeg) {
-            let mut span = vec![];
-            for (a, &(_, ad)) in tb.ins.iter().enumerate() {
-                let rd = d - ad;
-                if rd < 0 || rd % 2 != 0 { continue; }
-                for mo in monomials(n, (rd / 2) as usize) {
-                    if mo.iter().all(|&e| e <= (nn - 1) as u32) { span.push((a, mo)); }
-                }
-            }
-            let dd = topdeg - d;
-            let mut dspan = vec![];
-            for (b, &(_, bd)) in tb.outs.iter().enumerate() {
-                let rd = dd - bd;
-                if rd < 0 || rd % 2 != 0 { continue; }
-                for mo in monomials(n, (rd / 2) as usize) {
-                    if mo.iter().all(|&e| e <= (nn - 1) as u32) { dspan.push((b, mo)); }
-                }
-            }
-            if span.is_empty() || dspan.is_empty() { continue; }
-            let gram: Vec<Vec<F>> = span.iter().map(|(a, m1)| dspan.iter().map(|(b, m2)| coeff(&tb.gram[*b][*a], m1, m2)).collect()).collect();
-            let rows = indep_rows(&gram);
-            if rows.is_empty() { continue; }
-            let sub: Vec<Vec<F>> = rows.iter().map(|&k| gram[k].clone()).collect();
-            let cols = indep_rows(&transpose(&sub));
-            let g: Vec<Vec<F>> = sub.iter().map(|r| cols.iter().map(|&c| r[c].clone()).collect()).collect();
-            reps.insert(d, rows.iter().map(|&k| span[k].clone()).collect::<Vec<_>>());
-            duals.insert(d, cols.iter().map(|&c| dspan[c].clone()).collect::<Vec<_>>());
-            ginvs.insert(d, crate::local::inverse(&g).unwrap());
-        }
+        let (reps, duals) = exact_state_space(n, &top, tb);
         ssdim += reps.values().map(|v: &Vec<(usize, Vec<u32>)>| v.len()).sum::<usize>();
-        ss.insert(x, SS { reps, duals, ginv: ginvs });
+        ss.insert(x, SS { reps, duals });
     }
     eprintln!("[close N={}] state spaces: {} types, total dim {}, {:.2}s", nn, bases.len(), ssdim, tss.elapsed().as_secs_f64());
     let trk = std::time::Instant::now();
@@ -472,7 +777,6 @@ fn close_exact<F: Field>(
             }
         }
     }
-    let gindex: HashMap<(usize, i32, usize), usize> = groups.values().flat_map(|v| v.iter().enumerate().map(|(k, x)| (*x, k))).collect();
     // precompute P_ab = Σ_c F_ca G_y[b][c] per edge
     let mut out_edges: HashMap<usize, Vec<usize>> = HashMap::new();
     for (ei, &(s, _)) in edges.iter().enumerate() {
@@ -499,15 +803,20 @@ fn close_exact<F: Field>(
     }
     // rank(d) = rank of the pairing matrix ⟨d(rep), dual⟩ (the target Gram is invertible),
     // so columns are indexed by target duals and no inverse Gram is needed.
-    // packed monomials: 5 bits per variable (exponents ≤ 31), n ≤ 12
-    assert!(n <= 12, "packed closure supports at most 12 strands");
-    let pack = |m: &[u32]| -> u64 { m.iter().enumerate().fold(0u64, |acc, (i, &e)| acc | ((e as u64) << (5 * i))) };
+    // Packed monomials in a u128 with `w` bits per variable. A row term is the sum of a
+    // representative monomial m1 (exponents ≤ top) and a pruned term of P_ab (exponents
+    // ≤ top), so every field of the sum is ≤ 2·max(top) < 2^w and never carries into the
+    // next field; `fits` then tests each field separately and `toppack - sum` cannot borrow.
+    let w = exact_pack_width(&top);
+    assert!(n * w <= 128, "close_exact: {} strands with caps up to {} do not fit packed monomials ({} bits per variable)", n, top.iter().max().unwrap_or(&0), w);
+    let fmask: u128 = (1u128 << w) - 1;
+    let pack = |m: &[u32]| -> u128 { m.iter().enumerate().fold(0u128, |acc, (i, &e)| acc | ((e as u128) << (w * i))) };
     let toppack = pack(&top);
-    let fits = |s: u64| -> bool { (0..n).all(|i| ((s >> (5 * i)) & 31) <= (nn - 1) as u64) };
+    let fits = |s: u128| -> bool { (0..n).all(|i| ((s >> (w * i)) & fmask) <= top[i] as u128) };
     // columns (duals) sorted by a lex term order on m2 (ascending) so that the
     // leftmost entry of a row m1·F is its leading term m1·lt(F): little fill-in.
-    let lexkey = |m: &[u32]| -> u64 { m.iter().enumerate().fold(0u64, |acc, (i, &e)| acc | ((e as u64) << (5 * (n - 1 - i)))) };
-    let mut dual_lists: BTreeMap<(i32, i32), Vec<(u64, usize, usize, u64)>> = BTreeMap::new();
+    let lexkey = |m: &[u32]| -> u128 { m.iter().enumerate().fold(0u128, |acc, (i, &e)| acc | ((e as u128) << (w * (n - 1 - i)))) };
+    let mut dual_lists: BTreeMap<(i32, i32), Vec<(u128, usize, usize, u128)>> = BTreeMap::new();
     for (i, o) in objs.iter().enumerate() {
         for (d, duals) in &ss[&o.x].duals {
             let key = (o.h, d + o.q + global_q);
@@ -517,18 +826,18 @@ fn close_exact<F: Field>(
         }
     }
     let mut dual_groups: BTreeMap<(i32, i32), usize> = BTreeMap::new();
-    let mut dual_index: HashMap<u128, usize> = HashMap::new();
+    let mut dual_index: HashMap<(u32, u32, u128), usize> = HashMap::new();
     for (key, mut list) in dual_lists {
         list.sort();
         for (idx, (_, i, b, m2p)) in list.iter().enumerate() {
-            dual_index.insert(((*i as u128) << 72) | ((*b as u128) << 64) | *m2p as u128, idx);
+            dual_index.insert((*i as u32, *b as u32, *m2p), idx);
         }
         dual_groups.insert(key, list.len());
     }
     // pruned packed P_ab terms
-    let pab_packed: Vec<Vec<Vec<Vec<(u64, F)>>>> = pab
+    let pab_packed: Vec<Vec<Vec<Vec<(u128, F)>>>> = pab
         .iter()
-        .map(|m| m.iter().map(|row| row.iter().map(|p| p.iter().filter(|(t, _)| t.iter().all(|&e| e <= (nn - 1) as u32)).map(|(t, c)| (pack(t), c.clone())).collect()).collect()).collect())
+        .map(|m| m.iter().map(|row| row.iter().map(|p| p.iter().filter(|(t, _)| t.iter().zip(top.iter()).all(|(&e, &c)| e <= c)).map(|(t, c)| (pack(t), c.clone())).collect()).collect()).collect())
         .collect();
     let blocks: Vec<((i32, i32), Vec<(usize, i32, usize)>)> = groups.iter().map(|(k, v)| (*k, v.clone())).collect();
     let ranks: Vec<((i32, i32), usize)> = par_map(&blocks, |((h, q), elems)| {
@@ -548,7 +857,7 @@ fn close_exact<F: Field>(
                         let sum = tp + m1p;
                         if !fits(sum) { continue; }
                         let m2 = toppack - sum;
-                        if let Some(&col) = dual_index.get(&(((t as u128) << 72) | ((b as u128) << 64) | m2 as u128)) {
+                        if let Some(&col) = dual_index.get(&(t as u32, b as u32, m2)) {
                             v.entry(col).or_insert_with(F::zero).add_assign(c);
                         }
                     }
@@ -561,7 +870,6 @@ fn close_exact<F: Field>(
         ((*h, *q), ech.rank())
     });
     let rank: HashMap<(i32, i32), usize> = ranks.into_iter().collect();
-    let _ = &gindex;
     eprintln!("[close N={}] chain dim {}, ranks {:.2}s", nn, groups.values().map(|v| v.len()).sum::<usize>(), trk.elapsed().as_secs_f64());
     let mut pc = Poincare::default();
     for ((h, q), elems) in &groups {
@@ -570,6 +878,13 @@ fn close_exact<F: Field>(
         pc.add_term(*h, *q, elems.len() as i128 - r_out as i128 - r_in as i128);
     }
     pc
+}
+
+/// Bits per variable of the packed monomials of `close_exact`: enough for 2·max(top), the
+/// largest exponent of a product of two monomials within the caps (at least 5 bits).
+pub fn exact_pack_width(top: &[u32]) -> usize {
+    let m = 2 * top.iter().copied().max().unwrap_or(0) as u64;
+    ((64 - m.leading_zeros()) as usize).max(5)
 }
 
 fn transpose<F: Field>(m: &[Vec<F>]) -> Vec<Vec<F>> {
