@@ -29,9 +29,16 @@
 //!   freeness), the result is the colored Poincaré polynomial times Π_i gr(V_{λ_i}); it is
 //!   divided by [`gr_v`] (normalization fixed on single types against the exact oracle,
 //!   tests/cclose.rs: gr(V_a) = Π_{k ≤ a} [k]_{q^2} unbalanced, no extra shift). Freeness is
-//!   certified per (a, N) by gate G4 (`src/bin/g4_free.rs`, whose certificate is in fact a
-//!   proof for every (a, N): Δ_a R_N ≅ F[x] ⊗_{Sym_a} H*(Gr(a, N)), see there); the adapter
-//!   refuses pairs not in [`G4_CERTIFIED`].
+//!   certified per (a, N) by gate G4 ([`g4::check`], front end `src/bin/g4_free.rs`; the
+//!   certificate is in fact a proof for every (a, N): Δ_a R_N ≅ F[x] ⊗_{Sym_a} H*(Gr(a, N)),
+//!   see [`g4`]); the adapter refuses pairs not in [`G4_CERTIFIED`].
+//! * Resource limits. Both closures estimate their memory before any work and return Err
+//!   above [`mem_cap_bytes`] (default [`DEFAULT_MEM_CAP_MB`] = 768 MB, environment variable
+//!   `KRHOM_MEM_CAP_MB`): [`exact_mem_estimate`] for the oracle (A_λ tables and state spaces),
+//!   [`delta_tower_estimate`] for the adapter (before the expansion in root variables). The
+//!   adapter also refuses Δ·G or F entries of total degree > 63 (the tower's packed
+//!   monomials) and returns a panic inside the tower as Err. The `try_*` functions return
+//!   every refusal as Err; `close_exact_colored` and `exact_type_dims_colored` panic on it.
 //!
 //! Exact closure data of small closed ladders: [`closure_data_from_ladder`] chooses R^λ-bases
 //! of Hom(R^λ, B) and Hom(B, R^λ) from `sbim::hom_space` by exact graded Nakayama, with a
@@ -726,6 +733,119 @@ pub fn grassmannian_table<F: Field>(a: usize, nn: usize) -> (Vec<Vec<u32>>, Vec<
 }
 
 
+/// Default memory cap of one exact-oracle or (Δ G) adapter call, in MB (see [`mem_cap_bytes`]).
+pub const DEFAULT_MEM_CAP_MB: u64 = 768;
+
+/// Memory cap (bytes) for one call of the exact oracle ([`GrAlg::try_new`],
+/// [`try_close_exact_colored`], [`try_exact_type_dims_colored`]) and of the (Δ G) adapter
+/// ([`close_delta_tower`]): the environment variable `KRHOM_MEM_CAP_MB` if it is set (for
+/// example on a cloud machine), else [`DEFAULT_MEM_CAP_MB`], which keeps one call below about
+/// 1 GB RSS on a laptop. A call whose estimate ([`exact_mem_estimate`],
+/// [`delta_tower_estimate`]) exceeds the cap is refused with Err before allocating.
+pub fn mem_cap_bytes() -> u128 {
+    let mb = std::env::var("KRHOM_MEM_CAP_MB").ok().and_then(|v| v.trim().parse::<u64>().ok()).unwrap_or(DEFAULT_MEM_CAP_MB);
+    mb as u128 * (1 << 20)
+}
+
+/// Coefficients (by weight w = 0..a(N−a)) of the Gaussian binomial [N choose a]_t: the number
+/// of box basis elements of H*(Gr(a, N)) of weight w.
+fn gauss_binom_coeffs(nn: usize, a: usize) -> Vec<u128> {
+    // [n, k] = [n−1, k−1] + t^k [n−1, k]
+    let mut row: Vec<Vec<u128>> = vec![vec![1]]; // row[k] for the current n
+    for n in 1..=nn {
+        let mut next: Vec<Vec<u128>> = vec![vec![1]; (n.min(a)) + 1];
+        for k in 1..=n.min(a) {
+            let mut c = vec![0u128; k * (n - k) + 1];
+            if let Some(p) = row.get(k - 1) {
+                for (w, &x) in p.iter().enumerate() {
+                    c[w] = c[w].saturating_add(x);
+                }
+            }
+            if k < n {
+                if let Some(p) = row.get(k) {
+                    for (w, &x) in p.iter().enumerate() {
+                        c[w + k] = c[w + k].saturating_add(x);
+                    }
+                }
+            }
+            next[k] = c;
+        }
+        row = next;
+    }
+    row.get(a).cloned().unwrap_or_default()
+}
+
+/// Estimated bytes of one H*(Gr(a, N)) block of the exact oracle (`BlockAlg::grassmannian`):
+/// 40 d² for the Schur-to-e-basis matrix, the augmented elimination matrix and the inverse
+/// (d = C(N, a), 8-byte field elements: measured 30–36 bytes per d²), 48 bytes per normal-form
+/// term (Σ_w p_a(w)·|box_w|, p_a(w) = #β of weight w, |box_w| = #box elements of weight w;
+/// Schur coordinates, e-coordinates and the dense copy), 160 bytes per β and the dense index
+/// table. Calibrated on single blocks (λ = (a, a) with one block marked) up to Gr(5, 16).
+fn gr_block_mem_estimate<F: Field>(a: usize, nn: usize) -> u128 {
+    if a == 0 || a > nn {
+        return 1024;
+    }
+    let boxw = gauss_binom_coeffs(nn, a);
+    let top = a * (nn - a);
+    let d: u128 = boxw.iter().sum();
+    let mut pw = vec![0u128; top + 1]; // partitions of w into parts ≤ a
+    pw[0] = 1;
+    for j in 1..=a {
+        for w in j..=top {
+            pw[w] = pw[w].saturating_add(pw[w - j]);
+        }
+    }
+    let sf = (std::mem::size_of::<F>() as u128).max(8);
+    let nf: u128 = (0..=top).map(|w| pw[w].saturating_mul(boxw[w].saturating_mul(48).saturating_add(160))).fold(0u128, |x, y| x.saturating_add(y));
+    let dense: u128 = (0..a).map(|j| (top / (j + 1)) as u128 + 1).fold(1u128, |x, y| x.saturating_mul(y));
+    let dense = if dense <= 4_000_000 { 4 * dense } else { 0 };
+    (5 * sf).saturating_mul(d.saturating_mul(d)).saturating_add(nf).saturating_add(dense)
+}
+
+/// dim A_λ (the marked block and labels 0 contribute 1), saturating.
+fn alg_dim(lam: &[u8], nn: usize, marked: Option<usize>) -> u128 {
+    lam.iter()
+        .enumerate()
+        .filter(|&(i, &l)| l > 0 && Some(i) != marked)
+        .map(|(_, &l)| gauss_binom_coeffs(nn, l as usize).iter().sum::<u128>())
+        .fold(1u128, |x, y| x.saturating_mul(y))
+}
+
+/// Estimated bytes of [`GrAlg::new`]: the blocks (see `gr_block_mem_estimate`) plus 64 bytes per
+/// element of the box basis of A_λ (`by_weight` stores (u64, u128) pairs, with Vec growth).
+pub fn gr_alg_mem_estimate<F: Field>(lam: &[u8], nn: usize, marked: Option<usize>) -> u128 {
+    let blocks: u128 = lam
+        .iter()
+        .enumerate()
+        .filter(|&(i, &l)| l > 0 && Some(i) != marked)
+        .map(|(_, &l)| gr_block_mem_estimate::<F>(l as usize, nn))
+        .fold(0u128, |x, y| x.saturating_add(y));
+    blocks.saturating_add(alg_dim(lam, nn, marked).saturating_mul(64))
+}
+
+/// Err unless `GrAlg` supports A_λ at gl_N (labels ≤ N assumed): labels ≤ 16 and top weight
+/// λ_i(N − λ_i) ≤ 255 for every unmarked block (`BlockAlg::grassmannian`).
+fn check_alg_shape(lam: &[u8], nn: usize, marked: Option<usize>) -> Result<(), String> {
+    if lam.iter().any(|&l| l > 16) {
+        return Err(format!("labels above 16 are not supported ({:?})", lam));
+    }
+    for (i, &l) in lam.iter().enumerate() {
+        let l = l as usize;
+        if l > 0 && Some(i) != marked && l <= nn && l * (nn - l) > 255 {
+            return Err(format!("H*(Gr({}, {})) has top weight {} > 255, not supported by the exact oracle", l, nn, l * (nn - l)));
+        }
+    }
+    Ok(())
+}
+
+/// Ok if `marked` names a block of λ with a nonzero label.
+fn check_marked(lam: &[u8], marked: Option<usize>) -> Result<(), String> {
+    match marked {
+        Some(m) if m >= lam.len() || lam[m] == 0 => Err(format!("marked block {} invalid for {:?} (out of range or label 0)", m, lam)),
+        _ => Ok(()),
+    }
+}
+
 /// A_λ = ⊗_i H*(Gr(λ_i, N)) (the marked block replaced by F in reduced mode), with normal
 /// forms of R^λ monomials in the box basis and the Frobenius form τ_N.
 pub struct GrAlg<F: Field> {
@@ -744,12 +864,43 @@ pub struct GrAlg<F: Field> {
 }
 
 impl<F: Field> GrAlg<F> {
+    /// As [`GrAlg::try_new`], panicking on Err.
     pub fn new(lam: &[u8], nn: usize, marked: Option<usize>) -> Self {
-        assert!(lam.iter().all(|&l| l as usize <= nn), "GrAlg: a label exceeds N = {}", nn);
-        assert!(lam.iter().all(|&l| l <= 16), "GrAlg: labels above 16 are not supported");
-        if let Some(m) = marked {
-            assert!(m < lam.len() && lam[m] > 0, "marked block {} invalid for {:?}", m, lam);
+        Self::try_new(lam, nn, marked).unwrap_or_else(|e| panic!("GrAlg: {}", e))
+    }
+
+    /// A_λ at gl_N, or Err if a label exceeds N or 16, the marked block is out of range or of
+    /// label 0, a block has top weight λ_i(N − λ_i) > 255, dim A_λ > 5·10^7, or the memory
+    /// estimate ([`gr_alg_mem_estimate`]) exceeds [`mem_cap_bytes`].
+    pub fn try_new(lam: &[u8], nn: usize, marked: Option<usize>) -> Result<Self, String> {
+        Self::try_new_capped(lam, nn, marked, mem_cap_bytes())
+    }
+
+    /// As [`GrAlg::try_new`] with an explicit memory cap in bytes.
+    pub fn try_new_capped(lam: &[u8], nn: usize, marked: Option<usize>, cap: u128) -> Result<Self, String> {
+        if lam.iter().any(|&l| l as usize > nn) {
+            return Err(format!("a label of {:?} exceeds N = {}", lam, nn));
         }
+        check_marked(lam, marked)?;
+        check_alg_shape(lam, nn, marked)?;
+        if alg_dim(lam, nn, marked) > 50_000_000 {
+            return Err(format!("A_lambda for {:?} at N = {} has dimension {} > 5e7 (too large for the exact oracle)", lam, nn, alg_dim(lam, nn, marked)));
+        }
+        let est = gr_alg_mem_estimate::<F>(lam, nn, marked);
+        if est > cap {
+            return Err(format!(
+                "A_lambda for {:?} at N = {} needs about {} MB (dim {}), above the memory cap of {} MB (set KRHOM_MEM_CAP_MB to raise it)",
+                lam,
+                nn,
+                est >> 20,
+                alg_dim(lam, nn, marked),
+                cap >> 20
+            ));
+        }
+        Ok(Self::build(lam, nn, marked))
+    }
+
+    fn build(lam: &[u8], nn: usize, marked: Option<usize>) -> Self {
         let ring = ERing::new(lam);
         let blocks: Vec<BlockAlg<F>> = lam
             .iter()
@@ -1024,23 +1175,93 @@ fn par_map<T: Sync, R: Send, Fun: Fn(&T) -> R + Sync>(items: &[T], f: Fun) -> Ve
     out.into_iter().map(|x| x.unwrap()).collect()
 }
 
-/// Chain-level dimension dim Φ_N(B_p) of every type (exact oracle state spaces).
-pub fn exact_type_dims_colored<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>) -> BTreeMap<u32, usize> {
+/// Bytes per (Gram term × box element) of the type state spaces in the exact oracle (the
+/// candidate rows m·G_{·a}, one image vector per row, their echelon forms and the kept
+/// representatives and duals), see [`exact_mem_estimate`].
+const EXACT_BYTES_PER_GRAM_TERM: u128 = 150;
+/// Bytes per (in-generator of an object × box element) in the rank stage (groups, dual columns
+/// and their index, the per-(h, q) echelon forms), see [`exact_mem_estimate`].
+const EXACT_BYTES_PER_OBJ_COORD: u128 = 60;
+
+/// Estimated peak bytes of the exact oracle on `data` at gl_N:
+///   [`gr_alg_mem_estimate`] + dim A_λ · (150 · Σ_types #terms(G) + 60 · Σ_objects #ins).
+/// A row of a type's state space is m·G_{·a} for a box monomial m, so its size grows with the
+/// number of terms of the Gram matrix; an object of type x has at most #ins(x) · dim A_λ
+/// chain coordinates. The constants are the smallest of a grid that bounds the measured peak
+/// RSS above the process baseline (laptop, one thread, watchdog) of every case of a
+/// calibration set: the identity type on λ = (3,3), (4,4), (5,5), (2,2,2), (3,3,3), (2,2,2,2),
+/// (1^5) up to dim A_λ ≈ 4·10^6 (unreduced and reduced; estimate/measured 1.0–1.6), five closed
+/// ladders up to N = 16, the Conway knot (engine2 data) at N ≤ 8 (1.1) and colored Hopf links
+/// and a 3-strand braid up to N = 14. Ladders whose Gram matrices have many terms are
+/// overestimated (up to about 10×). Rank stages running on k threads (`KRHOM_THREADS`) hold
+/// k echelon forms at once, which the one-thread calibration does not cover.
+pub fn exact_mem_estimate<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>) -> u128 {
+    let dim = alg_dim(&data.lam, nn, marked);
+    let gterms: u128 = data.types.values().map(|t| t.gram.iter().flatten().map(|p| p.t.len() as u128).sum::<u128>()).sum();
+    let oins: u128 = data.objs.iter().map(|o| data.types.get(&o.0).map_or(0, |t| t.ins.len()) as u128).sum();
+    let per = EXACT_BYTES_PER_GRAM_TERM.saturating_mul(gterms).saturating_add(EXACT_BYTES_PER_OBJ_COORD.saturating_mul(oins));
+    gr_alg_mem_estimate::<F>(&data.lam, nn, marked).saturating_add(dim.saturating_mul(per))
+}
+
+/// Common checks of the exact oracle: valid data and marked block; Ok(false) if a label
+/// exceeds N (the closure is 0); Err if the memory estimate exceeds the cap.
+fn exact_precheck<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>, cap: u128) -> Result<bool, String> {
+    data.validate().map_err(|e| format!("invalid closure data: {}", e))?;
+    check_marked(&data.lam, marked)?;
     if data.lam.iter().any(|&l| l as usize > nn) {
-        return data.types.keys().map(|&x| (x, 0)).collect();
+        return Ok(false);
     }
-    let alg = GrAlg::<F>::new(&data.lam, nn, marked);
-    data.types.iter().map(|(&x, tb)| (x, type_state_space(&alg, tb).reps.values().map(|v| v.len()).sum())).collect()
+    check_alg_shape(&data.lam, nn, marked)?;
+    let est = exact_mem_estimate(data, nn, marked);
+    if est > cap {
+        return Err(format!(
+            "exact oracle for {:?} at N = {} needs about {} MB (dim A_lambda {}), above the memory cap of {} MB (set KRHOM_MEM_CAP_MB to raise it)",
+            data.lam,
+            nn,
+            est >> 20,
+            alg_dim(&data.lam, nn, marked),
+            cap >> 20
+        ));
+    }
+    Ok(true)
+}
+
+/// Chain-level dimension dim Φ_N(B_p) of every type (exact oracle state spaces); panics on
+/// Err of [`try_exact_type_dims_colored`].
+pub fn exact_type_dims_colored<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>) -> BTreeMap<u32, usize> {
+    try_exact_type_dims_colored(data, nn, marked).unwrap_or_else(|e| panic!("exact_type_dims_colored: {}", e))
+}
+
+/// Chain-level dimension dim Φ_N(B_p) of every type, or Err on invalid data (`validate`), an
+/// invalid marked block or a memory estimate above [`mem_cap_bytes`]. A label > N gives 0.
+pub fn try_exact_type_dims_colored<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>) -> Result<BTreeMap<u32, usize>, String> {
+    if !exact_precheck(data, nn, marked, mem_cap_bytes())? {
+        return Ok(data.types.keys().map(|&x| (x, 0)).collect());
+    }
+    let alg = GrAlg::<F>::try_new(&data.lam, nn, marked)?;
+    Ok(data.types.iter().map(|(&x, tb)| (x, type_state_space(&alg, tb).reps.values().map(|v| v.len()).sum())).collect())
 }
 
 /// Colored exact closure (the oracle): gl_N Poincaré polynomial of the closed complex.
-/// `marked = Some(m)`: reduced theory with block m marked. A label > N gives 0.
+/// `marked = Some(m)`: reduced theory with block m marked. A label > N gives 0. Panics on Err
+/// of [`try_close_exact_colored`].
 pub fn close_exact_colored<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>) -> Poincare {
-    data.validate().unwrap_or_else(|e| panic!("close_exact_colored: invalid closure data: {}", e));
-    if data.lam.iter().any(|&l| l as usize > nn) {
-        return Poincare::default();
+    try_close_exact_colored(data, nn, marked).unwrap_or_else(|e| panic!("close_exact_colored: {}", e))
+}
+
+/// As [`close_exact_colored`], with Err instead of a panic on invalid data, an invalid marked
+/// block (out of range or label 0) or a memory estimate ([`exact_mem_estimate`]) above
+/// [`mem_cap_bytes`].
+pub fn try_close_exact_colored<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>) -> Result<Poincare, String> {
+    try_close_exact_colored_capped(data, nn, marked, mem_cap_bytes())
+}
+
+/// As [`try_close_exact_colored`] with an explicit memory cap in bytes.
+pub fn try_close_exact_colored_capped<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>, cap: u128) -> Result<Poincare, String> {
+    if !exact_precheck(data, nn, marked, cap)? {
+        return Ok(Poincare::default());
     }
-    let alg = GrAlg::<F>::new(&data.lam, nn, marked);
+    let alg = GrAlg::<F>::try_new_capped(&data.lam, nn, marked, cap)?;
     let gq = data.global_q(nn, marked);
     let tss = std::time::Instant::now();
     let ss: BTreeMap<u32, TypeSS> = data.types.iter().map(|(&x, tb)| (x, type_state_space(&alg, tb))).collect();
@@ -1144,16 +1365,17 @@ pub fn close_exact_colored<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: 
         let r_in = rank.get(&(h - 1, *q)).copied().unwrap_or(0);
         pc.add_term(*h, *q, elems.len() as i128 - r_out as i128 - r_in as i128);
     }
-    pc
+    Ok(pc)
 }
 
 // ------------------------------------------------------------------ (Δ_λ G, F) adapter
 
 /// (a, N) pairs for which gate G4 certified that Δ_a R_N is free over H*(Gr(a, N)) of graded
 /// rank t^{l(w_a)} π_a(t): output of `g4_free` (all 2 ≤ a ≤ 5, a ≤ N ≤ 10; certificate
-/// I_N·Δ = 0 in R_N and staircase leading terms, i.e. dim Δ_a R_N = N!/(N−a)!; C2's direct
-/// generator count agrees on every pair, see the module doc of src/bin/g4_free.rs). a ≤ 1 is
-/// free trivially (Δ = 1). Pairs not listed here are refused by [`close_delta_tower`].
+/// I_N·Δ = 0 in R_N and staircase leading terms, i.e. dim Δ_a R_N = N!/(N−a)!, computed by
+/// [`g4::check`]; C2's direct generator count agrees on every pair, see the module doc of
+/// [`g4`]). tests/cclose.rs re-runs the certificate on every listed pair. a ≤ 1 is free
+/// trivially (Δ = 1). Pairs not listed here are refused by [`close_delta_tower`].
 pub const G4_CERTIFIED: &[(u8, u8)] = &[
     (2, 2), (2, 3), (2, 4), (2, 5), (2, 6), (2, 7), (2, 8), (2, 9), (2, 10),
     (3, 3), (3, 4), (3, 5), (3, 6), (3, 7), (3, 8), (3, 9), (3, 10),
@@ -1164,6 +1386,262 @@ pub const G4_CERTIFIED: &[(u8, u8)] = &[
 /// True if the adapter may use blocks of label a at gl_N.
 pub fn g4_certified(a: usize, nn: usize) -> bool {
     a <= 1 || G4_CERTIFIED.iter().any(|&(x, y)| x as usize == a && y as usize == nn)
+}
+
+/// Gate G4 (SYNTHESIS §3.1; C2 M1(b), U3): freeness of Δ_a R_N over A = H*(Gr(a, N)), the
+/// hypothesis of the (Δ_λ G, F) adapter. `src/bin/g4_free.rs` is the command-line front end.
+///
+/// R_N = F[x_1..x_a]/(x_i^N), Δ = Π_{i<j} (x_i − x_j), F = F_p with p = 2^31 − 1,
+/// A = Sym_a / I_N, I_N = (h_{N−a+1}, …, h_N).
+///
+/// Certificate, exact, for every (a, N):
+///  (A) h_k · Δ ≡ 0 mod (x_1^N, …, x_a^N) for k = N−a+1..N. Then I_N F[x] · Δ ⊂ (x^N), so
+///      f ↦ Δf induces a surjection Q := F[x]/I_N F[x] → Δ R_N, and Δ R_N is an A-module.
+///      Q = F[x] ⊗_{Sym_a} A has dimension a!·C(N, a) = N!/(N−a)! because F[x] is free over
+///      Sym_a of rank a! (Artin basis; any field). Hence dim Δ R_N ≤ N!/(N−a)!.
+///  (B) For μ in the staircase S = {μ : μ_i ≤ N − a + i − 1} (|S| = N!/(N−a)!) the truncated
+///      products Δ·x^μ have pairwise distinct lex-leading monomials (namely x^{μ+δ},
+///      δ = (a−1, …, 0), coefficient 1, all exponents ≤ N − 1). Hence they are linearly
+///      independent and dim Δ R_N ≥ N!/(N−a)!.
+///  With (A) and (B), Q → Δ R_N is an isomorphism: Δ R_N ≅ F[x] ⊗_{Sym_a} A is free over A of
+///  rank a!, with generator degrees deg Δ + (Artin degrees), i.e. graded rank t^{l(w_a)} π_a(t)
+///  (t of x-degree 1). [`check`] computes (A) and (B) explicitly (it does not assume the
+///  leading-term claim, it evaluates every product).
+///
+/// Cross-checks (C2's direct method, `direct` / `gens`, small cases):
+///  (C) dim Δ R_N by rank computations degree by degree = N!/(N−a)!;
+///  (D) minimal number of A-module generators per degree, dim M_D − dim (A_+ M)_D, equals the
+///      coefficients of t^{l(w_a)} π_a(t), and #generators · C(N, a) = dim Δ R_N.
+pub mod g4 {
+    use crate::field::{Field, F31};
+    use crate::linsys::RankEchelon;
+    use crate::sparse::SpVec;
+    use std::collections::{BTreeMap, HashMap, HashSet};
+
+    type Mono = Vec<u8>;
+    type Poly = HashMap<Mono, F31>;
+
+    fn pmul(a: &Poly, b: &Poly, cap: Option<u8>) -> Poly {
+        let mut r: Poly = HashMap::new();
+        for (ma, ca) in a {
+            for (mb, cb) in b {
+                let m: Mono = ma.iter().zip(mb.iter()).map(|(x, y)| x + y).collect();
+                if let Some(c) = cap {
+                    if m.iter().any(|&e| e > c) {
+                        continue;
+                    }
+                }
+                r.entry(m).or_insert_with(F31::zero).fma(ca, cb);
+            }
+        }
+        r.retain(|_, c| !c.is_zero());
+        r
+    }
+
+    fn delta(a: usize) -> Poly {
+        let mut d: Poly = HashMap::from([(vec![0u8; a], F31::one())]);
+        for i in 0..a {
+            for j in (i + 1)..a {
+                let mut ei = vec![0u8; a];
+                ei[i] = 1;
+                let mut ej = vec![0u8; a];
+                ej[j] = 1;
+                let f: Poly = HashMap::from([(ei, F31::one()), (ej, F31::one().neg())]);
+                d = pmul(&d, &f, None);
+            }
+        }
+        d
+    }
+
+    /// All exponent vectors of length a with total degree k and entries ≤ cap.
+    fn monos(a: usize, k: usize, cap: usize) -> Vec<Mono> {
+        fn rec(i: usize, left: usize, cap: usize, cur: &mut Mono, out: &mut Vec<Mono>) {
+            if i == cur.len() {
+                if left == 0 {
+                    out.push(cur.clone());
+                }
+                return;
+            }
+            for e in 0..=left.min(cap) {
+                cur[i] = e as u8;
+                rec(i + 1, left - e, cap, cur, out);
+            }
+            cur[i] = 0;
+        }
+        let mut out = vec![];
+        rec(0, k, cap, &mut vec![0; a], &mut out);
+        out
+    }
+
+    fn h_k(a: usize, k: usize) -> Poly {
+        monos(a, k, k).into_iter().map(|m| (m, F31::one())).collect()
+    }
+
+    fn e_j(a: usize, j: usize) -> Poly {
+        monos(a, j, 1).into_iter().map(|m| (m, F31::one())).collect()
+    }
+
+    pub fn binom(n: usize, k: usize) -> usize {
+        if k > n {
+            return 0;
+        }
+        (0..k).fold(1usize, |r, i| r * (n - i) / (i + 1))
+    }
+
+    pub fn fact(n: usize) -> usize {
+        (1..=n).product()
+    }
+
+    /// Coefficients of π_a(t) = Π_{i=1}^{a} (1 + t + … + t^{i−1}).
+    pub fn pi_a(a: usize) -> Vec<usize> {
+        let mut p = vec![1usize];
+        for i in 1..=a {
+            let mut q = vec![0usize; p.len() + i - 1];
+            for (k, &c) in p.iter().enumerate() {
+                for j in 0..i {
+                    q[k + j] += c;
+                }
+            }
+            p = q;
+        }
+        p
+    }
+
+    /// Outcome of [`check`] for one (a, N).
+    #[derive(Clone, Debug)]
+    pub struct Report {
+        /// (A): h_k Δ ≡ 0 mod x^N for k = N−a+1..N
+        pub annihilated: bool,
+        /// (B): the staircase products have distinct leading terms, N!/(N−a)! of them
+        pub staircase_ok: bool,
+        /// (C), if requested: dim Δ R_N by ranks
+        pub direct_dim: Option<usize>,
+        /// (D), if requested: A-module generators per x-degree
+        pub gens: Option<BTreeMap<usize, usize>>,
+    }
+
+    impl Report {
+        /// The certificate (A) and (B) holds: Δ_a R_N is free over H*(Gr(a, N)).
+        pub fn certified(&self) -> bool {
+            self.annihilated && self.staircase_ok
+        }
+    }
+
+    /// Runs the certificate (A), (B) for (a, N), and the cross-checks (C) with `direct` and
+    /// (C), (D) with `gens`. Err for unsupported sizes (1 ≤ a ≤ min(N, 8), N ≤ 64; the
+    /// staircase has N!/(N−a)! elements, so large pairs are slow).
+    pub fn check(a: usize, nn: usize, direct: bool, gens: bool) -> Result<Report, String> {
+        if !(a >= 1 && a <= nn && a <= 8 && nn <= 64) {
+            return Err(format!("unsupported (a, N) = ({}, {})", a, nn));
+        }
+        let cap = (nn - 1) as u8;
+        let d = delta(a);
+        let l = a * (a - 1) / 2;
+        // (A) h_k Δ ≡ 0 mod x^N for k = N−a+1..N
+        let annihilated = ((nn - a + 1)..=nn).all(|k| pmul(&h_k(a, k), &d, Some(cap)).is_empty());
+        // (B) staircase leading terms
+        let mut leads: HashSet<Mono> = HashSet::new();
+        let mut staircase_ok = true;
+        let mut count = 0usize;
+        let mut mu = vec![0u8; a];
+        let lim: Vec<u8> = (0..a).map(|i| (nn - a + i) as u8).collect(); // μ_i ≤ N − a + i (0-based i)
+        'outer: loop {
+            let xm: Poly = HashMap::from([(mu.clone(), F31::one())]);
+            let p = pmul(&d, &xm, Some(cap));
+            let lead = p.iter().max_by(|x, y| x.0.cmp(y.0));
+            let want: Mono = (0..a).map(|i| mu[i] + (a - 1 - i) as u8).collect();
+            match lead {
+                Some((m, c)) if *m == want && c.is_one() => {}
+                _ => staircase_ok = false,
+            }
+            if !leads.insert(want) {
+                staircase_ok = false;
+            }
+            count += 1;
+            let mut i = 0;
+            loop {
+                if i == a {
+                    break 'outer;
+                }
+                if mu[i] < lim[i] {
+                    mu[i] += 1;
+                    break;
+                }
+                mu[i] = 0;
+                i += 1;
+            }
+        }
+        if count != fact(nn) / fact(nn - a) {
+            staircase_ok = false;
+        }
+        let mut direct_dim = None;
+        let mut gen_out = None;
+        if direct || gens {
+            // (C) rank of multiplication by Δ, degree by degree; keep a basis of M_D
+            let maxdeg = a * (nn - 1);
+            let mut basis: Vec<Vec<Poly>> = vec![vec![]; maxdeg + 1];
+            let mut colmap: Vec<HashMap<Mono, u32>> = vec![HashMap::new(); maxdeg + 1];
+            for (dd, cm) in colmap.iter_mut().enumerate() {
+                let mut ms = monos(a, dd, nn - 1);
+                ms.sort_by(|x, y| y.cmp(x)); // lex descending: pivots at leading terms
+                for (i, m) in ms.into_iter().enumerate() {
+                    cm.insert(m, i as u32);
+                }
+            }
+            let tovec = |p: &Poly, cm: &HashMap<Mono, u32>| -> SpVec<F31> {
+                let mut v: SpVec<F31> = p.iter().map(|(m, c)| (cm[m], *c)).collect();
+                v.sort_unstable_by_key(|e| e.0);
+                v
+            };
+            let mut total = 0usize;
+            for k in 0..=maxdeg {
+                let dd = k + l;
+                if dd > maxdeg {
+                    break;
+                }
+                let mut ech = RankEchelon::<F31>::new(colmap[dd].len().max(1));
+                for m in monos(a, k, nn - 1) {
+                    let p = pmul(&d, &HashMap::from([(m, F31::one())]), Some(cap));
+                    if p.is_empty() {
+                        continue;
+                    }
+                    if ech.insert(&tovec(&p, &colmap[dd])) {
+                        basis[dd].push(p);
+                    }
+                }
+                total += ech.rank();
+            }
+            direct_dim = Some(total);
+            if gens {
+                // (D) generators per degree: dim M_D − rank of Σ_j e_j M_{D−j}
+                let es: Vec<Poly> = (1..=a).map(|j| e_j(a, j)).collect();
+                let mut g: BTreeMap<usize, usize> = BTreeMap::new();
+                for dd in 0..=maxdeg {
+                    let dim = basis[dd].len();
+                    if dim == 0 {
+                        continue;
+                    }
+                    let mut ech = RankEchelon::<F31>::new(colmap[dd].len().max(1));
+                    for j in 1..=a {
+                        if dd < j {
+                            continue;
+                        }
+                        for b in &basis[dd - j] {
+                            let p = pmul(b, &es[j - 1], Some(cap));
+                            if !p.is_empty() {
+                                ech.insert(&tovec(&p, &colmap[dd]));
+                            }
+                        }
+                    }
+                    if dim > ech.rank() {
+                        g.insert(dd, dim - ech.rank());
+                    }
+                }
+                gen_out = Some(g);
+            }
+        }
+        Ok(Report { annihilated, staircase_ok, direct_dim, gens: gen_out })
+    }
 }
 
 /// gr(V_a): the graded rank of Δ_a R_N over H*(Gr(a, N)) in the tower's coordinate degrees,
@@ -1359,11 +1837,84 @@ impl<F: Field> RootMap<F> {
     }
 }
 
+/// Size estimate of a (Δ G) adapter call, from the closure data alone (before the expansion
+/// in root variables), see [`delta_tower_estimate`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeltaTowerEstimate {
+    /// root variables with cap N − 1 (the roots of the unmarked blocks)
+    pub roots: usize,
+    /// N^roots = Π_{unmarked i} N^{λ_i}: dimension of the truncated root algebra, i.e. the
+    /// number of coordinates over F of one "in" generator once every root is closed
+    pub root_dim: u128,
+    /// largest number of ins (R^λ-generators of Hom(R^λ, B)) of a type
+    pub max_ins: usize,
+    /// largest #ins · #outs of a type
+    pub max_ins_outs: usize,
+    /// Σ over objects of #ins
+    pub sum_ins: usize,
+    /// estimated peak bytes, see [`delta_tower_estimate`]
+    pub bytes: u128,
+}
+
+/// The (Δ G) estimate charges 1/TOWER_DENSE_DIV bytes per slot of the dense final Hankel
+/// matrix #ins·#outs·root_dim² of the largest type (see [`delta_tower_estimate`]).
+const TOWER_DENSE_DIV: u128 = 10;
+/// ... plus this many bytes per F-coordinate of the closed complex (Σ_objects #ins · root_dim).
+const TOWER_BYTES_PER_COORD: u128 = 64;
+
+/// Size estimate of the (Δ G) adapter on `data` at gl_N, from the closure data alone.
+///
+/// The tower closes the roots one at a time. Closing a root multiplies the coordinates of an
+/// object (and the rows of its generator matrix) by N while its entries lose one variable, so a
+/// type that never splits ends with a dense (#outs·R) × (#ins·R) matrix over F, R = root_dim =
+/// N^roots: #ins·#outs·R² entries. Types usually split early, but how far is data-dependent:
+/// between consecutive N the measured peak grew like R^1.0 … R^2.4. The estimate is
+///   bytes = max_type(#ins·#outs) · R² / 10 + 64 · Σ_objects #ins · R,
+/// an upper bound for the peak RSS above the process baseline (about 40 MB) of every case
+/// measured on the laptop (one thread, peak RSS by a watchdog: 60 closed ladders of
+/// tests/cclose.rs `random_ladders` seeds 7 and 99 at N ≤ 8, unreduced and with block 0
+/// marked; the Conway knot (engine2 data) at N ≤ 8; the colored Hopf links (2,1), (2,2), (3,1)
+/// at N ≤ 9, 8, 8 and the braid σ2σ1σ1σ2^{-1} on (2,1,1) at N ≤ 7; the largest
+/// measured/estimated ratio was 0.99). It refuses every case that passed 750 MB, e.g. the
+/// closed ladder [3,3] with rungs F2 E2 at N = 7 (R = 7^6, 3 ins, passed 1.2 GB in 7 s) or
+/// [1,1,3] with 6 ins at N = 7 (756 MB after 4 minutes, still growing), and admits every
+/// adapter call of the default tests (the largest estimate there is about 210 MB). It is
+/// conservative for types that split early: some calls that would fit are refused (raise
+/// `KRHOM_MEM_CAP_MB` or use the exact oracle).
+pub fn delta_tower_estimate<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>) -> DeltaTowerEstimate {
+    let roots: usize = data.lam.iter().enumerate().filter(|&(i, _)| Some(i) != marked).map(|(_, &l)| l as usize).sum();
+    let root_dim = (nn as u128).checked_pow(roots as u32).unwrap_or(u128::MAX);
+    let max_ins = data.types.values().map(|t| t.ins.len()).max().unwrap_or(0);
+    let max_ins_outs = data.types.values().map(|t| t.ins.len() * t.outs.len()).max().unwrap_or(0);
+    let sum_ins: usize = data.objs.iter().map(|o| data.types.get(&o.0).map_or(0, |t| t.ins.len())).sum();
+    let dense = (max_ins_outs as u128).saturating_mul(root_dim).saturating_mul(root_dim) / TOWER_DENSE_DIV;
+    let bytes = dense.saturating_add(TOWER_BYTES_PER_COORD.saturating_mul(sum_ins as u128).saturating_mul(root_dim));
+    DeltaTowerEstimate { roots, root_dim, max_ins, max_ins_outs, sum_ins, bytes }
+}
+
+/// Message of a caught panic.
+fn panic_message(p: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = p.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = p.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic".into()
+    }
+}
+
 /// The (Δ_λ G, F) adapter: `tower::close_tower` on root-variable data, divided by
 /// Π_{unmarked i} gr(V_{λ_i}). Refuses (Err) if some unmarked block label a ≥ 2 has (a, N)
-/// not certified by gate G4, if more than `tower::MAX_VARS` roots are needed, or if the
-/// division is not exact.
+/// not certified by gate G4, and otherwise as [`close_delta_tower_uncertified`]: on invalid
+/// data, if more than `tower::MAX_VARS` roots are needed, if the size estimate
+/// ([`delta_tower_estimate`]) exceeds [`mem_cap_bytes`], if a truncated Δ·G or F entry has
+/// total degree > 63 (the tower's packed monomials), or if the division is not exact.
 pub fn close_delta_tower<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>, opts: TowerOpts) -> Result<Poincare, String> {
+    close_delta_tower_capped(data, nn, marked, opts, mem_cap_bytes())
+}
+
+/// As [`close_delta_tower`] with an explicit memory cap in bytes (instead of [`mem_cap_bytes`]).
+pub fn close_delta_tower_capped<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>, opts: TowerOpts, cap: u128) -> Result<Poincare, String> {
     for (i, &l) in data.lam.iter().enumerate() {
         if Some(i) != marked && (l as usize) <= nn && !g4_certified(l as usize, nn) {
             return Err(format!(
@@ -1372,20 +1923,24 @@ pub fn close_delta_tower<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Op
             ));
         }
     }
-    close_delta_tower_uncertified(data, nn, marked, opts)
+    close_delta_tower_uncertified_capped(data, nn, marked, opts, cap)
 }
 
 /// As [`close_delta_tower`] without the G4 check; prints a loud warning for every
 /// uncertified (a, N). For experiments only: the result is correct only if Δ_a R_N is free.
+/// The other refusals (Err) are those of [`close_delta_tower`]; a panic inside
+/// `tower::close_tower` (an untruncated intermediate product of total degree > 63, which no
+/// cheap pre-check bounds tightly) is also returned as Err.
 pub fn close_delta_tower_uncertified<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>, opts: TowerOpts) -> Result<Poincare, String> {
+    close_delta_tower_uncertified_capped(data, nn, marked, opts, mem_cap_bytes())
+}
+
+/// As [`close_delta_tower_uncertified`] with an explicit memory cap in bytes.
+pub fn close_delta_tower_uncertified_capped<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>, opts: TowerOpts, cap: u128) -> Result<Poincare, String> {
     data.validate()?;
+    check_marked(&data.lam, marked)?;
     if data.lam.iter().any(|&l| l as usize > nn) {
         return Ok(Poincare::default());
-    }
-    if let Some(m) = marked {
-        if m >= data.lam.len() || data.lam[m] == 0 {
-            return Err(format!("marked block {} invalid for {:?}", m, data.lam));
-        }
     }
     for (i, &l) in data.lam.iter().enumerate() {
         if Some(i) != marked && !g4_certified(l as usize, nn) {
@@ -1405,6 +1960,19 @@ pub fn close_delta_tower_uncertified<F: Field>(data: &ClosureDataC<F>, nn: usize
     if rm.nroots > crate::tower::MAX_VARS {
         return Err(format!("(Delta G) adapter: {} root variables > {} (tower::MAX_VARS)", rm.nroots, crate::tower::MAX_VARS));
     }
+    // resource guard, before the expansion in root variables
+    let est = delta_tower_estimate(data, nn, marked);
+    if est.bytes > cap {
+        return Err(format!(
+            "(Delta G) adapter refused: estimated {} MB (N^roots = {}^{} = {}, max #ins * #outs {}) is above the memory cap of {} MB (set KRHOM_MEM_CAP_MB to raise it; the exact oracle close_exact_colored is usually far cheaper)",
+            est.bytes >> 20,
+            nn,
+            est.roots,
+            est.root_dim,
+            est.max_ins_outs,
+            cap >> 20
+        ));
+    }
     let delta = rm.delta();
     let mut bases: BTreeMap<usize, TypeBasis<F>> = BTreeMap::new();
     for (&x, tb) in &data.types {
@@ -1417,8 +1985,19 @@ pub fn close_delta_tower_uncertified<F: Field>(data: &ClosureDataC<F>, nn: usize
     let objs: Vec<Obj> = data.objs.iter().map(|&(x, h, q)| Obj { x: x as usize, q, h }).collect();
     let edges: Vec<(usize, usize)> = data.edges.iter().map(|(s, t, _)| (*s, *t)).collect();
     let fpolys: Vec<Vec<Vec<RPoly<F>>>> = data.edges.iter().map(|(_, _, f)| f.iter().map(|row| row.iter().map(|p| rm.expand(p)).collect()).collect()).collect();
+    // the tower packs monomials in 6-bit fields and asserts total degree <= 63 (tower.rs)
+    let max_deg = |p: &RPoly<F>| p.keys().map(|e| e.iter().sum::<u32>()).max().unwrap_or(0);
+    let gdeg = bases.values().flat_map(|tb| tb.gram.iter().flatten()).map(max_deg).max().unwrap_or(0);
+    let fdeg = fpolys.iter().flatten().flatten().map(max_deg).max().unwrap_or(0);
+    if gdeg > 63 || fdeg > 63 {
+        return Err(format!(
+            "(Delta G) adapter refused: truncated Delta*G has total degree {} and F {} in the {} root variables; tower::close_tower supports total degree <= 63",
+            gdeg, fdeg, rm.nroots
+        ));
+    }
     let gq = data.global_q(nn, marked);
-    let r = crate::tower::close_tower(rm.nroots, &rm.caps, gq, &objs, &edges, &fpolys, &bases, opts);
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| crate::tower::close_tower(rm.nroots, &rm.caps, gq, &objs, &edges, &fpolys, &bases, opts)))
+        .map_err(|p| format!("(Delta G) adapter: tower::close_tower failed: {}", panic_message(p.as_ref())))?;
     let mut div = LPoly::one();
     for (i, &l) in data.lam.iter().enumerate() {
         if Some(i) != marked {

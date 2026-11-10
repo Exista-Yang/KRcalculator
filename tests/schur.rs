@@ -787,14 +787,16 @@ fn t_i_decompositions() {
     let g = s.term_mult(c1, &wp[1]);
     assert_eq!(multmap(&s, &g), BTreeMap::from([(d1, qint(3))]));
 
-    // split: all 21 types of (2,2,2,0) times F_2^(1) stay indecomposable (t10.py)
+    // split: all 21 types of (2,2,2,0) times F_2^(1) stay indecomposable (t10.py, Williamson
+    // Prop 7.4.3): a single canonical element times v^e with coefficient exactly 1 (a
+    // multiplicity k > 1 would be k copies, i.e. decomposable)
     let lam = [2u8, 2, 2, 0];
     let mut s = Schur::new(&lam);
     let order = s.canonical_basis(&lam).order.clone();
     assert_eq!(order.len(), 21);
     for p in order {
         let e = s.term_mult(p, &[Rung::f(2, 1)]);
-        assert!(e.len() == 1 && e[0].1.c.len() == 1, "split of {} not a single monomial multiple", s.table(p).fmt());
+        assert!(e.len() == 1 && e[0].1.c == vec![1], "split of {} is not v^e times a single canonical element: {:?}", s.table(p).fmt(), multmap(&s, &e));
     }
 }
 
@@ -919,15 +921,70 @@ fn t_k_scans_default() {
 
 #[test]
 fn t_k_mixed_colors() {
-    // mixed colors: stage blocks (lambda, sigma lambda) use their own canonical bases
+    // mixed colors: stage blocks (lambda, sigma lambda) use their own canonical bases.
+    // Exact values from an independent Python reference (schur.py canonical bases + t8.py
+    // scan logic: review_M3a/scan_ref.py for the stages, fix_m3a_cl1/gram_ref.py for K_0 and
+    // the Gram rows), so a wrong (lambda, sigma lambda) basis changes them.
     let mut s = Schur::new(&[2, 1, 1]);
     let res = decat_scan(&mut s, &word("1 2 2 1"), &ScanOpts { peak: true, every_stage: true, marked_block: Some(0) });
-    let labs: Vec<Vec<u8>> = res.stages.iter().map(|st| st.labels.clone()).collect();
-    assert_eq!(labs, vec![vec![2, 1, 1], vec![1, 2, 1], vec![1, 1, 2], vec![1, 2, 1], vec![2, 1, 1]]);
-    for st in &res.stages {
-        assert!(st.lb_objects >= 1 && st.lb_objects <= st.unsimplified_objects);
-    }
-    assert!(!res.gram.is_empty());
+    type Row = (usize, Vec<u8>, [u128; 7], i128, Option<(u128, u128, u128)>);
+    // (step, labels, [unsimplified objects, unsimplified ldim, LB objects, LB types, LB ldim,
+    //  LB sum S, max rank present], kappa present, peak before next)
+    let want: Vec<Row> = vec![
+        (0, vec![2, 1, 1], [1, 1, 1, 1, 1, 1, 1], 1, Some((2, 5, 5))),
+        (1, vec![1, 2, 1], [2, 5, 2, 2, 5, 5, 3], 1, Some((4, 25, 25))),
+        (2, vec![1, 1, 2], [4, 25, 4, 4, 25, 25, 9], 1, Some((18, 125, 125))),
+        (3, vec![1, 2, 1], [18, 125, 6, 4, 35, 35, 9], 1, Some((25, 175, 183))),
+        (4, vec![2, 1, 1], [73, 625, 13, 6, 103, 111, 12], 2, None),
+    ];
+    let got: Vec<Row> = res
+        .stages
+        .iter()
+        .map(|st| {
+            (
+                st.step,
+                st.labels.clone(),
+                [st.unsimplified_objects, st.unsimplified_ldim, st.lb_objects, st.lb_types as u128, st.lb_ldim, st.lb_sum_s, st.max_rank_present],
+                st.kappa_present,
+                st.peak_before_next,
+            )
+        })
+        .collect();
+    assert_eq!(got, want);
+    // the K_0 class: (type, q-shift) -> signed multiplicity
+    let k0: BTreeMap<(String, i32), i128> = res.k0.iter().map(|&(p, k, c)| ((s.table(p).fmt(), k), c)).collect();
+    let k0_want: BTreeMap<(String, i32), i128> = [
+        ("2,0,0/0,1,0/0,0,1", 0, 1),
+        ("1,1,0/1,0,0/0,0,1", -6, 1),
+        ("1,1,0/1,0,0/0,0,1", -2, -1),
+        ("1,0,1/1,0,0/0,1,0", -5, -1),
+        ("1,0,1/1,0,0/0,1,0", -3, 1),
+        ("1,1,0/0,0,1/1,0,0", -5, -1),
+        ("1,1,0/0,0,1/1,0,0", -3, 1),
+        ("1,0,1/0,1,0/1,0,0", -4, 1),
+        ("1,0,1/0,1,0/1,0,0", -2, -1),
+        ("0,1,1/1,0,0/1,0,0", -7, 1),
+        ("0,1,1/1,0,0/1,0,0", -5, -2),
+        ("0,1,1/1,0,0/1,0,0", -3, 1),
+    ]
+    .iter()
+    .map(|&(p, k, c)| ((p.to_string(), k), c))
+    .collect();
+    assert_eq!(k0, k0_want);
+    // Gram rows in order (lmax, table): (p, weight, unknowns, unknowns reduced (block 0 marked))
+    let gram: Vec<(String, i32, u128, u128)> = res.gram.iter().map(|g| (s.table(g.p).fmt(), g.weight, g.unknowns, g.unknowns_reduced)).collect();
+    let gram_want: Vec<(String, i32, u128, u128)> = [
+        ("2,0,0/0,1,0/0,0,1", 0, 1, 1),
+        ("1,1,0/1,0,0/0,0,1", 2, 7, 3),
+        ("1,0,1/1,0,0/0,1,0", 3, 13, 4),
+        ("1,1,0/0,0,1/1,0,0", 3, 13, 4),
+        ("1,0,1/0,1,0/1,0,0", 4, 22, 5),
+        ("0,1,1/1,0,0/1,0,0", 5, 34, 6),
+    ]
+    .iter()
+    .map(|&(p, w, u, r)| (p.to_string(), w, u, r))
+    .collect();
+    assert_eq!(gram, gram_want);
     for g in &res.gram {
         assert_eq!(g.unknowns_reduced, emono_count(&[1, 1], g.weight as usize));
     }
@@ -1110,5 +1167,153 @@ fn t_o_cache_round_trip() {
         // a wrong lambda is rejected
         let mut u = Schur::new(&[1, 1]);
         assert!(u.load_basis(&path).is_err());
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// input validation, cache files and JSON records (review of M3a)
+
+fn schur_scan(args: &[&str]) -> std::process::Output {
+    std::process::Command::new(env!("CARGO_BIN_EXE_schur_scan")).args(args).output().expect("cannot run schur_scan")
+}
+
+#[test]
+fn marked_block_out_of_range_is_an_error() {
+    let lam = [2u8, 2];
+    let w = word("1 1 1");
+    let opts = |m: usize| ScanOpts { peak: false, every_stage: false, marked_block: Some(m) };
+    assert!(check_scan(&lam, &w, &opts(0)).is_ok());
+    assert!(check_scan(&lam, &w, &opts(1)).is_ok());
+    for m in [2, 5] {
+        let e = check_scan(&lam, &w, &opts(m)).unwrap_err();
+        assert!(e.contains(&format!("marked block {} out of range", m)), "{}", e);
+    }
+    assert!(check_scan(&[2, 0], &[], &opts(1)).unwrap_err().contains("label 0"));
+    assert!(check_scan(&lam, &word("1 -2"), &opts(0)).unwrap_err().contains("needs 3 strands"));
+    assert!(check_scan(&lam, &[0], &opts(0)).is_err());
+    // the CLI reports a usage error instead of unknowns_reduced = unknowns
+    let out = schur_scan(&["scan", "--labels", "2,2", "--word", "1 1 1", "--marked", "5"]);
+    assert_eq!(out.status.code(), Some(2), "stdout: {}", String::from_utf8_lossy(&out.stdout));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("marked block 5 out of range"));
+    assert!(out.stdout.is_empty(), "no scan output expected");
+}
+
+#[test]
+#[should_panic(expected = "decat_scan: marked block 5 out of range")]
+fn decat_scan_refuses_marked_block_out_of_range() {
+    let mut s = Schur::new(&[2, 2]);
+    let _ = decat_scan(&mut s, &word("1 1 1"), &ScanOpts { peak: false, every_stage: false, marked_block: Some(5) });
+}
+
+#[test]
+fn unreachable_blocks_are_refused_early() {
+    assert!(check_block(&[2, 1], &[1, 2]).is_ok());
+    assert!(check_block(&[2, 2, 2, 0], &[2, 2, 1, 1]).is_ok());
+    assert!(check_block(&[2, 1], &[1, 1, 1]).unwrap_err().contains("as many entries"));
+    assert!(check_block(&[2, 1], &[1, 1]).unwrap_err().contains("same sum"));
+    // the CLI fails before any search
+    let out = schur_scan(&["basis", "--lam", "2,1", "--mu", "1,1,1"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("as many entries"));
+}
+
+#[test]
+#[should_panic(expected = "canonical_basis: block [2, 1] -> [1, 1, 1]: mu must have as many entries")]
+fn canonical_basis_refuses_mu_of_other_length_before_searching() {
+    // (the BFS would otherwise explore every reachable state and then fail its own assert)
+    let mut s = Schur::new(&[2, 1]);
+    let _ = s.canonical_basis(&[1, 1, 1]);
+}
+
+#[test]
+fn load_basis_rejects_malformed_or_corrupted_files() {
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let lam = [2u8, 2];
+    let src = dir.join("schur_cb_corrupt_src.txt");
+    let mut s = Schur::new(&lam);
+    let _ = s.canonical_basis(&lam);
+    s.save_basis(&lam, &src).unwrap();
+    let text = std::fs::read_to_string(&src).unwrap();
+    Schur::new(&lam).load_basis(&src).expect("the untouched file loads");
+    let line_of = |prefix: &str| text.lines().find(|l| l.starts_with(prefix)).unwrap_or_else(|| panic!("no line {:?}", prefix)).to_string();
+    let lad_p1 = line_of("LADMF 2,2|1,1/1,1|").rsplit('|').next().unwrap().to_string();
+    let cases: Vec<(&str, String, String)> = vec![
+        // semantic corruptions that keep every coefficient in vZ[v] (accepted before)
+        ("b_p1: (v + v^3) -> (v + 7 v^3)", "2,0/0,2 1:1 3:1".into(), "2,0/0,2 1:1 3:7".into()),
+        ("b_p2: v^4 h_p0 -> v^2 h_p0 (expansions stay non-negative)", "2,0/0,2 4:1".into(), "2,0/0,2 2:1".into()),
+        ("coefficient of h_p is 2", "|1,1/1,1 0:1".into(), "|1,1/1,1 0:2".into()),
+        ("lower coefficient not in vZ[v]", "2,0/0,2 1:1 3:1".into(), "2,0/0,2 0:1 3:1".into()),
+        ("table outside the block", "|2,0/0,2 4:1".into(), "|3,0/0,1 4:1".into()),
+        ("LADMF ladder with another leading term", line_of("LADMF 2,2|0,2/2,0|"), format!("LADMF 2,2|0,2/2,0|{}", lad_p1)),
+        ("LAD ladder ending outside mu", line_of("LAD 2,2|0,2/2,0|"), "LAD 2,2|0,2/2,0|0E1".into()),
+        ("missing CB line", format!("{}\n", line_of("CB 2,2|0,2/2,0|")), String::new()),
+        ("duplicate CB line", line_of("CB 2,2|2,0/0,2|"), format!("{}\n{}", line_of("CB 2,2|2,0/0,2|"), line_of("CB 2,2|2,0/0,2|"))),
+        ("mu of another length", "mu=2,2".into(), "mu=2,2,0".into()),
+        ("bad version", "schur-cb v1".into(), "schur-cb v2".into()),
+        // malformed tokens (panicked before)
+        ("table cell 2,x", "|2,0/0,2 4:1".into(), "|2,x/0,2 4:1".into()),
+        ("ragged table", "|2,0/0,2 4:1".into(), "|2,0,0/0,2 4:1".into()),
+        ("bad coefficient", "2,0/0,2 4:1".into(), "2,0/0,2 4:z".into()),
+        ("bad exponent", "2,0/0,2 4:1".into(), "2,0/0,2 q:1".into()),
+        ("exponent too large for dense storage", "2,0/0,2 4:1".into(), "2,0/0,2 5000000:1".into()),
+        ("coefficient overflow", "2,0/0,2 4:1".into(), "2,0/0,2 4:170141183460469231731687303715884105727 4:1".into()),
+        ("invalid rung", line_of("LAD 2,2|0,2/2,0|"), "LAD 2,2|0,2/2,0|0E9".into()),
+    ];
+    for (i, (what, from, to)) in cases.into_iter().enumerate() {
+        assert!(text.contains(&from), "{}: fixture text {:?} not found", what, from);
+        let p = dir.join(format!("schur_cb_corrupt_{}.txt", i));
+        std::fs::write(&p, text.replacen(&from, &to, 1)).unwrap();
+        let mut t = Schur::new(&lam);
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| t.load_basis(&p))) {
+            Ok(Err(e)) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::InvalidData, "{}", what);
+                println!("{}: {}", what, e);
+            }
+            Ok(Ok(())) => panic!("{}: corrupted basis accepted", what),
+            Err(_) => panic!("{}: load_basis panicked instead of returning Err", what),
+        }
+    }
+}
+
+/// value of `"key":` in a one-line JSON object written by schur_scan (string or number)
+fn json_field<'a>(line: &'a str, key: &str) -> &'a str {
+    let pat = format!("\"{}\":", key);
+    let i = line.find(&pat).unwrap_or_else(|| panic!("no field {} in {}", key, line)) + pat.len();
+    let rest = &line[i..];
+    match rest.strip_prefix('"') {
+        Some(r) => r.split('"').next().unwrap(),
+        None => rest.split([',', '}']).next().unwrap(),
+    }
+}
+
+#[test]
+fn cli_json_has_gram_rows() {
+    let out = schur_scan(&["scan", "--labels", "2,2", "--word", "1 1 1", "--marked", "0", "--json"]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let text = String::from_utf8(out.stdout).unwrap();
+    let rows: Vec<(String, i32, u128, u128, u128)> = text
+        .lines()
+        .filter(|l| l.contains("\"kind\":\"gram_row\""))
+        .map(|l| {
+            assert!(l.contains("\"labels\":[2,2]"), "{}", l);
+            assert_eq!(json_field(l, "word"), "1 1 1");
+            let num = |k: &str| json_field(l, k).parse::<u128>().unwrap();
+            (json_field(l, "p").to_string(), json_field(l, "weight").parse().unwrap(), num("objects"), num("unknowns"), num("unknowns_reduced"))
+        })
+        .collect();
+    let mut s = Schur::new(&[2, 2]);
+    let res = decat_scan(&mut s, &word("1 1 1"), &ScanOpts { peak: false, every_stage: false, marked_block: Some(0) });
+    let mut objs: BTreeMap<Tid, u128> = BTreeMap::new();
+    for &(p, _, c) in &res.k0 {
+        *objs.entry(p).or_default() += c.unsigned_abs();
+    }
+    let want: Vec<(String, i32, u128, u128, u128)> = res.gram.iter().map(|g| (s.table(g.p).fmt(), g.weight, objs[&g.p], g.unknowns, g.unknowns_reduced)).collect();
+    assert_eq!(rows, want);
+    // the 2-colored trefoil: 3 LB types, 11 LB objects, weights {0, 3, 4} (T-k, T-l)
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows.iter().map(|r| r.2).sum::<u128>(), 11);
+    assert_eq!(rows.iter().map(|r| r.1).collect::<Vec<_>>(), vec![0, 3, 4]);
+    for r in &rows {
+        assert_eq!((r.3, r.4), (emono_count(&[2, 2], r.1 as usize), emono_count(&[2], r.1 as usize)));
     }
 }

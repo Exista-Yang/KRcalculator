@@ -6,7 +6,13 @@
 //!     prints per stage and final: unsimplified objects/ldim, LB objects/types/ldim/sum S, max rank present,
 //!     kappa present, peak; Gram histogram (weight: #objects, unknowns, unknowns reduced)
 //! schur_scan chi     --labels 2,2 --word "1 1 1" --n 3[,4,...] [--json]
-//! --json emits one JSON object per line (no JSON dependency).
+//! --json emits one JSON object per line (no JSON dependency). `scan --json` writes kind
+//! "stage" (StageStats), "gram" (histogram by weight), "gram_row" (one GramRow per final type:
+//! p as a table string, weight, objects = Σ|K_0 multiplicity|, unknowns, unknowns_reduced) and
+//! "summary" lines.
+//!
+//! Invalid input (a block (lam, mu) no ladder reaches, a generator outside the strands, a
+//! --marked block out of range or of label 0) is a usage error: message on stderr, exit 2.
 //!
 //! Basis files written by --save / read by --load are named cb_<lam>_<mu>.txt (labels joined by '-').
 
@@ -33,6 +39,18 @@ fn peak_rss() -> u64 {
         return 0;
     }
     if cfg!(target_os = "macos") { ru.maxrss as u64 } else { ru.maxrss as u64 * 1024 }
+}
+
+/// invalid input: message on stderr, exit status 2
+fn fail(msg: &str) -> ! {
+    eprintln!("schur_scan: error: {}", msg);
+    std::process::exit(2)
+}
+fn check_k(lam: &[u8]) {
+    let k: u32 = lam.iter().map(|&a| a as u32).sum();
+    if k > 64 || lam.is_empty() {
+        fail(&format!("labels {:?}: need 1 to 64 in total (K = {})", lam, k));
+    }
 }
 
 fn usage() -> ! {
@@ -95,6 +113,10 @@ fn cmd_basis(args: &Args) {
     let lam = comp(args.kv.get("--lam").unwrap_or_else(|| usage()));
     let mu = args.kv.get("--mu").map(|s| comp(s)).unwrap_or_else(|| lam.clone());
     let json = args.flags.iter().any(|f| f == "--json");
+    check_k(&lam);
+    if let Err(e) = check_block(&lam, &mu) {
+        fail(&e);
+    }
     let t0 = Instant::now();
     let mut s = Schur::new(&lam);
     let cb = s.canonical_basis(&mu);
@@ -166,7 +188,10 @@ fn load_dir(s: &mut Schur, dir: &Path) {
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
         if name.starts_with(&prefix) && name.ends_with(".txt") {
-            s.load_basis(&e.path()).unwrap_or_else(|err| panic!("load_basis {}: {}", name, err));
+            if let Err(err) = s.load_basis(&e.path()) {
+                eprintln!("schur_scan: error: load_basis {}: {}", name, err);
+                std::process::exit(1);
+            }
             eprintln!("loaded {}", name);
         }
     }
@@ -182,6 +207,10 @@ fn cmd_scan(args: &Args) {
         every_stage: args.flags.iter().any(|f| f == "--every-stage"),
         marked_block: args.kv.get("--marked").map(|m| m.parse().unwrap_or_else(|_| usage())),
     };
+    check_k(&labels);
+    if let Err(e) = check_scan(&labels, &word, &opts) {
+        fail(&e);
+    }
     let t0 = Instant::now();
     let mut s = Schur::new(&labels);
     if let Some(dir) = args.kv.get("--load") {
@@ -247,6 +276,19 @@ fn cmd_scan(args: &Args) {
         for (w, (nt, no, u, ur)) in &hist {
             println!("{{\"kind\":\"gram\",\"labels\":{},\"word\":{},\"weight\":{},\"types\":{},\"objects\":{},\"unknowns\":{},\"unknowns_reduced\":{}}}", json_arr(&labels), wjson, w, nt, no, u, ur);
         }
+        // one record per GramRow (final LB types, ascending (lmax, table))
+        for g in &res.gram {
+            println!(
+                "{{\"kind\":\"gram_row\",\"labels\":{},\"word\":{},\"p\":\"{}\",\"weight\":{},\"objects\":{},\"unknowns\":{},\"unknowns_reduced\":{}}}",
+                json_arr(&labels),
+                wjson,
+                s.table(g.p).fmt(),
+                g.weight,
+                objs[&g.p],
+                g.unknowns,
+                g.unknowns_reduced
+            );
+        }
         let wk = match worst {
             Some((j, (a, b, c))) => format!("{{\"crossing\":{},\"objects\":{},\"ldim\":{},\"sum_s\":{}}}", j, a, b, c),
             None => "null".to_string(),
@@ -272,9 +314,14 @@ fn cmd_chi(args: &Args) {
     let word: Vec<i32> = wstr.split_whitespace().map(|x| x.parse().unwrap_or_else(|_| usage())).collect();
     let ns: Vec<usize> = args.kv.get("--n").unwrap_or_else(|| usage()).split(',').map(|x| x.trim().parse().unwrap_or_else(|_| usage())).collect();
     let json = args.flags.iter().any(|f| f == "--json");
+    let opts = ScanOpts { peak: false, every_stage: false, marked_block: None };
+    check_k(&labels);
+    if let Err(e) = check_scan(&labels, &word, &opts) {
+        fail(&e);
+    }
     let t0 = Instant::now();
     let mut s = Schur::new(&labels);
-    let res = decat_scan(&mut s, &word, &ScanOpts { peak: false, every_stage: false, marked_block: None });
+    let res = decat_scan(&mut s, &word, &opts);
     for n in ns {
         let chi = decat_chi(&mut s, &res, &word, n);
         if json {

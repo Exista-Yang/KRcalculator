@@ -630,3 +630,157 @@ fn colored_kinks_match_full_cube() {
         }
     }
 }
+
+// ------------------------------------------------------------------ review of CL1: gate G4, guards, errors
+
+/// One type with a single in- and out-generator of degree 0 and G = (1) (the identity web on
+/// λ), one object.
+fn unit_data(lam: &[u8]) -> ClosureDataC<F31> {
+    let mut types = BTreeMap::new();
+    types.insert(0u32, TypeBasisC { ins: vec![0], outs: vec![0], gram: vec![vec![EPoly::one()]] });
+    let d = ClosureDataC { lam: lam.to_vec(), objs: vec![(0, 0, 0)], types, edges: vec![], crossings: vec![] };
+    d.validate().unwrap();
+    d
+}
+
+#[test]
+fn g4_certificate_holds_for_every_listed_pair() {
+    // G4_CERTIFIED is hand-maintained: re-run the library certificate (A), (B) on every pair
+    assert_eq!(G4_CERTIFIED.len(), 30);
+    for &(a, nn) in G4_CERTIFIED {
+        let r = g4::check(a as usize, nn as usize, false, false).unwrap();
+        assert!(r.certified(), "G4_CERTIFIED lists ({}, {}) but the certificate fails: {:?}", a, nn, r);
+        assert!(g4_certified(a as usize, nn as usize));
+    }
+    // C2's direct cross-checks (C), (D) on small pairs
+    for (a, nn) in [(2usize, 4usize), (3, 5)] {
+        let r = g4::check(a, nn, true, true).unwrap();
+        assert_eq!(r.direct_dim, Some(g4::fact(nn) / g4::fact(nn - a)), "(C) for ({}, {})", a, nn);
+        let want: BTreeMap<usize, usize> = g4::pi_a(a).into_iter().enumerate().filter(|&(_, c)| c > 0).map(|(k, c)| (k + a * (a - 1) / 2, c)).collect();
+        assert_eq!(r.gens, Some(want), "(D) for ({}, {})", a, nn);
+    }
+    assert!(g4::check(9, 10, false, false).is_err());
+    assert!(g4::check(3, 2, false, false).is_err());
+}
+
+#[test]
+fn delta_tower_refuses_realistic_uncertified_pairs() {
+    // a block of label 6 at N = 10: outside G4_CERTIFIED (a <= 5), inside the tower's N <= 32
+    let d6 = unit_data(&[6]);
+    assert!(!g4_certified(6, 10));
+    let e = close_delta_tower(&d6, 10, None, TowerOpts::new(EndPolicy::Right)).unwrap_err();
+    assert!(e.contains("not certified") && e.contains("(6, 10)"), "{}", e);
+    // the marked block needs no certificate
+    assert_eq!(close_delta_tower(&d6, 10, Some(0), TowerOpts::new(EndPolicy::Right)).unwrap(), close_exact_colored(&d6, 10, Some(0)));
+    // label 2 at N = 11 (certified only up to N = 10): the closed (2,1) ladder with an E/F digon
+    let mut l = Ladder::new(3, vec![2, 1]);
+    l.push(krhom::web::Rung::e(0, 1)).push(krhom::web::Rung::f(0, 1));
+    let (data, _) = closure_data_from_ladder::<F31>(&l).unwrap();
+    assert!(!g4_certified(2, 11) && g4_certified(2, 10));
+    let e = close_delta_tower(&data, 11, None, TowerOpts::new(EndPolicy::Right)).unwrap_err();
+    assert!(e.contains("not certified") && e.contains("(2, 11)"), "{}", e);
+    assert_eq!(close_delta_tower(&data, 10, None, TowerOpts::new(EndPolicy::Right)).unwrap(), close_exact_colored(&data, 10, None));
+    // with the 2-labelled block marked only label 1 remains
+    assert_eq!(close_delta_tower(&data, 11, Some(0), TowerOpts::new(EndPolicy::Left)).unwrap(), close_exact_colored(&data, 11, Some(0)));
+}
+
+#[test]
+fn delta_tower_resource_guard() {
+    // the closed ladder [3,3] with rungs F2 E2 (random_ladders seed 99): at N = 7 the adapter
+    // passed 1.2 GB RSS in the review of CL1, while the exact oracle takes 0.04 s
+    let mut l = Ladder::new(6, vec![3, 3]);
+    l.push(krhom::web::Rung::f(0, 2)).push(krhom::web::Rung::e(0, 2));
+    let (data, _) = closure_data_from_ladder::<F31>(&l).unwrap();
+    let est = delta_tower_estimate(&data, 7, None);
+    assert_eq!((est.roots, est.root_dim, est.max_ins), (6, 117_649, 3));
+    assert!(est.bytes > mem_cap_bytes(), "estimate {} MB", est.bytes >> 20);
+    let t = std::time::Instant::now();
+    let e = close_delta_tower(&data, 7, None, TowerOpts::new(EndPolicy::Right)).unwrap_err();
+    assert!(e.contains("memory cap"), "{}", e);
+    assert!(t.elapsed().as_secs_f64() < 1.0, "the guard must refuse before the expansion");
+    let _ = close_exact_colored(&data, 7, None); // the oracle is cheap here
+    // N = 5 (the top of its test range) is admitted and agrees with the oracle
+    let est5 = delta_tower_estimate(&data, 5, None);
+    assert!(est5.bytes <= mem_cap_bytes(), "estimate {} MB", est5.bytes >> 20);
+    assert_eq!(close_delta_tower(&data, 5, None, TowerOpts::new(EndPolicy::Right)).unwrap(), close_exact_colored(&data, 5, None));
+    // the cap is configurable
+    let e = close_delta_tower_capped(&data, 5, None, TowerOpts::new(EndPolicy::Right), 1 << 20).unwrap_err();
+    assert!(e.contains("memory cap"), "{}", e);
+    // reduced mode drops the marked block's roots
+    assert_eq!(delta_tower_estimate(&data, 7, Some(0)).roots, 3);
+}
+
+#[test]
+fn delta_tower_refuses_degree_above_63() {
+    // λ = (5,5) at N = 10 (certified): one type with G = e_{1,5}^5 e_{2,5}^5. Δ·G has total
+    // degree 20 + 50 = 70 in the 10 roots with every exponent <= 9 = N − 1, so it survives the
+    // truncation; tower.rs asserted ("Gram entry of degree 70 > 63") before the pre-check.
+    let ring = ERing::new(&[5, 5]);
+    let mut ex = vec![0u32; ring.nvars];
+    ex[ring.var(0, 5)] = 5;
+    ex[ring.var(1, 5)] = 5;
+    let mut types = BTreeMap::new();
+    types.insert(0u32, TypeBasisC { ins: vec![0], outs: vec![100], gram: vec![vec![EPoly::mono(ring.pack(&ex), F31::one())]] });
+    let data = ClosureDataC { lam: vec![5, 5], objs: vec![(0, 0, 0)], types, edges: vec![], crossings: vec![] };
+    data.validate().unwrap();
+    assert!(g4_certified(5, 10));
+    // at the default cap the size guard refuses first (N^roots = 10^10)
+    let e = close_delta_tower(&data, 10, None, TowerOpts::new(EndPolicy::Right)).unwrap_err();
+    assert!(e.contains("memory cap"), "{}", e);
+    // without the size guard, the degree pre-check refuses before the tower
+    let e = close_delta_tower_capped(&data, 10, None, TowerOpts::new(EndPolicy::Right), u128::MAX).unwrap_err();
+    assert!(e.contains("total degree 70"), "{}", e);
+}
+
+#[test]
+fn exact_oracle_returns_errors_instead_of_panicking() {
+    // marked block of label 0 or out of range: Err (GrAlg::new asserted, close_exact_colored panicked)
+    let d = unit_data(&[2, 0]);
+    assert!(GrAlg::<F31>::try_new(&[2, 0], 3, Some(1)).err().unwrap().contains("marked block 1 invalid"));
+    assert!(GrAlg::<F31>::try_new(&[2, 0], 3, Some(2)).is_err());
+    assert!(GrAlg::<F31>::try_new(&[4, 1], 3, None).is_err());
+    // H*(Gr(1, 300)) has top weight 299 > 255 (an assert in BlockAlg before)
+    assert!(GrAlg::<F31>::try_new(&[1], 300, None).err().unwrap().contains("top weight"));
+    assert!(try_close_exact_colored(&unit_data(&[1]), 300, None).unwrap_err().contains("top weight"));
+    assert!(try_close_exact_colored(&d, 3, Some(1)).unwrap_err().contains("marked block 1 invalid"));
+    assert!(try_exact_type_dims_colored(&d, 3, Some(5)).unwrap_err().contains("marked block 5 invalid"));
+    assert!(close_delta_tower(&d, 3, Some(1), TowerOpts::new(EndPolicy::Right)).unwrap_err().contains("marked block 1 invalid"));
+    let mut one = Poincare::default();
+    one.add_term(0, 0, 1);
+    assert_eq!(try_close_exact_colored(&d, 3, Some(0)).unwrap(), one);
+    // exact_type_dims_colored validates the data (it skipped validate() before)
+    let mut bad = unit_data(&[2, 1]);
+    bad.types.get_mut(&0).unwrap().gram[0].push(EPoly::one());
+    assert!(try_exact_type_dims_colored(&bad, 3, None).unwrap_err().contains("invalid closure data"));
+    assert!(try_close_exact_colored(&bad, 3, None).unwrap_err().contains("invalid closure data"));
+}
+
+#[test]
+#[should_panic(expected = "invalid closure data")]
+fn exact_type_dims_colored_validates_its_data() {
+    let mut bad = unit_data(&[2, 1]);
+    bad.types.get_mut(&0).unwrap().gram[0].push(EPoly::one());
+    let _ = exact_type_dims_colored(&bad, 3, None);
+}
+
+#[test]
+fn exact_oracle_memory_cap() {
+    // λ = (5,5,5) at N = 10: dim A_λ = 252^3 ≈ 1.6e7, by_weight alone about 0.5 GB
+    let d = unit_data(&[5, 5, 5]);
+    let est = exact_mem_estimate(&d, 10, None);
+    assert!(est > mem_cap_bytes(), "estimate {} MB", est >> 20);
+    let t = std::time::Instant::now();
+    assert!(try_close_exact_colored(&d, 10, None).unwrap_err().contains("memory cap"));
+    assert!(try_exact_type_dims_colored(&d, 10, None).unwrap_err().contains("memory cap"));
+    assert!(GrAlg::<F31>::try_new(&[5, 5, 5], 10, None).err().unwrap().contains("memory cap"));
+    assert!(t.elapsed().as_secs_f64() < 1.0, "refused before allocating");
+    // reduced mode (one block marked) fits: 252^2 box elements
+    assert!(exact_mem_estimate(&d, 10, Some(0)) < mem_cap_bytes());
+    // the cap is configurable: refused under a tiny cap, accepted under a large one
+    let d2 = unit_data(&[2, 2]);
+    assert!(try_close_exact_colored_capped(&d2, 4, None, 1 << 10).unwrap_err().contains("memory cap"));
+    assert!(GrAlg::<F31>::try_new_capped(&[2, 2], 4, None, 1 << 10).is_err());
+    let p = try_close_exact_colored_capped(&d2, 4, None, u128::MAX).unwrap();
+    assert_eq!(p, close_exact_colored(&d2, 4, None));
+    assert_eq!(p.total_rank(), 36); // [4 choose 2]^2: two 2-colored unknots at gl_4
+}

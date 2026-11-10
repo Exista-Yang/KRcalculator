@@ -177,16 +177,26 @@ impl Table {
         }
         r
     }
-    /// "2,0/0,2"
+    /// "2,0/0,2" (panics on malformed input; see [`Table::try_parse`])
     pub fn parse(s: &str) -> Table {
-        let rows: Vec<Vec<u8>> = s
-            .trim()
-            .split('/')
-            .map(|r| r.split(',').map(|x| x.trim().parse::<u8>().unwrap_or_else(|_| panic!("bad table {:?}", s))).collect())
-            .collect();
+        Table::try_parse(s).unwrap_or_else(|e| panic!("{}", e))
+    }
+    /// "2,0/0,2": rows separated by '/', entries by ','; Err on bad entries, ragged rows or
+    /// more than 255 rows or columns.
+    pub fn try_parse(s: &str) -> Result<Table, String> {
+        let mut rows: Vec<Vec<u8>> = vec![];
+        for r in s.trim().split('/') {
+            let row: Option<Vec<u8>> = r.split(',').map(|x| x.trim().parse::<u8>().ok()).collect();
+            rows.push(row.ok_or_else(|| format!("bad table {:?}", s))?);
+        }
         let nc = rows[0].len();
-        assert!(rows.iter().all(|r| r.len() == nc), "ragged table {:?}", s);
-        Table { nr: rows.len() as u8, nc: nc as u8, e: rows.concat() }
+        if rows.iter().any(|r| r.len() != nc) {
+            return Err(format!("ragged table {:?}", s));
+        }
+        if rows.len() > 255 || nc > 255 {
+            return Err(format!("table {:?} too large", s));
+        }
+        Ok(Table { nr: rows.len() as u8, nc: nc as u8, e: rows.concat() })
     }
     pub fn fmt(&self) -> String {
         let m = self.nc as usize;
@@ -376,14 +386,30 @@ impl Lp {
             .collect::<Vec<_>>()
             .join(" ")
     }
-    /// inverse of `fmt_ec` (whitespace-separated "e:c" tokens; repeated exponents add up)
+    /// inverse of `fmt_ec` (whitespace-separated "e:c" tokens; repeated exponents add up);
+    /// panics on malformed input, see [`Lp::try_parse_ec`]
     pub fn parse_ec(s: &str) -> Lp {
+        Lp::try_parse_ec(s).unwrap_or_else(|e| panic!("{}", e))
+    }
+    /// inverse of `fmt_ec`; Err on a malformed token or an exponent outside ±2^20 (dense storage)
+    pub fn try_parse_ec(s: &str) -> Result<Lp, String> {
         let mut r = Lp::zero();
         for tok in s.split_whitespace() {
-            let (e, k) = tok.split_once(':').unwrap_or_else(|| panic!("bad term {:?}", tok));
-            r.add_scaled(&Lp::one(), k.parse::<i128>().expect("bad coefficient"), e.parse::<i32>().expect("bad exponent"));
+            let (e, k) = tok.split_once(':').ok_or_else(|| format!("bad term {:?}", tok))?;
+            let k = k.parse::<i128>().map_err(|_| format!("bad coefficient in {:?}", tok))?;
+            let e = e.parse::<i32>().map_err(|_| format!("bad exponent in {:?}", tok))?;
+            if e.unsigned_abs() > 1 << 20 {
+                return Err(format!("exponent out of range in {:?}", tok));
+            }
+            if let (Some(lo), Some(hi)) = (r.min_exp(), r.max_exp()) {
+                if (hi.max(e) - lo.min(e)) as u32 > 1 << 20 {
+                    return Err(format!("exponent range too wide at {:?}", tok));
+                }
+            }
+            r.coef(e).checked_add(k).ok_or_else(|| format!("coefficient overflow at {:?}", tok))?;
+            r.add_scaled(&Lp::one(), k, e);
         }
-        r
+        Ok(r)
     }
     // --- internals: un-normalized accumulation
     fn hi(&self) -> i32 {
@@ -551,11 +577,18 @@ struct TInfo {
     cols: Comp,
 }
 
+/// (i, dir, r) packed so that the numeric order is the order of `rung_lex`
 fn rung_code(r: &Rung) -> u32 {
     assert!(r.i < 256 && r.r < 32768, "rung out of range");
     ((r.i as u32) << 16) | (if r.dir == Dir::F { 1 << 15 } else { 0 }) | r.r as u32
 }
-/// lexicographic key of a rung: (i, E < F, r), as Python tuples (i, 'E'|'F', r)
+/// inverse of `rung_code`
+fn rung_decode(c: u32) -> Rung {
+    Rung { i: (c >> 16) as usize, dir: if c & (1 << 15) != 0 { Dir::F } else { Dir::E }, r: (c & 0x7fff) as usize }
+}
+/// lexicographic key of a rung: (i, E < F, r), as Python tuples (i, 'E'|'F', r); the order
+/// of `rung_code` (tested)
+#[cfg(test)]
 fn rung_lex(r: &Rung) -> (usize, u8, usize) {
     (r.i, if r.dir == Dir::E { 0 } else { 1 }, r.r)
 }
@@ -575,6 +608,40 @@ fn comp_str(c: &[u8]) -> String {
 fn parse_comp(s: &str) -> Option<Comp> {
     s.trim().split(',').map(|x| x.trim().parse::<u8>().ok()).collect()
 }
+/// labels after applying a rung, or None if the rung leaves the labels or its giver is too small
+fn try_rung_labels(mu: &[u8], r: &Rung) -> Option<Comp> {
+    let (rec, giv) = match r.dir {
+        Dir::E => (r.i, r.i + 1),
+        Dir::F => (r.i + 1, r.i),
+    };
+    if giv >= mu.len() || rec >= mu.len() || (mu[giv] as usize) < r.r || mu[rec] as usize + r.r > u8::MAX as usize {
+        return None;
+    }
+    let mut l = mu.to_vec();
+    l[giv] -= r.r as u8;
+    l[rec] += r.r as u8;
+    Some(l)
+}
+
+/// Ok if the block (lambda, mu) can be reached by ladders from 1_lambda: rungs preserve the
+/// number of uprights and the total label K, so mu must have the length and the sum of lambda
+/// (every such mu is reachable; zero labels are allowed).
+pub fn check_block(lam: &[u8], mu: &[u8]) -> Result<(), String> {
+    if mu.len() != lam.len() {
+        return Err(format!(
+            "block {:?} -> {:?}: mu must have as many entries as lambda ({}), since ladders preserve the number of uprights",
+            lam,
+            mu,
+            lam.len()
+        ));
+    }
+    let (a, b) = (lam.iter().map(|&x| x as u32).sum::<u32>(), mu.iter().map(|&x| x as u32).sum::<u32>());
+    if a != b {
+        return Err(format!("block {:?} -> {:?}: the labels of lambda and mu must have the same sum ({} != {})", lam, mu, a, b));
+    }
+    Ok(())
+}
+
 /// labels after applying a rung (panics if the giver is too small)
 fn rung_labels(mu: &[u8], r: &Rung) -> Comp {
     let (rec, giv) = match r.dir {
@@ -684,9 +751,12 @@ pub struct Schur {
 }
 
 /// Heap entry of the minimal-flow search: ordered by (flows, length, lexicographic rung list).
+/// The path is stored as rung codes (`rung_code`), whose numeric order is the lexicographic
+/// order (i, E < F, r) of `rung_lex`: 4 bytes per rung instead of 24, and comparisons need no
+/// allocation.
 struct MfEntry {
     flows: u128,
-    path: Vec<Rung>,
+    path: Vec<u32>,
     parent: Option<Rc<Elt>>,
 }
 impl MfEntry {
@@ -708,11 +778,7 @@ impl PartialOrd for MfEntry {
 impl Ord for MfEntry {
     // reversed: BinaryHeap pops the smallest (flows, len, lex)
     fn cmp(&self, o: &Self) -> Ordering {
-        o.key().cmp(&self.key()).then_with(|| {
-            let a: Vec<_> = o.path.iter().map(rung_lex).collect();
-            let b: Vec<_> = self.path.iter().map(rung_lex).collect();
-            a.cmp(&b)
-        })
+        o.key().cmp(&self.key()).then_with(|| o.path.cmp(&self.path))
     }
 }
 
@@ -958,7 +1024,7 @@ impl Schur {
             let y = match &ent.parent {
                 None => self.unit(),
                 Some(par) => {
-                    let r = *ent.path.last().unwrap();
+                    let r = rung_decode(*ent.path.last().unwrap());
                     self.rung(par, &r)
                 }
             };
@@ -971,7 +1037,7 @@ impl Schur {
                 continue;
             }
             if y.mu == mu && targets.contains(&tops[0]) {
-                found.insert(tops[0], ent.path.clone());
+                found.insert(tops[0], ent.path.iter().map(|&c| rung_decode(c)).collect());
                 if found.len() == targets.len() {
                     break;
                 }
@@ -986,8 +1052,9 @@ impl Schur {
                         if f > bound {
                             continue;
                         }
-                        let mut p = ent.path.clone();
-                        p.push(Rung { i, dir, r });
+                        let mut p = Vec::with_capacity(ent.path.len() + 1);
+                        p.extend_from_slice(&ent.path);
+                        p.push(rung_code(&Rung { i, dir, r }));
                         heap.push(MfEntry { flows: f, path: p, parent: Some(yr.clone()) });
                     }
                 }
@@ -1037,6 +1104,9 @@ impl Schur {
     /// Canonical basis of (lambda, mu) peeled from the given ladders (one per table), in
     /// ascending lmax. Used for the check that the basis does not depend on the ladders (T-c2).
     pub fn basis_from_ladders(&mut self, mu: &[u8], ladders: &HashMap<Tid, Vec<Rung>>) -> HashMap<Tid, Elt> {
+        if let Err(e) = check_block(&self.lam, mu) {
+            panic!("basis_from_ladders: {}", e);
+        }
         let order: Vec<Tid> = tables(&self.lam, mu).into_iter().map(|t| self.intern(t)).collect();
         let mut b: HashMap<Tid, Elt> = HashMap::new();
         for &p in &order {
@@ -1053,6 +1123,10 @@ impl Schur {
     fn ensure_basis(&mut self, mu: &[u8]) {
         if self.bases.contains_key(mu) {
             return;
+        }
+        // fail before the BFS, which would otherwise exhaust every reachable state first
+        if let Err(e) = check_block(&self.lam, mu) {
+            panic!("canonical_basis: {}", e);
         }
         let order: Vec<Tid> = tables(&self.lam, mu).into_iter().map(|t| self.intern(t)).collect();
         assert!(!order.is_empty(), "empty block {:?} -> {:?}", self.lam, mu);
@@ -1075,7 +1149,7 @@ impl Schur {
         let ladder_minflow: HashMap<Tid, Vec<Rung>> = mf.into_iter().collect();
         self.bases.insert(mu.to_vec(), CanonicalBasis { mu: mu.to_vec(), order, b, ladder_bfs, ladder_minflow });
     }
-    /// lazy, cached
+    /// lazy, cached. Panics (before any search) unless `check_block(lambda, mu)` is Ok.
     pub fn canonical_basis(&mut self, mu: &[u8]) -> &CanonicalBasis {
         self.ensure_basis(mu);
         &self.bases[mu]
@@ -1252,8 +1326,23 @@ impl Schur {
         }
         f.flush()
     }
+    /// Load a basis written by `save_basis` (replacing a cached basis of the same block).
+    ///
+    /// Returns `Err(InvalidData)` (never panics) on malformed input, and verifies the basis:
+    /// * the header's lambda equals this instance's, and `check_block(lambda, mu)` holds;
+    /// * every table (of a CB, LAD or LADMF line and of every CB entry) lies in the block
+    ///   (lambda, mu); every table of the block has exactly one CB, LAD and LADMF line;
+    /// * b_p has coefficient exactly 1 at h_p and every other coefficient is nonzero, in vZ[v]
+    ///   and sits at a table q with lmax(q) < lmax(p);
+    /// * every ladder is a valid rung sequence on lambda ending at mu, and its character has the
+    ///   unique leading term h_p (coefficient 1);
+    /// * b_p equals the canonical element peeled from the character of its LAD ladder with the
+    ///   loaded lower b_q (`peel`, in ascending lmax). By induction on lmax this holds only for the
+    ///   true canonical basis, so it subsumes a bar-invariance check: a corrupted b_p is
+    ///   rejected even if every expansion stays non-negative. The cost is that of the peeling
+    ///   step of `canonical_basis` (no ladder search).
     pub fn load_basis(&mut self, path: &std::path::Path) -> std::io::Result<()> {
-        let bad = |m: String| std::io::Error::new(std::io::ErrorKind::InvalidData, m);
+        let bad = |m: String| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{}: {}", path.display(), m));
         let text = std::fs::read_to_string(path)?;
         let mut lines = text.lines();
         let header = lines.next().ok_or_else(|| bad("empty basis file".into()))?;
@@ -1266,9 +1355,17 @@ impl Schur {
         if lam != self.lam {
             return Err(bad(format!("basis file is for lam {:?}, this instance has {:?}", lam, self.lam)));
         }
-        let mut b: HashMap<Tid, Elt> = HashMap::new();
-        let mut lb: HashMap<Tid, Vec<Rung>> = HashMap::new();
-        let mut lm: HashMap<Tid, Vec<Rung>> = HashMap::new();
+        check_block(&lam, &mu).map_err(bad)?;
+        // parse and check that every table lies in the block before interning it
+        let in_block = |s: &str| -> Result<Table, std::io::Error> {
+            let t = Table::try_parse(s).map_err(bad)?;
+            if t.nr as usize != lam.len() || t.nc as usize != mu.len() || t.rows() != lam || t.cols() != mu {
+                return Err(bad(format!("table {} is outside the block {:?} -> {:?}", s.trim(), lam, mu)));
+            }
+            Ok(t)
+        };
+        let mut raw_b: Vec<(Table, Vec<(Table, Lp)>)> = vec![];
+        let mut raw_l: Vec<(bool, Table, Vec<Rung>)> = vec![];
         for line in lines {
             let line = line.trim();
             if line.is_empty() || line.starts_with('#') {
@@ -1279,31 +1376,57 @@ impl Schur {
             if f.len() < 3 || parse_comp(f[0]).as_deref() != Some(&lam[..]) {
                 return Err(bad(format!("bad line {:?}", line)));
             }
-            let p = self.intern(Table::parse(f[1]));
+            let pt = in_block(f[1])?;
             match tag {
                 "CB" => {
-                    let mut acc: FxMap<Tid, Lp> = FxMap::default();
+                    let mut ents = vec![];
                     for ent in &f[2..] {
                         let ent = ent.trim();
                         if ent.is_empty() {
                             continue;
                         }
                         let (tq, poly) = ent.split_once(' ').ok_or_else(|| bad(format!("bad entry {:?}", ent)))?;
-                        let q = self.intern(Table::parse(tq));
-                        acc.entry(q).or_default().add_scaled(&Lp::parse_ec(poly), 1, 0);
+                        ents.push((in_block(tq)?, Lp::try_parse_ec(poly).map_err(bad)?));
                     }
-                    b.insert(p, finish_acc(mu.clone(), acc));
+                    raw_b.push((pt, ents));
                 }
                 "LAD" | "LADMF" => {
+                    if f.len() != 3 {
+                        return Err(bad(format!("bad ladder line {:?}", line)));
+                    }
                     let w: Option<Vec<Rung>> = f[2].split_whitespace().map(parse_rung).collect();
                     let w = w.ok_or_else(|| bad(format!("bad ladder {:?}", line)))?;
-                    if tag == "LAD" {
-                        lb.insert(p, w);
-                    } else {
-                        lm.insert(p, w);
+                    let mut lab = lam.clone();
+                    for r in &w {
+                        lab = try_rung_labels(&lab, r).ok_or_else(|| bad(format!("invalid rung {} in {:?}", rung_str(r), line)))?;
                     }
+                    if lab != mu {
+                        return Err(bad(format!("ladder ends at {:?}, not at mu: {:?}", lab, line)));
+                    }
+                    raw_l.push((tag == "LAD", pt, w));
                 }
                 _ => return Err(bad(format!("unknown tag {:?}", tag))),
+            }
+        }
+        let mut b: HashMap<Tid, Elt> = HashMap::new();
+        let mut lb: HashMap<Tid, Vec<Rung>> = HashMap::new();
+        let mut lm: HashMap<Tid, Vec<Rung>> = HashMap::new();
+        for (pt, ents) in raw_b {
+            let p = self.intern(pt);
+            let mut acc: FxMap<Tid, Lp> = FxMap::default();
+            for (qt, c) in ents {
+                let q = self.intern(qt);
+                acc.entry(q).or_default().add_scaled(&c, 1, 0);
+            }
+            if b.insert(p, finish_acc(mu.clone(), acc)).is_some() {
+                return Err(bad(format!("two CB lines for table {}", self.tabs[p as usize].fmt())));
+            }
+        }
+        for (is_bfs, pt, w) in raw_l {
+            let p = self.intern(pt);
+            let dup = if is_bfs { lb.insert(p, w) } else { lm.insert(p, w) };
+            if dup.is_some() {
+                return Err(bad(format!("two {} lines for table {}", if is_bfs { "LAD" } else { "LADMF" }, self.tabs[p as usize].fmt())));
             }
         }
         let order: Vec<Tid> = tables(&self.lam, &mu).into_iter().map(|t| self.intern(t)).collect();
@@ -1312,8 +1435,40 @@ impl Schur {
                 return Err(bad(format!("basis file misses table {}", self.tabs[*p as usize].fmt())));
             }
         }
-        if b.len() != order.len() {
+        if b.len() != order.len() || lb.len() != order.len() || lm.len() != order.len() {
             return Err(bad("basis file has tables outside the block".into()));
+        }
+        // b_p = h_p + sum_{lmax(q) < lmax(p)} vZ[v] h_q
+        for &p in &order {
+            let lp = self.info[p as usize].lmax;
+            for (q, c) in &b[&p].t {
+                if *q == p {
+                    if *c != Lp::one() {
+                        return Err(bad(format!("b_{}: coefficient of h_p is {}, not 1", self.tabs[p as usize].fmt(), c.fmt_ec())));
+                    }
+                } else if c.min_exp().map_or(true, |e| e <= 0) {
+                    return Err(bad(format!("b_{}: coefficient {} of h_{} is not in vZ[v]", self.tabs[p as usize].fmt(), c.fmt_ec(), self.tabs[*q as usize].fmt())));
+                } else if self.info[*q as usize].lmax >= lp {
+                    return Err(bad(format!("b_{}: term h_{} is not below p (lmax)", self.tabs[p as usize].fmt(), self.tabs[*q as usize].fmt())));
+                }
+            }
+            if b[&p].coef(p) != Lp::one() {
+                return Err(bad(format!("b_{}: coefficient of h_p is not 1", self.tabs[p as usize].fmt())));
+            }
+        }
+        // ladders lead to h_p; b_p is the canonical element peeled from its LAD ladder
+        for &p in &order {
+            let pf = self.tabs[p as usize].fmt();
+            for (tag, lads) in [("LADMF", &lm), ("LAD", &lb)] {
+                let x = self.ladder_char(&lads[&p]);
+                let (tops, clean) = self.leading(&x);
+                if !clean || tops != [p] {
+                    return Err(bad(format!("{} ladder of {} does not have the leading term h_p", tag, pf)));
+                }
+                if tag == "LAD" && self.peel(p, &x, &b) != b[&p] {
+                    return Err(bad(format!("b_{} is not the canonical basis element (it differs from the one peeled from its ladder)", pf)));
+                }
+            }
         }
         self.rank_cache.clear();
         self.tcache.clear();
@@ -1419,6 +1574,14 @@ pub struct ScanResult {
 
 type PeakCache = FxMap<(Tid, Vec<u32>), (u128, u128, u128)>;
 
+const CNT: &str = "schur: u128 count overflow";
+
+/// acc + a * b with checked u128 arithmetic (release builds do not check overflow)
+#[inline]
+fn add_mul_u128(acc: u128, a: u128, b: u128) -> u128 {
+    acc.checked_add(a.checked_mul(b).expect(CNT)).expect(CNT)
+}
+
 fn stage_stats(
     s: &mut Schur,
     x: &BTreeMap<i32, Elt>,
@@ -1440,7 +1603,7 @@ fn stage_stats(
             for (i, &c) in m.c.iter().enumerate() {
                 if c != 0 {
                     let ent = signed.entry((p, m.lo + i as i32)).or_insert(0);
-                    *ent = ent.checked_add(sg * c).expect(OVF);
+                    *ent = ent.checked_add(sg.checked_mul(c).expect(OVF)).expect(OVF);
                 }
             }
         }
@@ -1458,9 +1621,9 @@ fn stage_stats(
     }
     for (&(p, _), &c) in &signed {
         let a = c.unsigned_abs();
-        lb_objects += a;
-        lb_ldim += a * s.rank(labels, p);
-        lb_sum_s += a * sself[&p];
+        lb_objects = add_mul_u128(lb_objects, a, 1);
+        lb_ldim = add_mul_u128(lb_ldim, a, s.rank(labels, p));
+        lb_sum_s = add_mul_u128(lb_sum_s, a, sself[&p]);
     }
     let mut max_rank_present = 0;
     let mut kappa_present = 0;
@@ -1485,17 +1648,17 @@ fn stage_stats(
                         let (mut x1, mut x2, mut x3) = (0u128, 0u128, 0u128);
                         for (q, m) in &e {
                             let k = m.at1() as u128;
-                            x1 += k;
-                            x2 += k * s.rank(&nl, *q);
-                            x3 += k * s.s_storage(&nl, *q, *q);
+                            x1 = add_mul_u128(x1, k, 1);
+                            x2 = add_mul_u128(x2, k, s.rank(&nl, *q));
+                            x3 = add_mul_u128(x3, k, s.s_storage(&nl, *q, *q));
                         }
                         pcache.insert(key, (x1, x2, x3));
                         (x1, x2, x3)
                     }
                 };
-                a += mult * tr.0;
-                b += mult * tr.1;
-                cs += mult * tr.2;
+                a = add_mul_u128(a, mult, tr.0);
+                b = add_mul_u128(b, mult, tr.1);
+                cs = add_mul_u128(cs, mult, tr.2);
             }
         }
         (a, b, cs)
@@ -1516,6 +1679,30 @@ fn stage_stats(
     (st, signed)
 }
 
+/// Checks the input of [`decat_scan`]: every generator of the word acts on two existing
+/// strands, and the marked block (if any) is a block of lambda (0-based) with a nonzero label.
+/// `decat_scan` panics with this message; front ends call it first to report a usage error.
+pub fn check_scan(lam: &[u8], word: &[i32], opts: &ScanOpts) -> Result<(), String> {
+    for (k, &g) in word.iter().enumerate() {
+        if g == 0 {
+            return Err(format!("word position {}: braid generator 0", k + 1));
+        }
+        let i = g.unsigned_abs() as usize - 1;
+        if i + 1 >= lam.len() {
+            return Err(format!("word position {}: generator {} needs {} strands, lambda {:?} has {}", k + 1, g, i + 2, lam, lam.len()));
+        }
+    }
+    if let Some(mb) = opts.marked_block {
+        if mb >= lam.len() {
+            return Err(format!("marked block {} out of range: lambda {:?} has blocks 0..{}", mb, lam, lam.len()));
+        }
+        if lam[mb] == 0 {
+            return Err(format!("marked block {} of lambda {:?} has label 0", mb, lam));
+        }
+    }
+    Ok(())
+}
+
 fn crossing_at(labels: &[u8], g: i32) -> (u8, u8, bool, usize) {
     assert!(g != 0, "braid generator 0");
     let i = (g.unsigned_abs() - 1) as usize;
@@ -1532,7 +1719,11 @@ fn crossing_at(labels: &[u8], g: i32) -> (u8, u8, bool, usize) {
 /// * `max_rank_present` and `kappa_present` are taken over the LB types (decat_scan.py).
 /// * `gram` is filled when the final labels equal lambda; `marked_block` (if any) is removed
 ///   from lambda for `unknowns_reduced` (otherwise unknowns_reduced = unknowns).
+/// * Panics unless [`check_scan`] accepts the input (e.g. a marked block out of range).
 pub fn decat_scan(s: &mut Schur, word: &[i32], opts: &ScanOpts) -> ScanResult {
+    if let Err(e) = check_scan(&s.lam, word, opts) {
+        panic!("decat_scan: {}", e);
+    }
     let lam = s.lam.clone();
     let mut labels = lam.clone();
     let mut x: BTreeMap<i32, Elt> = BTreeMap::new();
@@ -1660,4 +1851,37 @@ pub fn decat_chi_conv(s: &mut Schur, res: &ScanResult, word: &[i32], n_gl: usize
         total = total.add(&t.shift(if v_to_qinv { -k } else { k }).scale(c));
     }
     total.shift(glob as i32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stage_counts_are_checked() {
+        assert_eq!(add_mul_u128(5, 3, 4), 17);
+        assert_eq!(add_mul_u128(u128::MAX - 1, 1, 1), u128::MAX);
+        // release builds do not check overflow: the stage counters must
+        assert!(std::panic::catch_unwind(|| add_mul_u128(u128::MAX, 1, 1)).is_err());
+        assert!(std::panic::catch_unwind(|| add_mul_u128(0, u128::MAX, 2)).is_err());
+    }
+
+    #[test]
+    fn rung_codes_order_like_python_tuples() {
+        // the minimal-flow heap compares paths of rung codes: same order as (i, 'E'|'F', r)
+        let mut rs = vec![];
+        for i in [0usize, 1, 2, 7, 255] {
+            for dir in [Dir::E, Dir::F] {
+                for r in [1usize, 2, 3, 9, 300] {
+                    rs.push(Rung { i, dir, r });
+                }
+            }
+        }
+        for a in &rs {
+            assert_eq!(rung_decode(rung_code(a)), *a);
+            for b in &rs {
+                assert_eq!(rung_code(a).cmp(&rung_code(b)), rung_lex(a).cmp(&rung_lex(b)), "{:?} {:?}", a, b);
+            }
+        }
+    }
 }
