@@ -25,9 +25,17 @@
 //!   resulting multiplicities are asserted to equal `term_mult(p, W_k)`. A tensor product that is
 //!   literally the canonical ladder of its only summand (multiplicity 1) needs no Hom space
 //!   (ι = π = id). `XOpts::rungwise = false` decomposes L_p ⊗ W_k in one step (cross-check).
-//!   Then Gaussian elimination with scalar pivots in Markowitz order. The whole tensor complex is
-//!   built before eliminating, so every pivot is eligible (the streaming rule of SYNTHESIS §1.4 is
-//!   not needed).
+//!   Then Gaussian elimination with scalar pivots in Markowitz order (a lazy heap reproducing
+//!   the full-rescan order).
+//! * **Memory (M2S′, SPEC_3C_GL6_rev1 §2; measurements in gl6/M2S_step0.md).** By default
+//!   (`XOpts::stream`) C ⊗ X is built slice by slice in the homological degree of C and every
+//!   eligible pivot is eliminated after each slice (`tensor_crossing_stream`: a → b only once
+//!   out(a) and in(b) are complete); `stream = false` builds the whole tensor complex first (the
+//!   cross-check). Components are stored compactly (`CMat`, `XOpts::compact`: interned u32
+//!   monomials and u32 coefficients, F31/F32b) and decoded on use. d_C ⊗ id is transported rung
+//!   by rung through the composite decompositions (`XEngine::transport`,
+//!   `XOpts::rung_transport`). `XOpts::close_stages` keeps the closure data of every stage
+//!   (`XScan::close_stage`).
 //! * **Invariants asserted per crossing:** d∘d = 0 (option), the K_0 class equals the
 //!   decategorified scan (`schur` `mul_rungs`/`expand`, as `schur::decat_scan`), and the number of
 //!   objects is at least the Grothendieck lower bound.
