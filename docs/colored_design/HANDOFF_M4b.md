@@ -122,3 +122,176 @@ failed with stuck branches.
 - Not done in this session (per instructions): independent adversarial review of homprov.rs,
   G1(b) (queue on the cloud: `g1 b --cache DIR --costs tests/data/homprov/costs_cloud.txt
   --json OUT`, seed 2026), M5.
+
+## Hardening session 2026-11-11
+
+This session works through the independent review (docs/colored_design/review_m4b/certify.md,
+solver.md, tests.md). The review found no defect that gives a wrong result today. The items
+below are preconditions and hardening, so that M5 cannot misuse the provider without noticing.
+Machine: 4 cores (Xeon 2.10 GHz), 15 GiB.
+
+### What changed, per item
+
+1. **Precondition for `pairs`** (review F1). `homprov::pairs_precheck` runs in Exact and in
+   Search before any other work. A failure is returned as `Refused`. It checks:
+   - X and L_q have the top of q.
+   - With `eq = None`: `expand(ladder_char(L_q)) == [(q, 1)]`. Otherwise the call is refused
+     with "L_q decomposable: e_q required" (this also catches an L_q of another type).
+   - With `eq = Some(e)`: `check_idempotent`, the e_q/e_p contract below.
+2. **`mult` validation** (review F2). `mult` must equal [v^sdeg] of the multiplicity of b_q in
+   char X. Otherwise the call is `Refused` and the message gives both numbers.
+3. **Ends and degrees** (review F3).
+   - `certify_pairs` checks every ι = (L_q -> X, s) and every π = (X -> L_q, -s).
+   - `certify_closure` checks that the ends are R -> L_p (ins) or L_p -> R (outs).
+   - `detect_plan` asserts that the Schur and Arena lambdas agree.
+   - `TmplLib::instance()` is a nonce, unique per process. `Search` binds its splits/comms
+     TmplId caches to it and clears them when it sees another library.
+   - `certify_pairs` and `certify_closure` are now `pub`, for tests.
+4. **Closure with e_p** (review F4, SPEC §4.3 item 7). This is implemented, not refused.
+   - `closure_precheck`: without e_p, a decomposable L_p is `Refused`; with e_p,
+     `check_idempotent` must pass.
+   - With e_p, every selected map must be the DAG node `Comp(e_p, g)` (ins) or `Comp(g, e_p)`
+     (outs), so it lies in Hom(R, B_p) or Hom(B_p, R).
+   - The n x N identity-coset matrix must have rank n at two points. This is the same as
+     nonsingularity in reduced coordinates of Im e_p, and the determinant argument applies to
+     the free rank-n module Hom(R, B_p).
+   - The S2 candidates Dot∘g are wrapped with e_p again, and so is the S0 identity.
+   - The `Selector` accepts blocks of width N.
+   - Test `closure_with_idempotent_313`: in (3,1,3), the type 2,0,1/0,1,0/1,0,2 has
+     char L_p = b_p + b_{3,0,0/0,0,1/0,1,2} (48 flows). e_p = P(a) is computed from an Exact
+     End^0 basis (the SPEC §5.2 algorithm, in the test). Both Exact and Search certify ins and
+     outs. A family without the e_p wrapper is rejected.
+   - A scan of the minimal-flow ladders of (λ, λ) found these decomposable types:
+     - (2,3,2): 1 of 25 (640 flows);
+     - (3,1,3): 1 of 16 (48 flows);
+     - (2,2,2,1): 2 of 120;
+     - (3,3,3): 1 of 55. This is 0,1,2/1,1,1/2,1,0, 10 500 flows, char = b_p + b_{1,0,2/0,2,1/2,1,0}.
+   - None of (2,1,2), (1,2,2), (2,2,1), (2,2,2), (3,1,2), (1,3,2), (3,2,2), (3,3,1),
+     (1,1,1,1), (2,1,1,2) has one.
+5. **Refused vs Exhausted** (review F5, F6).
+   - `Ctx` counts stuck branches whose cause was admission (`stuck_adm`) and tiers or degrees
+     whose window admission refused (`tier_refused`). The cases are: `choose_window` refused a
+     decomposable window, a split/commutation/leaf iso was refused, or S6 or a closure window
+     was refused.
+   - A call ends `Refused` iff every cause was admission. Otherwise it ends `Exhausted`.
+   - Before it reports `Exhausted`, Search `full` re-ranks every offered candidate at the orbit
+     cosets with the fallback point counts (`orbit_fallback`, shared with `certify_full_plan`).
+   - S6 had no window at all for Hom^d(X, X) with equal words. It now uses the whole ladder
+     there. This fixed B2 (2,2) through Search alone: 43 -> 45 of 45.
+   - `window_maps` distinguishes "no window" (Exhausted) from "windows refused" (Refused).
+6. **Cost table** (review tests finding 3).
+   - A censored record sets its bucket prediction to +infinity, so it can never admit; the
+     exact-shape rule is unchanged.
+   - The header is now `krhom-costs v2 alg=<COST_ALG> host=<host_stamp()>`. `COST_ALG` is
+     `"hs-kl1"`; `host_stamp()` is the CPU count and model name, because the host name is
+     random in cloud containers.
+   - `load` rejects a v1 table, another solver, or another host (`KRHOM_COSTS_ANY_HOST=1`
+     accepts another host with a warning). g1 prints the reason and runs without the table.
+   - tests/data/homprov/costs_cloud.txt is converted to v2 (records unchanged; it was measured
+     on this machine class). costs_m4b.txt stays v1 and is now rejected (it was already obsolete).
+   - `Search::window_admitted` is exposed for tests.
+7. **`TmplLib::has_hom`** counts a disk file only if its header matches exactly (version,
+   TMPL_ALG, field, key).
+8. **`linsys::kernel_lazy`** builds the final kernel sparsely, with one reused dense buffer and
+   each vector pushed sparse at once. The dense kernel is now built only for the early-stop
+   check, where its dimension is at most 128. Peak memory of the result is
+   O(ncols + nnz(kernel)) instead of dim · ncols; the 40 000-unknown admission no longer
+   implies dim · 320 KB.
+9. **Tests and stats.**
+   - `kernel_lazy_traced` returns a `KernelTrace`, and `kernel_lazy_counters()` gives
+     process-wide counts.
+   - tests/hom_lazy.rs asserts that both the early stop and the violated-row reinsertion are
+     taken.
+   - `kernel_lazy_property` compares against `Echelon::kernel` element by element: 160 random
+     adversarial systems, plus no equations, full rank, and kernel dimension > 128.
+   - `SearchStats` gets `window_calls` / `window_secs` for Search's own exact window calls,
+     which were dropped before. `exact_calls` counts only the Exact backend, so B8's assertion
+     keeps its meaning.
+   - The trait method `HomProvider::failed_stats` (default None) is additive. `Chain` absorbs
+     the stats of failed providers, and g1 records them for failed targets.
+   - B2 records counts per composition.
+   - New test `b2_type_pairs_22_212_search_alone`; results under "Test results".
+   - B4b forces the witness set through the new `certify_full_at` and asserts that the
+     counting assertion, not the rank test, fails. It then certifies through the fallback.
+   - New `b9_*` tests: preconditions; end and degree checks; cache binding; cost-table
+     admission and stamps; `has_hom` header.
+10. **g1 JSON header.** The header records:
+    - `run`: args, commit (with -dirty), host stamp, seed, watchdog, Budget, Exact caps and
+      the cost-table stamp;
+    - `finished`;
+    - `complete` = finished and unrestricted (no `--only`, `--max-pairs` or `--pairs`). A
+      restricted run is also flagged in the summary line.
+
+### Test results
+
+- Full suite, `KRHOM_THREADS=4 cargo test --release`: 183 passed, 0 failed, 17 ignored.
+- B2 through Search S0-S6 alone:
+  - (2,2): 45 / 45.
+  - (2,1,2): 581 / 605. The 24 misses are all Exhausted and none is Time, Memory or Refused.
+    They are endomorphism-like spaces of types such as 1,0,1/0,1,0/1,0,1 and
+    0,0,2/1,0,0/1,1,0 in degrees 2-4; dots, S4 and S6 windows span too little. This is a
+    Search completeness gap (U1). The Chain covers it with Exact.
+  - The test asserts this bound, which may only improve.
+- B2 through the Chain, (2,2) / (2,1,2): 45 / 45 and 605 / 605.
+
+### Gate G1(a), cold cache, rerun on the hardened code
+
+Command: `g1 a --cache /tmp/tmpl_g1a --costs tests/data/homprov/costs_cloud.txt --wall 900
+--rss 4096 --json` at commit 0408229. Result file: tests/data/homprov/g1a_cloud_hardened.json
+(`complete: true`).
+
+- 480 / 480 targets certified, 135 / 135 jobs, 534.3 s wall: (3,3) 11.6 s, (2,2,2) 522.5 s.
+- Peak RSS 856 MB (job one 2,2,2 116).
+- Slowest jobs (seconds): one 2,2,2 56 (77.6), 119 (30.2), 53 (27.8), 116 (27.1), 60 (26.3).
+- Tiers per target: Exact 264, S1 150, S2 60, S1+S2 4, S0 2. These are identical to the
+  previous run.
+- 531 Exact-backend calls and 412 Search window calls were computed. Search window calls are
+  now counted.
+- No precondition refused any G1(a) target. Every canonical ladder of (3,3) and (2,2,2) has
+  character b_p, and every `mult` from `term_mult` matched char X.
+
+### What M5 must provide (the e_q / e_p contract)
+
+- **When `eq` / `ep` may be None.** Only when `expand(ladder_char(L)) == [(type, 1)]`, i.e.
+  `ladder_char(L_p) == b_p` (SPEC §5.2, "e = None"). Any other call is `Refused` with
+  "L_q decomposable: e_q required" or "L_p decomposable: e_p required". Search for that string
+  instead of treating the refusal as a completeness failure.
+- **What an idempotent must satisfy.** `check_idempotent` (pub) checks, at two points:
+  - it is a genuine Arena map L -> L of degree 0 (Lin/Comp of certified maps);
+  - b_p occurs exactly once, in degree 0, in char L;
+  - at the witness coset rep(t) of every table t of char L, block(e) is idempotent of rank
+    c_t(b_p)(1);
+  - the scalar at rep(p) is 1.
+
+  This is SPEC §5.2 step 6. Build e = P(a) from `end0` as in the test helper
+  `idempotent_from_end0` (tests/homprov.rs), and run `check_idempotent` yourself before
+  caching an e.
+- **What the provider does with e.**
+  - Pairs: it wraps ι ↦ ι∘e_q and π ↦ e_q∘π.
+  - Closure: it wraps every candidate as e_p∘g (ins) or g∘e_p (outs) and certifies rank n on
+    the identity coset.
+
+  M5 must not wrap again. To use the source idempotent (e_p ⊗ id_R) of SPEC §5.2 step 3, M5
+  composes it on top itself, as specified there.
+- **`mult` must be exact.** Pass `mult` = [v^s] of the multiplicity of b_q in char X, where X
+  is the actual word. For a decomposable L_p, `term_mult(p, [R])` (expand of b_p·[R]) is
+  smaller than the multiplicity in char(L_p R) and is refused. Use expand(ladder_char(X))
+  together with the source idempotent, or decompose L_p first.
+- **One Search may serve several Arenas.** Its caches are cleared when the library changes.
+  TmplIds of one TmplLib are never valid in another.
+- **Interpreting failures.**
+  - `MissKind::Refused` means admission or a precondition declined the call. Raising l_max or
+    c_max will not help; raise a cap or supply e or a cost record.
+  - `Exhausted` is the completeness signal.
+  - Search `full` / `end0` are not complete on (2,1,2), see above. Use the Chain (Exact first
+    for labels <= 2). For (3,3) and (3,3,3) the Chain has Exact only through the cost table,
+    so measure `end0` there before relying on it.
+
+### Open problems
+
+- Search `full` completeness: 24 / 605 of (2,1,2) are Exhausted through Search alone. The
+  ignored B2 (3,3) / (2,2,2) result is below.
+- The (3,3,3) decomposable type 0,1,2/1,1,1/2,1,0 has 10 500 flows, so its End^0 through Exact
+  is not admitted by the label rule. M5 needs Search `end0` (or a cost record) for its e_p.
+- costs_cloud.txt is stamped for this machine class only. Recalibrate (`g1 calib`) on another.
+- S5 is still not implemented (unchanged).
