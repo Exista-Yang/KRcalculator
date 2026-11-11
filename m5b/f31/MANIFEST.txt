@@ -6,4 +6,4 @@ layer-A stamps: krhom-sindec v2 ladfn=schur.ladder_minflow.v1 tmpl_alg=hs1.lcx1 
 files: layer_a 668, tmpl 837
 restore: cat layerA_tmpl.tar.gz.part-* | tar -C CACHE_DIR -xzf -   (then libbuild run/replay --cache CACHE_DIR --costs tests/data/homprov/costs_333.txt)
 sha256:
-6aa8357f1cb75d0cc3ae5ccc38acf48f94628588f0c974b0e74f207ab04bb2e3  layerA_tmpl.tar.gz.part-000
+17a38904490a3254a84e4fbc61cf3f726269b222e47923c53a07cecec8c4b23c  layerA_tmpl.tar.gz.part-000
