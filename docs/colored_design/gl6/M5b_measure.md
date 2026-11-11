@@ -44,8 +44,8 @@ Both failure modes are admission, which the D8 mechanism addresses with measured
 The list: the 403 distinct windows refused in the large-X trace (both ι and π directions) and the 414 whole-ladder
 closure calls Hom^d(R, L_p), Hom^d(L_p, R) of the corner and level-6 closure types.
 
-Exact's per-call ceiling at label 3 is raised from 10 s to Search's window ceiling, 120 s (`EXACT_L3_MAX_CALL_S`,
-part of the provider stamp): the first measured (3,3,3) closure calls take 16-20 s. Admission still requires a
+Exact's per-call ceiling at label 3 is raised from 10 s to 120 s and then (round 2) to the watchdog wall, 600 s
+(`EXACT_L3_MAX_CALL_S`, part of the provider stamp): the measured (3,3,3) closure calls take 16-420 s. Admission still requires a
 measured, uncensored record; no cap of the label rule was changed and no check was touched.
 
 (Calibration results and the second pass: section 3.)
