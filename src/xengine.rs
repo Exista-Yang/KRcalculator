@@ -112,14 +112,18 @@ pub struct XOpts {
     pub close_stages: bool,
     /// store the components of the complexes compactly (`CMat`; F31 and F32b only)
     pub compact: bool,
-    /// streaming build: transport d_C ⊗ id rung by rung (`XEngine::transport`, M2S′ step 4)
+    /// streaming build: transport d_C ⊗ id rung by rung (`transport_view`, M2S′ step 4)
     pub rung_transport: bool,
+    /// with `close_stages`: close every kept stage at these N right away (unreduced and
+    /// reduced) and print the Poincaré polynomials on stderr, so that a long scan reports its
+    /// stage results before it ends
+    pub stage_close_ns: Vec<usize>,
 }
 
 impl Default for XOpts {
     fn default() -> Self {
         let verbose = std::env::var("KRHOM_VERBOSE").map(|v| v != "0" && !v.is_empty()).unwrap_or(false);
-        XOpts { check_d2: true, verbose, seed: 7, rungwise: true, prune_n: None, stream: true, close_stages: false, compact: true, rung_transport: true }
+        XOpts { check_d2: true, verbose, seed: 7, rungwise: true, prune_n: None, stream: true, close_stages: false, compact: true, rung_transport: true, stage_close_ns: vec![] }
     }
 }
 
@@ -285,9 +289,12 @@ struct XObj {
 
 // ------------------------------------------------------------------ compact component store
 
-thread_local! {
-    /// interned monomials of the compact store: index -> Mono, Mono -> index
-    static MONOS: std::cell::RefCell<(Vec<crate::mpoly::Mono>, HashMap<crate::mpoly::Mono, u32>)> = std::cell::RefCell::new((vec![], HashMap::new()));
+/// Interned monomials of the compact store (index -> Mono, Mono -> index), shared by all
+/// threads; indices are never reused, so a packed component stays valid.
+type MonoTab = (Vec<crate::mpoly::Mono>, HashMap<crate::mpoly::Mono, u32>);
+fn monos() -> &'static std::sync::RwLock<MonoTab> {
+    static M: std::sync::OnceLock<std::sync::RwLock<MonoTab>> = std::sync::OnceLock::new();
+    M.get_or_init(|| std::sync::RwLock::new((vec![], HashMap::new())))
 }
 
 /// Representative in [0, p) of a coefficient of F31 or F32b (None for any other field).
@@ -326,28 +333,59 @@ impl<F: Field> CMat<F> {
         let mut terms = Vec::new();
         colptr.push(0u32);
         tptr.push(0u32);
-        MONOS.with(|mt| {
-            let mut mt = mt.borrow_mut();
+        // monomial indices: read lock, then a write lock only for new monomials
+        let mut idx: Vec<u32> = Vec::with_capacity(m.cols.iter().flat_map(|c| c.iter()).map(|(_, p)| p.t.len()).sum());
+        let mut missing = false;
+        {
+            let mt = monos().read().unwrap();
             for c in &m.cols {
-                for (r, p) in c {
-                    rows.push(*r);
-                    for (mono, cf) in &p.t {
-                        let idx = match mt.1.get(mono) {
-                            Some(&i) => i,
+                for (_, p) in c {
+                    for (mono, _) in &p.t {
+                        match mt.1.get(mono) {
+                            Some(&i) => idx.push(i),
                             None => {
-                                let i = mt.0.len() as u32;
-                                mt.0.push(*mono);
-                                mt.1.insert(*mono, i);
-                                i
+                                missing = true;
+                                idx.push(u32::MAX);
                             }
-                        };
-                        terms.push(((idx as u64) << 32) | coef_u32(cf).unwrap() as u64);
+                        }
                     }
-                    tptr.push(terms.len() as u32);
                 }
-                colptr.push(rows.len() as u32);
             }
-        });
+        }
+        if missing {
+            let mut mt = monos().write().unwrap();
+            let mut it = 0;
+            for c in &m.cols {
+                for (_, p) in c {
+                    for (mono, _) in &p.t {
+                        if idx[it] == u32::MAX {
+                            idx[it] = match mt.1.get(mono) {
+                                Some(&i) => i,
+                                None => {
+                                    let i = mt.0.len() as u32;
+                                    mt.0.push(*mono);
+                                    mt.1.insert(*mono, i);
+                                    i
+                                }
+                            };
+                        }
+                        it += 1;
+                    }
+                }
+            }
+        }
+        let mut it = 0;
+        for c in &m.cols {
+            for (r, p) in c {
+                rows.push(*r);
+                for (_, cf) in &p.t {
+                    terms.push(((idx[it] as u64) << 32) | coef_u32(cf).unwrap() as u64);
+                    it += 1;
+                }
+                tptr.push(terms.len() as u32);
+            }
+            colptr.push(rows.len() as u32);
+        }
         assert!(terms.len() < u32::MAX as usize && rows.len() < u32::MAX as usize, "compact store: component too large");
         terms.shrink_to_fit();
         CMat::Packed { nrows: m.nrows as u32, ncols: m.ncols as u32, colptr, rows, tptr, terms }
@@ -356,8 +394,8 @@ impl<F: Field> CMat<F> {
     pub fn get(&self) -> PMat<F> {
         match self {
             CMat::Plain(m) => m.clone(),
-            CMat::Packed { nrows, ncols, colptr, rows, tptr, terms } => MONOS.with(|mt| {
-                let mt = mt.borrow();
+            CMat::Packed { nrows, ncols, colptr, rows, tptr, terms } => {
+                let mt = monos().read().unwrap();
                 let mut cols = Vec::with_capacity(*ncols as usize);
                 for j in 0..*ncols as usize {
                     let (e0, e1) = (colptr[j] as usize, colptr[j + 1] as usize);
@@ -369,7 +407,7 @@ impl<F: Field> CMat<F> {
                     cols.push(col);
                 }
                 PMat { nrows: *nrows as usize, ncols: *ncols as usize, cols }
-            }),
+            }
         }
     }
     /// (entries, terms, estimated heap bytes)
@@ -437,6 +475,19 @@ impl<F: Field> XCx<F> {
         } else {
             outs.insert(y, CMat::new(sum, compact));
             self.inn.get_mut(&y).unwrap().insert(x);
+        }
+    }
+    /// replace the component x → y (None or a zero matrix removes it)
+    fn set_map(&mut self, x: usize, y: usize, m: Option<CMat<F>>) {
+        match m {
+            Some(m) => {
+                self.out.get_mut(&x).unwrap().insert(y, m);
+                self.inn.get_mut(&y).unwrap().insert(x);
+            }
+            None => {
+                self.out.get_mut(&x).unwrap().remove(&y);
+                self.inn.get_mut(&y).unwrap().remove(&x);
+            }
         }
     }
     fn remove_obj(&mut self, a: usize) {
@@ -1409,11 +1460,28 @@ impl<F: Field> XEngine<F> {
             // objects whose out (resp. in) set may change
             let mut xo: BTreeSet<usize> = cx.inn[&a].iter().chain(cx.inn[&b].iter()).copied().collect();
             let mut yi: BTreeSet<usize> = cx.out[&a].keys().chain(cx.out[&b].keys()).copied().collect();
+            // fill-in x → y += f · d_ay d_xb: product, sum with the old component and encoding
+            // in parallel (each (x, y) once per pivot), stored in pair order
             let pairs: Vec<(usize, usize)> = (0..xs.len()).flat_map(|i| (0..ys.len()).map(move |j| (i, j))).collect();
+            let compact = cx.compact;
             for part in pairs.chunks(256) {
-                let prods = if part.len() >= 8 { par_map(part, |&(i, j)| scale_const(&ys[j].1.matmul(&xs[i].1), &f)) } else { part.iter().map(|&(i, j)| scale_const(&ys[j].1.matmul(&xs[i].1), &f)).collect() };
-                for (&(i, j), m) in part.iter().zip(prods) {
-                    cx.add_map(xs[i].0, ys[j].0, m);
+                let jobs: Vec<(usize, usize, Option<CMat<F>>)> = part.iter().map(|&(i, j)| (i, j, cx.out[&xs[i].0].get(&ys[j].0).cloned())).collect();
+                let work = |(i, j, old): &(usize, usize, Option<CMat<F>>)| -> Option<Option<CMat<F>>> {
+                    let m = scale_const(&ys[*j].1.matmul(&xs[*i].1), &f);
+                    if m.is_zero() {
+                        return None; // unchanged
+                    }
+                    let sum = match old {
+                        Some(o) => o.get().add(&m),
+                        None => m,
+                    };
+                    Some(if sum.is_zero() { None } else { Some(CMat::new(sum, compact)) })
+                };
+                let res: Vec<Option<Option<CMat<F>>>> = if part.len() >= 4 { par_map(&jobs, work) } else { jobs.iter().map(work).collect() };
+                for ((i, j, _), r) in jobs.iter().zip(res) {
+                    if let Some(m) = r {
+                        cx.set_map(xs[*i].0, ys[*j].0, m);
+                    }
                 }
             }
             cx.remove_obj(a);
@@ -1742,6 +1810,13 @@ pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<X
             let sd = eng.closure_data(&ncx, crossings.clone(), opts.seed, &d2).map_err(|e| format!("closure data of stage {}: {}", step + 1, e))?;
             if opts.verbose {
                 eprintln!("[xengine]   stage {} closure data: {} objects, {} edges in {:.2}s", step + 1, sd.0.objs.len(), sd.0.edges.len(), tc.elapsed().as_secs_f64());
+            }
+            if !opts.stage_close_ns.is_empty() {
+                for marked in [None, Some(0)] {
+                    for (nn, p) in close_guarded(&sd.0, &sd.1, opts.prune_n, &opts.stage_close_ns, marked) {
+                        eprintln!("[xengine] stage {} N = {}{}: rank {}: {}", step + 1, nn, if marked.is_some() { " reduced" } else { "" }, p.total_rank(), p);
+                    }
+                }
             }
             stage_data.insert(step + 1, sd);
         }

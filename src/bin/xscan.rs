@@ -132,7 +132,7 @@ fn main() {
     let json = args.iter().position(|a| a == "--json").map(|i| args.get(i + 1).cloned().expect("--json OUT"));
     let modes = if flag("--both") { vec![false, true] } else { vec![flag("--reduced")] };
     let a = Args { ns, modes, close_stages: flag("--close-stages"), json };
-    let opts = XOpts { check_d2: !flag("--no-d2"), verbose: true, prune_n: prune, stream: !flag("--full"), compact: !flag("--plain"), close_stages: flag("--close-stages"), ..Default::default() };
+    let opts = XOpts { check_d2: !flag("--no-d2"), verbose: true, prune_n: prune, stream: !flag("--full"), compact: !flag("--plain"), close_stages: flag("--close-stages"), stage_close_ns: if flag("--close-stages") { a.ns.clone() } else { vec![] }, ..Default::default() };
     match prime.as_str() {
         "31" => run::<F31>(&labels, &word, &a, opts),
         "32b" => run::<F32b>(&labels, &word, &a, opts),
