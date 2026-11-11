@@ -125,27 +125,50 @@ fn b2_hom60_through_exact() {
     assert_eq!(cases, 60);
 }
 
+/// certified counts per provider / composition: "Exact" (no Search tier hit) or the Search
+/// tiers that produced the basis ("S0", "S2", "S4", "S6", combinations joined by '+')
+type Counts = std::collections::BTreeMap<String, usize>;
+fn composition(st: &SearchStats, n: usize) -> String {
+    if n == 0 {
+        return "dim0".into();
+    }
+    let t: Vec<String> = st.tier_hits.iter().enumerate().filter(|(_, c)| **c > 0).map(|(i, _)| format!("S{}", i)).collect();
+    if t.is_empty() { "Exact".into() } else { t.join("+") }
+}
+
 /// all type pairs of the block (lambda, lambda), degrees 0..=dmax, through Chain::for_labels
 fn chain_type_pairs(lam: &[u8], dmax: i32) -> (usize, usize, Vec<String>) {
+    let mut prov: Chain<F> = Chain::for_labels(lam.iter().copied().max().unwrap(), Exact::default());
+    let (ok, tot, fails, counts) = type_pairs_with(lam, dmax, &mut prov, "b2");
+    eprintln!("[B2] {:?} through the Chain, per composition: {:?}", lam, counts);
+    assert_eq!(counts.values().sum::<usize>(), ok);
+    (ok, tot, fails)
+}
+
+/// all type pairs of (lambda, lambda), degrees 0..=dmax, through one provider; counts per composition
+fn type_pairs_with(lam: &[u8], dmax: i32, prov: &mut dyn HomProvider<F>, tag: &str) -> (usize, usize, Vec<String>, Counts) {
     let mut s = Schur::new(lam);
     let order = s.canonical_basis(lam).order.clone();
-    let mut ar: Arena<F> = Arena::new(lam, TmplLib::new(Some(cache_dir(&format!("b2_{:?}", lam)))));
-    let mut prov: Chain<F> = Chain::for_labels(lam.iter().copied().max().unwrap(), Exact::default());
+    let mut ar: Arena<F> = Arena::new(lam, TmplLib::new(Some(cache_dir(&format!("{}_{:?}", tag, lam)))));
     let ids: Vec<(Tid, ExprId)> = order.iter().map(|&p| { let w = canonical(&mut s, lam, p); (p, ar.expr(ex(lam, &w))) }).collect();
     let (mut ok, mut tot) = (0, 0);
     let mut fails = vec![];
+    let mut counts = Counts::new();
     for &(p, a) in &ids {
         for &(q, b) in &ids {
             for d in 0..=dmax {
                 tot += 1;
                 match prov.full(&mut ar, &mut s, a, b, d, &Budget::default()) {
-                    Ok(_) => ok += 1,
+                    Ok((ms, st)) => {
+                        ok += 1;
+                        *counts.entry(composition(&st, ms.len())).or_insert(0) += 1;
+                    }
                     Err(m) => fails.push(format!("{} -> {} degree {}: {:?}", s.table(p).fmt(), s.table(q).fmt(), d, m.iter().map(|x| format!("{:?} {}", x.kind, x.what)).collect::<Vec<_>>())),
                 }
             }
         }
     }
-    (ok, tot, fails)
+    (ok, tot, fails, counts)
 }
 
 #[test]
@@ -158,6 +181,28 @@ fn b2_type_pairs_22_212_through_chain() {
             eprintln!("[B2]   missing: {}", f);
         }
         assert!(fails.is_empty(), "B2 {:?}: {} of {} not certified", lam, tot - ok, tot);
+    }
+}
+
+/// B2 through Search S0-S6 alone (review tests finding 2: the Chain run is now certified mostly
+/// by Exact, so Search `full` completeness on these blocks is measured separately)
+#[test]
+fn b2_type_pairs_22_212_search_alone() {
+    for lam in [vec![2u8, 2], vec![2, 1, 2]] {
+        let t0 = Instant::now();
+        let mut search = Search::tiers(0, 6);
+        let (ok, tot, fails, counts) = type_pairs_with(&lam, 4, &mut search, "b2s");
+        eprintln!("[B2 Search] {:?}: {}/{} Hom^d (d = 0..4) certified by Search S0-S6 alone in {:.1}s; per composition {:?}", lam, ok, tot, t0.elapsed().as_secs_f64(), counts);
+        for f in fails.iter().take(40) {
+            eprintln!("[B2 Search]   missing: {}", f);
+        }
+        // Measured 2026-11-11: (2,2) 45/45; (2,1,2) 581/605. The 24 misses are Exhausted (a Search
+        // `full` completeness gap on endomorphism-like spaces of the types 1,0,1/0,1,0/1,0,1,
+        // 0,0,2/1,0,0/1,1,0, ... in degrees 2-4: dots + S4 + S6 windows span too little), never
+        // Time/Memory/Refused. The Chain covers them by Exact. This bound may only improve.
+        let allowed = if lam.len() == 2 { 0 } else { 24 };
+        assert!(fails.len() <= allowed, "B2 Search {:?}: {} of {} not certified (measured bound {})", lam, tot - ok, tot, allowed);
+        assert!(fails.iter().all(|f| f.contains("\"Exhausted ")), "B2 Search {:?}: a miss that is not Exhausted", lam);
     }
 }
 
@@ -276,10 +321,19 @@ fn b4b_detecting_set_fallback() {
             let (ms, st) = HomProvider::<F>::full(&mut exact, &mut ar, &mut s, a, b, 11, &Budget::default()).unwrap();
             eprintln!("[B4b] {} -> {} degree 11: dim {}, M {}, E_w {}, detect {} ({} points), {:.1}s", s.table(p).fmt(), s.table(q).fmt(), ms.len(), plan.m, plan.rows_per_point, st.detect, plan.npoints, t0.elapsed().as_secs_f64());
             assert_ne!(st.detect, "witness");
-            // forcing the witness set with M + 2 points fails the counting assertion
+            // forcing the witness set with M + 2 points fails the counting assertion, before any
+            // rank test (SPEC §4.6 B4b; review tests finding 6)
             let wit = detecting_cosets(&ar, &mut s, a, b);
-            let rows: usize = Layout::of(ar.flows(a), ar.flows(b)).cosets.iter().filter(|c| wit.contains(c)).count();
-            assert!(plan.rows_per_point * (plan.m + 2) < 69 || rows * (plan.m + 2) < 69);
+            let ew: usize = {
+                let (ca, cb) = (s.ladder_char(&wp), s.ladder_char(&wq));
+                ca.t.iter().map(|(t, c)| (c.at1() * cb.coef(*t).at1()) as usize).sum()
+            };
+            assert!(ew * (plan.m + 2) < 69, "B4b: the witness bound is not violated");
+            let forced = DetectPlan { cosets: wit, npoints: plan.m + 2, kind: "witness", dim: plan.dim, m: plan.m, rows_per_point: ew };
+            let err = certify_full_at(&ar, &mut s, a, b, 11, &ms, 0x5eed_0b4b, forced).unwrap_err();
+            assert!(err.contains("counting bound violated"), "B4b: forced witness set failed for another reason: {}", err);
+            // the exact basis itself certifies through the fallback
+            certify_full(&ar, &mut s, a, b, 11, &ms, 0x5eed_0b4c).unwrap();
             done = true;
         }
     }
@@ -455,6 +509,7 @@ fn b8_admission_order_and_scratch() {
         let n0 = ar.n_nodes();
         let (p, st) = chain.pairs(&mut ar, &mut s, x, q, lq, None, sd, mult, &Budget::default()).unwrap_or_else(|m| panic!("B8 (3,3): {:?}", m));
         assert_eq!(st.exact_calls, 0, "B8: Exact backend called for a (3,3) pair certified by S1/S2");
+        eprintln!("[B8] (3,3) target {} s {}: {} Search window calls ({:.2}s), 0 Exact-backend calls", s.table(q).fmt(), sd, st.window_calls, st.window_secs);
         assert!(st.tier_hits[1] + st.tier_hits[2] > 0, "B8: not certified by S1/S2 ({:?})", st.tier_hits);
         let mut reach = std::collections::BTreeSet::new();
         let mut stack: Vec<MapId> = p.iotas.iter().chain(&p.pis).cloned().collect();
@@ -508,4 +563,416 @@ fn compile_time_send_sync() {
     _ss::<CostTable>();
     _ss::<Exact>();
     _ss::<Budget>();
+}
+
+// ------------------------------------------------------------------ hardening (review 2026-11-11)
+
+/// a (2,2) pair job and its first target, for the precondition tests
+fn first_target(s: &mut Schur, ar: &mut Arena<F>, lam: &[u8]) -> (ExprId, Tid, ExprId, i32, usize, Vec<(Tid, i32, usize)>) {
+    let (pairs, _) = g1_targets(s);
+    let pr = pairs.iter().find(|p| !p.identity && p.targets.len() >= 2).unwrap();
+    let (mu, pp, rung, targets) = (pr.mu.clone(), pr.p, pr.rung, pr.targets.clone());
+    let mut xw = canonical(s, &mu, pp);
+    xw.push(rung);
+    let x = ar.expr(ex(lam, &xw));
+    let (q, sd, mult) = targets[0];
+    let mq = s.table(q).cols();
+    let lqw = canonical(s, &mq, q);
+    let lq = ar.expr(ex(lam, &lqw));
+    (x, q, lq, sd, mult, targets)
+}
+
+/// review F1/F2: `pairs` refuses a wrong `mult`, an L_q of another type and a decomposable L_q
+/// without e_q (both backends); with e_q = id on an indecomposable L_q it certifies; a non-
+/// idempotent e_q is refused
+#[test]
+fn b9_pairs_preconditions() {
+    let lam = [2u8, 2];
+    let mut s = Schur::new(&lam);
+    let mut ar: Arena<F> = Arena::new(&lam, TmplLib::new(Some(cache_dir("b9"))));
+    let (x, q, lq, sd, mult, targets) = first_target(&mut s, &mut ar, &lam);
+    let b = Budget::default();
+    let mut exact = Exact::default();
+    let mut search = Search::tiers(0, 6);
+    let refused = |r: Result<(Pairs<F>, SearchStats), Vec<Missing>>, what: &str| {
+        let m = match r {
+            Ok(_) => panic!("B9 {}: certified", what),
+            Err(m) => m,
+        };
+        assert_eq!(m[0].kind, MissKind::Refused, "B9 {}: {:?}", what, m);
+        m[0].what.clone()
+    };
+    // (a) wrong multiplicity: mult + 1 and mult - 1 (never a partial or padded family)
+    for bad in [mult + 1, mult.saturating_sub(1)] {
+        if bad == mult {
+            continue;
+        }
+        let w = refused(HomProvider::<F>::pairs(&mut exact, &mut ar, &mut s, x, q, lq, None, sd, bad, &b), "Exact wrong mult");
+        assert!(w.contains("mult"), "{}", w);
+        let w = refused(search.pairs(&mut ar, &mut s, x, q, lq, None, sd, bad, &b), "Search wrong mult");
+        assert!(w.contains("mult"), "{}", w);
+    }
+    // (b) L_q of another type of the same top
+    let other = targets.iter().map(|t| t.0).find(|&t| t != q && s.table(t).cols() == s.table(q).cols());
+    if let Some(q2) = other {
+        let w = refused(search.pairs(&mut ar, &mut s, x, q2, lq, None, sd, mult, &b), "Search L_q of another type");
+        assert!(w.contains("e_q required"), "{}", w);
+    }
+    // (c) a decomposable "L_q" (the word X itself) without e_q
+    let w = refused(HomProvider::<F>::pairs(&mut exact, &mut ar, &mut s, x, q, x, None, 0, 1, &b), "Exact decomposable L_q");
+    assert!(w.contains("L_q decomposable: e_q required"), "{}", w);
+    let w = refused(search.pairs(&mut ar, &mut s, x, q, x, None, 0, 1, &b), "Search decomposable L_q");
+    assert!(w.contains("L_q decomposable: e_q required"), "{}", w);
+    // (d) e_q = id_{L_q} passes the idempotent contract and certifies; 2·id is refused
+    let id = ar.add(MapNode::Id(lq), "id").unwrap();
+    let (p, _) = HomProvider::<F>::pairs(&mut exact, &mut ar, &mut s, x, q, lq, Some(id), sd, mult, &b).unwrap_or_else(|m| panic!("B9 e_q = id: {:?}", m));
+    assert_eq!(p.iotas.len(), mult);
+    let two = ar.add(MapNode::Lin(vec![(F::from_i64(2), id)]), "2 id").unwrap();
+    let w = refused(HomProvider::<F>::pairs(&mut exact, &mut ar, &mut s, x, q, lq, Some(two), sd, mult, &b), "Exact e_q = 2 id");
+    assert!(w.contains("e_q rejected"), "{}", w);
+    let w = refused(search.pairs(&mut ar, &mut s, x, q, lq, Some(two), sd, mult, &b), "Search e_q = 2 id");
+    assert!(w.contains("e_q rejected"), "{}", w);
+    // the Chain reports the refusal of every provider
+    let mut chain: Chain<F> = Chain::for_labels(2, Exact::default());
+    let m = chain.pairs(&mut ar, &mut s, x, q, lq, None, sd, mult + 1, &b).unwrap_err();
+    assert!(m.iter().all(|z| z.kind == MissKind::Refused), "{:?}", m);
+    eprintln!("[B9] preconditions refused: wrong mult, other type, decomposable L_q, e_q = 2 id; e_q = id certifies");
+}
+
+/// review F3: certify_pairs / certify_closure check the ends and degrees of every map
+#[test]
+fn b9_certify_checks_ends_and_degrees() {
+    let lam = [2u8, 2];
+    let mut s = Schur::new(&lam);
+    let mut ar: Arena<F> = Arena::new(&lam, TmplLib::new(Some(cache_dir("b9e"))));
+    let (x, q, lq, sd, mult, _) = first_target(&mut s, &mut ar, &lam);
+    let mut exact = Exact::default();
+    let (p, _) = HomProvider::<F>::pairs(&mut exact, &mut ar, &mut s, x, q, lq, None, sd, mult, &Budget::default()).unwrap();
+    let c = {
+        let tab = s.table(q).clone();
+        let cs = krhom::coset::CosetSpace::new(&lam, &tab.cols());
+        cs.rank(&cs.rep(&tab))
+    };
+    certify_pairs(&ar, x, lq, sd, &p.iotas, &p.pis, c, mult, 7).unwrap();
+    // a degree label off by 2 (the form cannot see it: π∘ι still has degree 0)
+    let e = certify_pairs(&ar, x, lq, sd + 2, &p.iotas, &p.pis, c, mult, 7).unwrap_err();
+    assert!(e.contains("degree"), "{}", e);
+    // swapped ends
+    let e = certify_pairs(&ar, lq, x, sd, &p.iotas, &p.pis, c, mult, 7).unwrap_err();
+    assert!(e.contains("expected"), "{}", e);
+    // closure: ins presented as outs
+    let order = s.canonical_basis(&lam).order.clone();
+    let pt = order[order.len() / 2];
+    let lpw = canonical(&mut s, &lam, pt);
+    let lp = ar.expr(ex(&lam, &lpw));
+    let (ins, _) = HomProvider::<F>::closure(&mut exact, &mut ar, &mut s, lp, pt, None, false, &Budget::default()).unwrap();
+    let r0 = ar.expr(ex(&lam, &[]));
+    let mut want: Vec<i32> = ins.iter().map(|&m| ar.info(m).deg).collect();
+    want.sort();
+    certify_closure(&ar, &lam, r0, lp, None, &ins, &want, false, 9).unwrap();
+    let e = certify_closure(&ar, &lam, r0, lp, None, &ins, &want, true, 9).unwrap_err();
+    assert!(e.contains("expected"), "{}", e);
+    eprintln!("[B9] certify_pairs / certify_closure reject wrong degree labels and ends");
+}
+
+/// review F3: Search's TmplId caches are bound to the template library of the Arena
+#[test]
+fn b9_search_caches_bound_to_library() {
+    let lam = [2u8, 2];
+    let mut s = Schur::new(&lam);
+    let mut ar: Arena<F> = Arena::new(&lam, TmplLib::new(None));
+    let (x, q, lq, sd, mult, _) = first_target(&mut s, &mut ar, &lam);
+    let mut search = Search::tiers(0, 6);
+    search.pairs(&mut ar, &mut s, x, q, lq, None, sd, mult, &Budget::default()).unwrap();
+    let (a, c) = search.cached_windows();
+    assert!(a + c > 0, "B9: nothing cached");
+    // a second Arena with another library: the caches are dropped before any use
+    let mut ar2: Arena<F> = Arena::new(&lam, TmplLib::new(None));
+    let (x2, q2, lq2, sd2, mult2, _) = first_target(&mut s, &mut ar2, &lam);
+    let _ = search.pairs(&mut ar2, &mut s, x2, q2, lq2, None, sd2, mult2 + 1, &Budget::default());
+    assert_eq!(search.cached_windows(), (0, 0), "B9: TmplId caches survived a library change");
+    let (p, _) = search.pairs(&mut ar2, &mut s, x2, q2, lq2, None, sd2, mult2, &Budget::default()).unwrap();
+    assert_eq!(p.iotas.len(), mult2);
+    eprintln!("[B9] Search caches ({} splits, {} comms) cleared on a library change", a, c);
+}
+
+/// review tests finding 3: censored records never admit (bucket +infinity), stamps, admission rules
+#[test]
+fn b9_cost_table_admission() {
+    let rec = |labels: Vec<u8>, fs, ft, unknowns, deg, secs, censored| CostRec { labels, fs, ft, unknowns, deg, secs, rss_mb: 0.0, censored };
+    let mut t = CostTable::new();
+    // bucket A: completed 2 s; bucket B: censored 60 s (a lower bound)
+    t.record(rec(vec![2, 2, 2], 30, 40, 9000, 0, 2.0, false));
+    t.record(rec(vec![2, 2, 2], 40, 50, 12000, 1, 60.0, true));
+    assert_eq!(t.predict(&[2, 2, 2], 1200, 0), Some(2.0));
+    assert_eq!(t.predict(&[2, 2, 2], 2000, 1), Some(f64::INFINITY), "censored record must predict +infinity");
+    assert_eq!(t.predict_exact(&[2, 2, 2], 40, 50, 12000, 1), Some(f64::INFINITY));
+    // Exact::admit: cost table admits, a censored bucket vetoes the label rule, label rule alone
+    let ex = Exact { costs: Some(t.clone()), max_label: 2, ..Exact::default() };
+    assert_eq!(ex.admit(&[2, 2, 2], 30, 40, 9000, 0), Ok("cost-table"));
+    assert!(ex.admit(&[2, 2, 2], 40, 40, 12000, 1).unwrap_err().contains("vetoed"));
+    let ex0 = Exact::default();
+    assert_eq!(ex0.admit(&[2, 2, 2], 30, 40, 9000, 0), Ok("label-rule"));
+    assert!(ex0.admit(&[3, 3], 30, 40, 9000, 0).is_err());
+    assert!(ex0.admit(&[2, 2, 2], 50, 50, 9000, 0).is_err(), "fibre product cap");
+    assert!(ex0.admit(&[2, 2, 2], 30, 40, 40_001, 0).is_err(), "unknown cap");
+    // Search window admission: a censored bucket does not admit a window above the unknown cap
+    let lam = [2u8, 2];
+    let ar: Arena<F> = Arena::new(&lam, TmplLib::new(None));
+    let (a, b) = (vec![e(0, 1), f(0, 1), e(0, 1), f(0, 1)], vec![e(0, 2), f(0, 2)]);
+    let (fa, fb) = (krhom::schur::flows(&lam, &a), krhom::schur::flows(&lam, &b));
+    let unk = hom_unknowns(&lam, &a, &b, 0);
+    let mut se = Search::tiers(0, 6);
+    se.max_window_unknowns = unk - 1;
+    assert!(!se.window_admitted(&ar, &lam, &a, &b, 0), "above the unknown cap");
+    let mut tc = CostTable::new();
+    tc.record(rec(lam.to_vec(), fa + 1, fb, unk + 5, 0, 60.0, true)); // same bucket, censored
+    se.costs = Some(tc);
+    assert!(!se.window_admitted(&ar, &lam, &a, &b, 0), "a censored bucket admitted a window");
+    let mut tc = CostTable::new();
+    tc.record(rec(lam.to_vec(), fa + 1, fb, unk + 5, 0, 1.0, false)); // same bucket, fast
+    se.costs = Some(tc);
+    assert!(se.window_admitted(&ar, &lam, &a, &b, 0), "a fast bucket may admit");
+    let mut tc = CostTable::new();
+    tc.record(rec(lam.to_vec(), fa, fb, unk, 0, 500.0, false)); // this exact shape, slow
+    se.costs = Some(tc);
+    se.max_window_unknowns = u128::MAX;
+    assert!(!se.window_admitted(&ar, &lam, &a, &b, 0), "a measured slow shape must veto");
+    // stamps: round trip; another host or solver or a v1 table is rejected
+    let dir = cache_dir("b9_costs");
+    let path = dir.join("c.txt");
+    t.save(&path).unwrap();
+    let back = CostTable::load(&path).unwrap();
+    assert_eq!(back.len(), 2);
+    assert_eq!((back.alg.as_str(), back.host.clone()), (COST_ALG, host_stamp()));
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, text.replacen(&format!("host={}", host_stamp()), "host=other-machine", 1)).unwrap();
+    if std::env::var("KRHOM_COSTS_ANY_HOST").is_err() {
+        assert!(CostTable::load(&path).unwrap_err().to_string().contains("host stamp"));
+    }
+    std::fs::write(&path, text.replacen(&format!("alg={}", COST_ALG), "alg=old", 1)).unwrap();
+    assert!(CostTable::load(&path).unwrap_err().to_string().contains("solver stamp"));
+    std::fs::write(&path, "krhom-costs v1 fields=labels,fs,ft,unknowns,deg,secs,rss_mb,censored\n2,2 1 1 1 0 0.1 0.0 0\n").unwrap();
+    assert!(CostTable::load(&path).unwrap_err().to_string().contains("v1"));
+    eprintln!("[B9] cost table: censored = +inf, admission rules, stamps ({})", host_stamp());
+}
+
+/// review tests finding 4: a cache file with a stale header does not count as cached
+#[test]
+fn b9_has_hom_validates_header() {
+    let dir = cache_dir("b9_has_hom");
+    let lab = [2u8, 2];
+    let (a, b) = (Window::new(&lab, &[e(0, 1), f(0, 1)]), Window::new(&lab, &[f(0, 1), e(0, 1)]));
+    let lib: TmplLib<F> = TmplLib::new(Some(dir.clone()));
+    let path = lib.hom_cache_path(&a, &b, 0).unwrap();
+    std::fs::write(&path, "krhom-tmpl v1 field=F31 stale\nmaps 0\nend\n").unwrap();
+    assert!(!lib.has_hom(&a, &b, 0), "a stale cache file counted as cached");
+    let mut lib: TmplLib<F> = TmplLib::new(Some(dir.clone()));
+    let ids = lib.hom_basis(&a, &b, 0);
+    lib.save().unwrap();
+    assert!(lib.has_hom(&a, &b, 0));
+    let lib2: TmplLib<F> = TmplLib::new(Some(dir));
+    assert!(lib2.has_hom(&a, &b, 0), "a valid cache file not recognized");
+    eprintln!("[B9] has_hom: stale header rejected, valid file ({} maps) accepted", ids.len());
+}
+
+// ------------------------------------------------------------------ closure with e_p (review F4)
+
+fn ptrim(mut p: Vec<F>) -> Vec<F> {
+    while p.last().map_or(false, |c| c.is_zero()) {
+        p.pop();
+    }
+    p
+}
+fn pmul(a: &[F], b: &[F]) -> Vec<F> {
+    if a.is_empty() || b.is_empty() {
+        return vec![];
+    }
+    let mut r = vec![F::zero(); a.len() + b.len() - 1];
+    for (i, x) in a.iter().enumerate() {
+        for (j, y) in b.iter().enumerate() {
+            r[i + j].fma(x, y);
+        }
+    }
+    ptrim(r)
+}
+fn psub(a: &[F], b: &[F]) -> Vec<F> {
+    let n = a.len().max(b.len());
+    let mut r = vec![F::zero(); n];
+    for i in 0..n {
+        if i < a.len() {
+            r[i].add_assign(&a[i]);
+        }
+        if i < b.len() {
+            r[i].sub_assign(&b[i]);
+        }
+    }
+    ptrim(r)
+}
+fn pdivrem(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>) {
+    let b = ptrim(b.to_vec());
+    let mut r = ptrim(a.to_vec());
+    if r.len() < b.len() {
+        return (vec![], r);
+    }
+    let mut q = vec![F::zero(); r.len() - b.len() + 1];
+    let inv = b.last().unwrap().inv();
+    while r.len() >= b.len() && !r.is_empty() {
+        let k = r.len() - b.len();
+        let c = r.last().unwrap().mul(&inv);
+        q[k] = c.clone();
+        for (i, y) in b.iter().enumerate() {
+            let t = c.mul(y);
+            r[k + i].sub_assign(&t);
+        }
+        r = ptrim(r);
+    }
+    (ptrim(q), r)
+}
+fn pxgcd(a: &[F], b: &[F]) -> (Vec<F>, Vec<F>, Vec<F>) {
+    let (mut r0, mut r1) = (ptrim(a.to_vec()), ptrim(b.to_vec()));
+    let (mut s0, mut s1) = (vec![F::one()], vec![]);
+    let (mut t0, mut t1) = (vec![], vec![F::one()]);
+    while !r1.is_empty() {
+        let (q, r) = pdivrem(&r0, &r1);
+        let s2 = psub(&s0, &pmul(&q, &s1));
+        let t2 = psub(&t0, &pmul(&q, &t1));
+        r0 = r1;
+        r1 = r;
+        s0 = s1;
+        s1 = s2;
+        t0 = t1;
+        t1 = t2;
+    }
+    (r0, s0, t0)
+}
+
+/// e_p = P(a) from an exact End^0(L_p) basis, as an Arena map (SPEC §5.2 steps 2-5, the way M5
+/// is to compute it): a = Σ c_i E_i with top scalar 1 at rep(p), minimal polynomial of a at a
+/// point on the witness cosets of every table of char L_p, P = the idempotent polynomial of the
+/// (t-1)-primary component, e = Σ P_k a^k
+fn idempotent_from_end0(ar: &mut Arena<F>, s: &mut Schur, lam: &[u8], lp: ExprId, p: Tid, end0: &[MapId]) -> MapId {
+    let w = ar.expr_of(lp).rungs.clone();
+    let ch = s.ladder_char(&w);
+    let rep = |s: &Schur, t: Tid| -> u64 {
+        let tab = s.table(t).clone();
+        let cs = krhom::coset::CosetSpace::new(lam, &tab.cols());
+        cs.rank(&cs.rep(&tab))
+    };
+    let cos: Vec<u64> = ch.t.iter().map(|(t, _)| rep(s, *t)).collect();
+    let ctop = rep(s, p);
+    let pt = points::<F>(ar.k(), 0x1de3, 1, 0);
+    let chi = |ar: &Arena<F>, m: MapId| -> F { Eval::new(ar, pt[0].clone()).block(m, ctop).a[0].clone() };
+    let cs: Vec<F> = (0..end0.len()).map(|i| F::from_i64(1000 + 7919 * i as i64 % 100_003)).collect();
+    let a0 = ar.add(MapNode::Lin(cs.iter().cloned().zip(end0.iter().cloned()).collect()), "a0").unwrap();
+    let x = chi(ar, a0);
+    assert!(!x.is_zero(), "random End^0 element has top scalar 0");
+    let a = ar.add(MapNode::Lin(vec![(x.inv(), a0)]), "a").unwrap();
+    let id = ar.add(MapNode::Id(lp), "id").unwrap();
+    let mut pows: Vec<MapId> = vec![];
+    let mut rows: Vec<Vec<F>> = vec![];
+    let mut cur = id;
+    let minpoly: Vec<F> = loop {
+        let v = Eval::stacked(ar, &[cur], &pt, &cos).remove(0);
+        let n = v.len();
+        let mut r2 = rows.clone();
+        r2.push(v.clone());
+        if krhom::dense::rank(&r2, n) < r2.len() {
+            let m = rows.len();
+            let mat: Vec<Vec<F>> = (0..n).map(|r| (0..m).map(|i| rows[i][r].clone()).collect()).collect();
+            let lam_ = krhom::dense::solve(&mat, m, &v).expect("krylov");
+            let mut mp: Vec<F> = lam_.iter().map(|l| l.neg()).collect();
+            mp.push(F::one());
+            break mp;
+        }
+        rows.push(v);
+        pows.push(cur);
+        cur = ar.add(MapNode::Comp(a, cur), "a^k").unwrap();
+    };
+    let tm1 = vec![F::one().neg(), F::one()];
+    let (mut q, mut k) = (minpoly, 0);
+    loop {
+        let (qq, r) = pdivrem(&q, &tm1);
+        if r.is_empty() {
+            q = qq;
+            k += 1;
+        } else {
+            break;
+        }
+    }
+    assert!(k > 0, "1 is not an eigenvalue of a");
+    let mut pk = vec![F::one()];
+    for _ in 0..k {
+        pk = pmul(&pk, &tm1);
+    }
+    let (g, _, t) = pxgcd(&pk, &q);
+    assert_eq!(g.len(), 1);
+    let gi = g[0].inv();
+    let poly: Vec<F> = pmul(&t, &q).into_iter().map(|c| c.mul(&gi)).collect();
+    // powers beyond the Krylov ones
+    while pows.len() < poly.len() {
+        let last = *pows.last().unwrap();
+        pows.push(ar.add(MapNode::Comp(a, last), "a^k").unwrap());
+    }
+    let terms: Vec<(F, MapId)> = poly.iter().cloned().zip(pows.iter().cloned()).filter(|(c, _)| !c.is_zero()).collect();
+    ar.add(MapNode::Lin(terms), "e_p = P(a)").unwrap()
+}
+
+/// a type of (lambda, lambda) whose minimal-flow canonical ladder is decomposable
+fn decomposable_type(s: &mut Schur, lam: &[u8]) -> Option<(Tid, Vec<Rung>)> {
+    let order = s.canonical_basis(lam).order.clone();
+    for p in order {
+        let w = canonical(s, lam, p);
+        let ch = s.ladder_char(&w);
+        if s.expand(&ch).len() > 1 {
+            return Some((p, w));
+        }
+    }
+    None
+}
+
+/// review F4 / SPEC §4.3 item 7: closure through an idempotent e_p of a decomposable L_p. Without
+/// e_p it is Refused; with e_p = P(a) from an exact End^0 basis, Exact and Search certify n maps
+/// in the image of e_p, and their number and degrees are c_diag(b_p)
+fn closure_with_idempotent(lam: &[u8]) {
+    let mut s = Schur::new(lam);
+    let Some((p, w)) = decomposable_type(&mut s, lam) else { panic!("no decomposable minimal-flow ladder in {:?}", lam) };
+    let mut ar: Arena<F> = Arena::new(lam, TmplLib::new(Some(cache_dir(&format!("cl_ep_{:?}", lam)))));
+    let lp = ar.expr(ex(lam, &w));
+    let ch = s.ladder_char(&w);
+    let parts: Vec<String> = s.expand(&ch).iter().map(|(t, c)| format!("{}{{{}}}", s.table(*t).fmt(), c.fmt_ec())).collect();
+    let mut exact = Exact { max_label: 3, max_fibre_product: u64::MAX, max_unknowns: u64::MAX, ..Exact::default() };
+    let b = Budget::default();
+    for outs in [false, true] {
+        let m = HomProvider::<F>::closure(&mut exact, &mut ar, &mut s, lp, p, None, outs, &b).unwrap_err();
+        assert_eq!(m[0].kind, MissKind::Refused, "{:?}", m);
+        assert!(m[0].what.contains("e_p required"), "{}", m[0].what);
+    }
+    let t0 = Instant::now();
+    let (end0, _) = HomProvider::<F>::end0(&mut exact, &mut ar, &mut s, lp, &b).unwrap_or_else(|m| panic!("End^0: {:?}", m));
+    let e = idempotent_from_end0(&mut ar, &mut s, lam, lp, p, &end0);
+    check_idempotent(&ar, &mut s, lp, p, e, 77).unwrap_or_else(|m| panic!("e_p: {}", m));
+    let n = s.c_diag(p).at1() as usize;
+    let mut search = Search::tiers(0, 6);
+    for outs in [false, true] {
+        let (ms, _) = HomProvider::<F>::closure(&mut exact, &mut ar, &mut s, lp, p, Some(e), outs, &b).unwrap_or_else(|m| panic!("Exact closure with e_p ({}): {:?}", outs, m));
+        assert_eq!(ms.len(), n);
+        let (ms2, st) = search.closure(&mut ar, &mut s, lp, p, Some(e), outs, &b).unwrap_or_else(|m| panic!("Search closure with e_p ({}): {:?}\n{:?}", outs, m, search.trace));
+        assert_eq!(ms2.len(), n);
+        eprintln!("[closure e_p] {:?} {} ({}): {} maps, Search tiers {:?}", lam, s.table(p).fmt(), if outs { "outs" } else { "ins" }, n, st.tier_hits);
+    }
+    // a non-wrapped family of the right size is rejected by certify_closure
+    let r0 = ar.expr(ex(lam, &[]));
+    let (ms, _) = HomProvider::<F>::closure(&mut exact, &mut ar, &mut s, lp, p, Some(e), false, &b).unwrap();
+    let unwrapped: Vec<MapId> = ms.iter().map(|&m| match ar.node(m) { MapNode::Comp(_, g) => *g, _ => m }).collect();
+    let mut want: Vec<i32> = ms.iter().map(|&m| ar.info(m).deg).collect();
+    want.sort();
+    assert!(certify_closure(&ar, lam, r0, lp, Some(e), &unwrapped, &want, false, 5).is_err());
+    eprintln!("[closure e_p] {:?} type {} with char L_p = {}: End^0 dim {}, e_p checked, closure certified with e_p (n = {}) in {:.1}s", lam, s.table(p).fmt(), parts.join(" + "), end0.len(), n, t0.elapsed().as_secs_f64());
+}
+
+#[test]
+fn closure_with_idempotent_313() {
+    // (3,1,3): type 2,0,1/0,1,0/1,0,2 has minimal-flow ladder character b_p + b_r (48 flows)
+    closure_with_idempotent(&[3, 1, 3]);
 }
