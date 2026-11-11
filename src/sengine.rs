@@ -866,6 +866,10 @@ impl<F: Field> PEngine<F> {
             return Err(SErr::Usage("begin_step outside a crossing or with a step open".into()));
         }
         let s = self.cur_step.map_or(0, |s| s + 1);
+        if s == 0 {
+            // stage seconds = insertion + elimination (not the caller's construction of C ⊗ W)
+            self.t_stage = Instant::now();
+        }
         self.cur_step = Some(s);
         self.step_open = true;
         Ok(s)

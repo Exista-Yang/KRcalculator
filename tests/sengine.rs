@@ -441,7 +441,7 @@ fn library_trait_and_gram_at_point_on_11() {
 
 // ------------------------------------------------------------------ measured costs
 
-fn bench(seed: u64, cp: &Params, wp: &Params, streaming: bool) -> (PointScan<F>, f64) {
+fn bench(seed: u64, cp: &Params, wp: &Params, streaming: bool, twist: bool) -> (PointScan<F>, f64) {
     let mut o = opts(streaming, PivotOrder::Heap);
     o.check_d2 = false;
     let mut e = PEngine::<F>::new(Mode::Record, o);
@@ -449,18 +449,19 @@ fn bench(seed: u64, cp: &Params, wp: &Params, streaming: bool) -> (PointScan<F>,
     let w = synth::generate(seed + 1, wp, xval(1), &mut e.reg);
     e.load(c.cx).unwrap();
     let t = Instant::now();
-    synth::tensor_crossing(&mut e, &w.cx, Some((seed, xval(1)))).unwrap();
-    let s = t.elapsed().as_secs_f64();
+    synth::tensor_crossing(&mut e, &w.cx, if twist { Some((seed, xval(1))) } else { None }).unwrap();
+    let _ = t;
+    let s = e.stages[0].secs;
     (e.finish(0).unwrap().0, s)
 }
 
-fn cost_table(sizes: &[(usize, usize, usize, usize)]) {
+fn cost_table(sizes: &[(usize, usize, usize, usize)], twist: bool) {
     eprintln!("| C objs (min+2·cones) | W objs | inserted | final | pivots | peak entries | Σ S final | c_e final | zero-block frac | peak bytes full | peak bytes stream | secs full | secs stream | replay secs |");
     for &(cm, cc, wm, wc) in sizes {
         let cp = Params { ntypes: 4, max_cosets: 6, max_dim: 3, n_min: cm, n_cones: cc, hmax: 3, tmax: 5, density: 0.3, ..Default::default() };
         let wp = Params { ntypes: 3, max_cosets: 4, max_dim: 2, n_min: wm, n_cones: wc, hmax: 3, tmax: 3, density: 0.3, tid_base: 101, ..Default::default() };
-        let (f, sf) = bench(5, &cp, &wp, false);
-        let (s, ss) = bench(5, &cp, &wp, true);
+        let (f, sf) = bench(5, &cp, &wp, false, twist);
+        let (s, ss) = bench(5, &cp, &wp, true, twist);
         assert_eq!(f.objs.len(), s.objs.len());
         // replay cost at a second point
         let mut o = opts(true, PivotOrder::Heap);
@@ -470,8 +471,9 @@ fn cost_table(sizes: &[(usize, usize, usize, usize)]) {
         let w = synth::generate(6, &wp, xval(1), &mut e.reg);
         e.load(c.cx).unwrap();
         let t = Instant::now();
-        synth::tensor_crossing(&mut e, &w.cx, Some((5, xval(1)))).unwrap();
-        let sr = t.elapsed().as_secs_f64();
+        synth::tensor_crossing(&mut e, &w.cx, if twist { Some((5, xval(1))) } else { None }).unwrap();
+        let _ = t;
+        let sr = e.stages[0].secs;
         let st = &s.stages[0];
         eprintln!(
             "| {} | {} | {} | {} | {} | {} | {} | {:.2} | {:.2} | {} | {} | {:.3} | {:.3} | {:.3} |",
@@ -495,11 +497,12 @@ fn cost_table(sizes: &[(usize, usize, usize, usize)]) {
 
 #[test]
 fn measured_costs_small() {
-    cost_table(&[(6, 6, 3, 3), (10, 12, 4, 5)]);
+    cost_table(&[(6, 6, 3, 3), (10, 12, 4, 5)], true);
 }
 
 #[test]
 #[ignore]
 fn measured_costs_large() {
-    cost_table(&[(10, 20, 6, 8), (20, 40, 8, 12), (30, 60, 10, 16)]);
+    cost_table(&[(10, 20, 6, 8)], true);
+    cost_table(&[(20, 40, 8, 12), (30, 60, 10, 16), (40, 80, 12, 20)], false);
 }
