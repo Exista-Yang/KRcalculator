@@ -26,7 +26,8 @@ Beyond the brief (for the projection, and as M5b-run work already done):
 | level-n5 | F32b | 177 | 171 | 317 (357) | same 6 |
 | sample-random30-n6 (30 of the 286 level-6 provider pairs, seed 2026) | F31 | 30 | 24 | 130 (227) | 4 Refused, pairs 336, 323 Exhausted at 2x |
 | sample-random30-n6 | F32b | 30 | 24 | 130 (227) | same 6 |
-| level-n6 (full) | F31 / F32b | 377 | running at the time of writing; see "Level 6" below | | |
+| level-n6 (full) | F31 | 377 | 309 | 1 363 (2 173) of 1 592 (2 566) | 38 Refused, 23 Exhausted at 2x, 7 Memory at 2x (section "Level 6") |
+| level-n6 (full) | F32b | 377 | 309 | 1 363 (2 173) | same 68 |
 
 Every certified job was **replayed** with a provider that refuses every call (`libbuild replay`): all maps load from
 layer A and pass the same checks (form at rep(q) at 2 points, genuineness, ends, degrees, D14 scaling, Π∘Ι = id,
@@ -131,12 +132,43 @@ Exact bucket by call kind or use the exact-shape record first, as Search does.
   level 5 the 19 closure jobs cost about 2 min, but level-6 closure types reach 4 320-10 500 flows and Exact closure
   calls of 100-600 s each [M, calibration], so **0.5-1.5 h** [E from the measured calls] → **about 1-2 h wall per
   prime**, with a failure rate near the sample's 20 % of provider pairs (Refused and Exhausted) and several closure
-  types expected in the M4c list. The full level-6 runs started in this session (see below) replace this estimate.
+  types expected in the M4c list. The full level-6 runs of this session (section "Level 6") replace this estimate:
+  26 min per prime, 82 % of the jobs.
 - Memory: 2 GB per child suffices except for 2 of 50 measured large pairs (2.6-2.7 GB at 2x); 4 workers fit in 15 GB.
 
-## Level 6 (started at the end of this session)
+## Level 6 (full, both primes) [M]
 
-(Filled in below if the run finished in the session.)
+`libbuild run --n 6` (338 pairs + 39 closure jobs), table v3, 4 workers, wall 600 s, RSS 2 048 MB, then the
+G1(c) retries; afterwards one extra pass of the failures at `--rss 6500 --wall 1200` (no change).
+
+| prime | jobs | certified | pair targets (Σ mult) | closure types | wall | failures |
+|---|---|---|---|---|---|---|
+| F31 | 377 | 309 (82.0 %) | 1 363 (2 173) of 1 592 (2 566) | 27 of 39 | 1 536 s (+ the killed first attempt, see below) | 38 Refused, 11 pairs + 12 closure Exhausted at 2x, 7 Memory at 2x |
+| F32b | 377 | 309 (82.0 %) | 1 363 (2 173) | 27 of 39 | 1 587 s | identical list |
+
+Tiers of the 847 fresh provider calls: S2 398, S1 378, S3 46, Exact 10, S6 6, S1+S2 8, S6+Exact 1. Provider seconds
+per call: mean 1.4, p90 0.8-0.9, max 214-224 s; certified job wall mean 4.7-5.0 s, p90 8 s, max 227-235 s; peak RSS of a
+certified job 4.3-4.4 GB (2x). The failure lists of F31 and F32b are identical.
+
+Level-6 failures:
+- **Exhausted at 2x (M4c):** pairs 71, 159, 268, 322, 323, 325, 334, 336, 361, 368, 419; closure types 0,3,0/1,0,2/2,0,1,
+  1,0,2/2,0,1/0,3,0, 1,2,0/0,0,3/2,1,0, 0,0,3/3,0,0/0,3,0, 0,3,0/0,0,3/3,0,0, 1,1,1/1,1,1/1,1,1, 0,2,1/2,0,1/1,1,1,
+  1,0,2/1,2,0/1,1,1, 1,1,1/0,2,1/2,0,1, 1,1,1/1,0,2/1,2,0, 0,1,2/2,0,1/1,2,0, 0,2,1/1,0,2/2,1,0.
+- **Memory at 2x:** pairs 195, 196, 199, 444, 445, 460, 475. Several have tiny X (360-600 flows) but exceed 4 GB (and
+  5.5-6.8 GB at `--rss 6500`): the memory goes into a window or whole-ladder exact call, not into X. For M4c.
+- **Refused (admission):** pairs 24, 27, 37, 45, 66, 78, 82, 127, 137, 145, 163, 212, 219, 227, 273, 278, 281, 283, 285,
+  292, 293, 313, 319, 326, 332, 335, 376, 381, 383, 385, 392, 406, 410, 411, 418, 455, 458, 467.
+
+Incident: the first F31 level-6 run died after 39 jobs because the libbuild binary was rebuilt under it
+(`current_exe()` became "… (deleted)", spawn failed, the parent panicked). Fixed in 1274015 (the parent strips
+" (deleted)" and records a spawn failure as an outcome); the rerun resumed from layer A and the run file.
+
+Replay of level 6 (provider refusing every call, `--rss 4096`): 309 / 377 for both primes, the same jobs (206 s / 187 s);
+during it the kernel OOM-killed one child of an uncertified job (4 replay children of the Memory pairs at once).
+
+So the projection above is replaced by measurement: **level 6 costs about 26 min wall per prime** on this machine
+with a warm level-5 cache (pairs ≈ 25 min, closure jobs included), and certifies 82 % of the jobs (85.6 % of the pair
+targets, 84.7 % of Σ mult). What M5b-run has left is not compute but the 68 failures per prime, i.e. M4c.
 
 ## Persistence (data-gl6)
 
