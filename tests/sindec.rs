@@ -707,10 +707,17 @@ fn d3_33_all_pairs_and_decdata_timing() {
 #[ignore]
 fn gate_plan_333() {
     let mut s = Schur::new(&[3, 3, 3]);
-    for n in [4u8, 5, 6] {
+    for n in [Some(4u8), Some(5), Some(6), None] {
         let t0 = Instant::now();
-        let p = pruned_plan(&mut s, Some(n));
+        let p = pruned_plan(&mut s, n);
         eprintln!("[gate] {} ({:.1}s)", p.summary(), t0.elapsed().as_secs_f64());
+        if n.is_none() {
+            // R2 §1: 494 pairs (429 non-identity), 3 151 targets over the non-identity pairs
+            let ni = p.pairs.iter().filter(|q| !q.identity).count();
+            let tg: usize = p.pairs.iter().filter(|q| !q.identity).map(|q| q.kept.len()).sum();
+            eprintln!("[gate] unpruned: {} non-identity pairs, {} targets", ni, tg);
+            assert_eq!((p.pairs.len(), ni, tg), (494, 429, 3151));
+        }
     }
     for c in decomposable_ladders(&mut s) {
         eprintln!("[gate] decomposable: block {:?} type {} ladder {} flows {} kill level {} char {:?}", c.mu, c.table, c.ladder, c.flows, c.kill_level, c.char_expansion);

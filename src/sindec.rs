@@ -682,7 +682,14 @@ impl<F: Field> SIndec<F> {
     fn target_pairs(&mut self, p: Tid, rs: &[Rung], t: &PairTarget) -> Result<(Vec<MapId>, Vec<MapId>), DecErr> {
         let key = self.pairs_key(p, rs, t);
         if let Some(v) = self.layer_a_load(&key, 2 * t.mult)? {
-            return Ok((v[..t.mult].to_vec(), v[t.mult..].to_vec()));
+            let (ins, outs) = (v[..t.mult].to_vec(), v[t.mult..].to_vec());
+            // loaded maps pass the same output checks as fresh ones (ends, degrees, D14 scaling)
+            let tc = Instant::now();
+            let (n, z) = dechom_postcheck(&self.ar, &self.schur, t, &ins, &outs, self.opts.seed).map_err(|e| DecErr::Cache(format!("loaded target rejected: {}", e)))?;
+            self.stats.scaling_entries += n;
+            self.stats.scaling_zero += z;
+            self.stats.check_secs += tc.elapsed().as_secs_f64();
+            return Ok((ins, outs));
         }
         let b = self.opts.budget.clone();
         let r = DecHom::pairs(&mut *self.prov, &mut self.ar, &mut self.schur, t, &b);
@@ -690,6 +697,10 @@ impl<F: Field> SIndec<F> {
         match r {
             Ok(o) => {
                 self.stats.provider_secs += o.secs;
+                // DecHom ran the output checks; repeat the scaling check at M5's own point for the counts
+                let (n, z) = dechom_postcheck(&self.ar, &self.schur, t, &o.maps_in, &o.maps_out, self.opts.seed).map_err(DecErr::Check)?;
+                self.stats.scaling_entries += n;
+                self.stats.scaling_zero += z;
                 self.target_log.push((self.tfmt(p), self.tfmt(t.q), t.s, t.mult, o.secs));
                 let mut all = o.maps_in.clone();
                 all.extend(&o.maps_out);
