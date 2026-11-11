@@ -131,3 +131,12 @@ key, otherwise an unknown-count cap); refused windows are skipped, never waited 
   unknowns in 0.09 s). The Exact backend keeps the spec rule (label rule or bucket <= 10 s; a
   bucket above 10 s vetoes the label rule).
 - **Closure of the empty canonical ladder** (the identity type) is the identity map (S0).
+- **Cloud session 2026-11-11** (see HANDOFF_M4b.md): `sbim::hom_space` solves its equations with
+  `linsys::kernel_lazy` (dense-accumulator elimination, verified early stop; same reduced kernel
+  basis as before, so cached templates stay valid), 100-1000x faster on the G1 windows. Caps
+  re-measured with it: Exact unknown cap 5 000 -> 40 000; Search window caps 1 600 fibres /
+  2 500 unknowns -> 6 400 / 40 000 (`Search::max_window_fibre`, `max_window_unknowns`).
+  `certify_full` retries at the full W_lambda-orbits (M+2, then 2(M+2) points) when the planned
+  detecting set gives rank < dim. Cost table recalibrated on the cloud box:
+  tests/data/homprov/costs_cloud.txt (costs_m4b.txt holds old-solver timings, e.g. censored
+  60 s records that veto windows now taking 1 s).
