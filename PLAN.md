@@ -421,3 +421,16 @@ stay small; this is the Bar-Natan principle of closing as early as possible.
   (weight vs box-degree convention still to be checked for weights 37-40).
 - N = 5 on (3,3) still needs a 5401 s Hom between kept types; N = 6 prunes nothing on 2 strands:
   M4b remains the critical path. Pruning must be built into M5/M6a (decompositions drop killed summands).
+
+### First 3-colored gl_6 results (2026-11-11, cloud run H on colored-m4b 8ad4ac6)
+
+- M4b merged into dev (d49ee31): certified Hom provider, gate G1(a) 480/480; sbim::hom_space now uses
+  linsys::kernel_lazy (exact, same reduced kernel basis; 93 s -> 0.2 s cases). Independent read-only review:
+  no defect giving a wrong result; hardening items in progress on colored-m4b.
+- With the new solver the exact 2-strand engine (xscan) computes the 3-colored (wedge^3) trefoil at
+  gl_3..gl_6 in ~70 s / 0.6 GB: ranks 1, 10, 46, 136, bigraded equal to Wang's formula at every N, both primes;
+  reduced trefoil at gl_6 consistent ([6 choose 3] chi); pruned = unpruned at N <= 5. 3-colored Hopf link
+  ranks 1, 16, 100, 400 = closed formula.
+- T(2,5), T(2,7), T(2,9): out of memory at crossing 5 (13.6 GB) in the unpruned exact scan; suspected cause
+  the dense final kernel of kernel_lazy (review item 8) or the exact bimodule maps of xengine. Next: fix memory,
+  then T(2,n) up to 9 (Wang ranks 396, 848, 1540), then M5/M6a for 3 strands.
