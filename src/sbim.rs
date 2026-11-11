@@ -225,6 +225,130 @@ pub fn hom_space<F: Field>(b: &SBim<F>, bp: &SBim<F>, d: i32, mc: &mut MonoCache
     }
     // equations: for each top op pair (T, T'): T' Φ - Φ T = 0.
     // Key: (op index, row beta', col beta, mono) -> sparse row over unknowns
+    let mut all_rows: Vec<SpVec<F>> = vec![];
+    // group unknowns by (row, col)
+    let mut by_entry: HashMap<(u32, u32), Vec<(Mono, u32)>> = HashMap::new();
+    for (k, &(r, c, m)) in unk.iter().enumerate() {
+        by_entry.entry((r, c)).or_default().push((m, k as u32));
+    }
+    // by column (for T'Φ): unknowns in column c
+    let mut by_col: HashMap<u32, Vec<(u32, Mono, u32)>> = HashMap::new();
+    let mut by_row: HashMap<u32, Vec<(u32, Mono, u32)>> = HashMap::new();
+    for (k, &(r, c, m)) in unk.iter().enumerate() {
+        by_col.entry(c).or_default().push((r, m, k as u32));
+        by_row.entry(r).or_default().push((c, m, k as u32));
+    }
+    let tp_t: Vec<(PMat<F>, PMat<F>)> = b
+        .top
+        .iter()
+        .zip(bp.top.iter())
+        .flat_map(|(v, vp)| v.iter().zip(vp.iter()).map(|(t, tp)| (t.transpose(), tp.clone())))
+        .collect();
+    for (tt, tp) in &tp_t {
+        // equations indexed by (beta', beta, mono)
+        let mut eqs: HashMap<(u32, u32, Mono), Vec<(u32, F)>> = HashMap::new();
+        // T'Φ: (T'Φ)[β'][β] = Σ_γ' T'[β'][γ'] Φ[γ'][β]
+        for (gp, col) in tp.cols.iter().enumerate() {
+            // T'[β'][γ'] entries are in column γ'
+            for (bep, poly) in col {
+                // all unknowns Φ[γ'][β] for any β
+                if let Some(list) = by_row.get(&(gp as u32)) {
+                    for &(be, m, k) in list {
+                        for (mm, c) in &poly.t {
+                            eqs.entry((*bep, be, m + mm)).or_default().push((k, c.clone()));
+                        }
+                    }
+                }
+            }
+        }
+        // ΦT: (ΦT)[β'][β] = Σ_γ Φ[β'][γ] T[γ][β]; tt = T^T so tt.cols[γ] lists (β, T[γ][β])
+        for (g, col) in tt.cols.iter().enumerate() {
+            for (be, poly) in col {
+                if let Some(list) = by_col.get(&(g as u32)) {
+                    for &(bep, m, k) in list {
+                        for (mm, c) in &poly.t {
+                            eqs.entry((bep, *be, m + mm)).or_default().push((k, c.neg()));
+                        }
+                    }
+                }
+            }
+        }
+        for (_, mut row) in eqs {
+            row.sort_unstable_by_key(|e| e.0);
+            let mut merged: SpVec<F> = Vec::with_capacity(row.len());
+            for (k, c) in row {
+                if let Some(last) = merged.last_mut() {
+                    if last.0 == k {
+                        last.1.add_assign(&c);
+                        continue;
+                    }
+                }
+                merged.push((k, c));
+            }
+            merged.retain(|e| !e.1.is_zero());
+            if !merged.is_empty() {
+                all_rows.push(merged);
+            }
+        }
+    }
+    let _ = by_entry;
+    // equations in a deterministic order (the kernel basis does not depend on it)
+    all_rows.sort_unstable_by(|x, y| x.len().cmp(&y.len()).then_with(|| x.iter().map(|e| e.0).cmp(y.iter().map(|e| e.0))));
+    let ker = crate::linsys::kernel_lazy(unk.len(), &all_rows);
+    ker.into_iter()
+        .map(|v| {
+            let mut cols: Vec<HashMap<u32, Vec<(Mono, F)>>> = vec![HashMap::new(); f];
+            for (k, x) in v {
+                let (r, c, m) = unk[k as usize];
+                cols[c as usize].entry(r).or_default().push((m, x));
+            }
+            let cols = cols
+                .into_iter()
+                .map(|h| {
+                    let mut v: PVec<F> = h
+                        .into_iter()
+                        .map(|(r, mut t)| {
+                            t.sort_unstable_by_key(|e| e.0);
+                            (r, Poly { t })
+                        })
+                        .collect();
+                    v.sort_unstable_by_key(|e| e.0);
+                    v
+                })
+                .collect();
+            PMat { nrows: fp, ncols: f, cols }
+        })
+        .collect()
+}
+
+/// Reference implementation of `hom_space` (incremental `Echelon` over every equation); kept
+/// for the equality test of the lazy solver.
+pub fn hom_space_reference<F: Field>(b: &SBim<F>, bp: &SBim<F>, d: i32, mc: &mut MonoCache) -> Vec<PMat<F>> {
+    assert_eq!(b.top_labels, bp.top_labels, "hom_space: top labels differ");
+    assert_eq!(b.bot_labels, bp.bot_labels, "hom_space: bottom labels differ");
+    let f = b.fsize();
+    let fp = bp.fsize();
+    // unknowns
+    let mut unk: Vec<(u32, u32, Mono)> = vec![]; // (row beta', col beta, mono)
+    let mut uidx: HashMap<(u32, u32, Mono), u32> = HashMap::new();
+    for be in 0..f {
+        for bep in 0..fp {
+            let dd = d + b.fdeg[be] - bp.fdeg[bep];
+            if dd < 0 {
+                continue;
+            }
+            let (ms, _) = mc.get(dd).clone();
+            for m in ms {
+                uidx.insert((bep as u32, be as u32, m), unk.len() as u32);
+                unk.push((bep as u32, be as u32, m));
+            }
+        }
+    }
+    if unk.is_empty() {
+        return vec![];
+    }
+    // equations: for each top op pair (T, T'): T' Φ - Φ T = 0.
+    // Key: (op index, row beta', col beta, mono) -> sparse row over unknowns
     let mut ech = Echelon::<F>::new(unk.len());
     // group unknowns by (row, col)
     let mut by_entry: HashMap<(u32, u32), Vec<(Mono, u32)>> = HashMap::new();

@@ -185,3 +185,148 @@ impl<F: Field> RankEchelon<F> {
         }
     }
 }
+
+/// Kernel of the linear map whose rows are `eqs` (columns 0..ncols): the reduced basis, one
+/// vector per free column (1 there, 0 at the other free columns, sorted), i.e. exactly
+/// `Echelon::kernel` after inserting every row (the reduced kernel basis is determined by the
+/// row space and the column order).
+///
+/// Rows are reduced with a dense accumulator. After `run` consecutive redundant rows, when the
+/// current kernel has dimension <= `KER_CHECK_MAX`, the kernel of the rows inserted so far is
+/// evaluated on every remaining row; violated rows are inserted and the check repeats; when no
+/// remaining row is violated the scan stops. This is exact: kernel(all) ⊆ kernel(inserted)
+/// always, and a basis of kernel(inserted) annihilating every row gives the reverse inclusion.
+pub fn kernel_lazy<F: Field>(ncols: usize, eqs: &[SpVec<F>]) -> Vec<SpVec<F>> {
+    const KER_CHECK_MAX: usize = 128;
+    let mut piv: Vec<Option<Vec<(u32, F)>>> = vec![None; ncols];
+    let mut acc: Vec<F> = vec![F::zero(); ncols.max(1)];
+    let mut rank = 0usize;
+    let mut insert = |v: &SpVec<F>, piv: &mut Vec<Option<Vec<(u32, F)>>>, acc: &mut Vec<F>| -> bool {
+        if v.is_empty() {
+            return false;
+        }
+        let mut lo = usize::MAX;
+        let mut hi = 0usize;
+        for (i, x) in v {
+            let i = *i as usize;
+            acc[i].add_assign(x);
+            lo = lo.min(i);
+            hi = hi.max(i);
+        }
+        let mut lead: Option<usize> = None;
+        let mut col = lo;
+        while col <= hi {
+            if !acc[col].is_zero() {
+                if let Some(p) = &piv[col] {
+                    let c = acc[col].neg();
+                    acc[col] = F::zero();
+                    for (j, y) in p {
+                        let j = *j as usize;
+                        acc[j].fma(&c, y);
+                        if j > hi {
+                            hi = j;
+                        }
+                    }
+                } else if lead.is_none() {
+                    lead = Some(col);
+                }
+            }
+            col += 1;
+        }
+        let r = match lead {
+            None => false,
+            Some(l) => {
+                let inv = acc[l].inv();
+                let mut row = vec![];
+                for c in (l + 1)..=hi {
+                    if !acc[c].is_zero() {
+                        row.push((c as u32, acc[c].mul(&inv)));
+                    }
+                }
+                piv[l] = Some(row);
+                true
+            }
+        };
+        for c in lo..=hi {
+            acc[c] = F::zero();
+        }
+        r
+    };
+    // dense kernel basis of the current pivot rows (back substitution)
+    let kernel_dense = |piv: &Vec<Option<Vec<(u32, F)>>>| -> Vec<(usize, Vec<F>)> {
+        let mut out = vec![];
+        for f in 0..ncols {
+            if piv[f].is_some() {
+                continue;
+            }
+            let mut x = vec![F::zero(); ncols];
+            x[f] = F::one();
+            for p in (0..f).rev() {
+                if let Some(row) = &piv[p] {
+                    let mut s = F::zero();
+                    for (j, y) in row {
+                        let xj = &x[*j as usize];
+                        if !xj.is_zero() {
+                            s.fma(y, xj);
+                        }
+                    }
+                    x[p] = s.neg();
+                }
+            }
+            out.push((f, x));
+        }
+        out
+    };
+    let violated = |v: &SpVec<F>, ker: &[(usize, Vec<F>)]| -> bool {
+        ker.iter().any(|(_, x)| {
+            let mut s = F::zero();
+            for (j, y) in v {
+                s.fma(y, &x[*j as usize]);
+            }
+            !s.is_zero()
+        })
+    };
+    let mut done = vec![false; eqs.len()];
+    let mut run_max = 64usize;
+    let mut run = 0usize;
+    let mut i = 0usize;
+    let mut finished_early: Option<Vec<(usize, Vec<F>)>> = None;
+    while i < eqs.len() {
+        if !done[i] {
+            if insert(&eqs[i], &mut piv, &mut acc) {
+                rank += 1;
+                run = 0;
+            } else {
+                run += 1;
+            }
+            done[i] = true;
+        }
+        i += 1;
+        if run >= run_max && ncols - rank <= KER_CHECK_MAX && i < eqs.len() {
+            run = 0;
+            loop {
+                let ker = kernel_dense(&piv);
+                let bad: Vec<usize> = (i..eqs.len()).filter(|&j| !done[j] && violated(&eqs[j], &ker)).collect();
+                if bad.is_empty() {
+                    finished_early = Some(ker);
+                    break;
+                }
+                for j in bad {
+                    if insert(&eqs[j], &mut piv, &mut acc) {
+                        rank += 1;
+                    }
+                    done[j] = true;
+                }
+            }
+            if finished_early.is_some() {
+                break;
+            }
+            run_max *= 2;
+        }
+    }
+    let _ = rank;
+    let ker = finished_early.unwrap_or_else(|| kernel_dense(&piv));
+    ker.into_iter()
+        .map(|(_, x)| x.into_iter().enumerate().filter(|(_, v)| !v.is_zero()).map(|(j, v)| (j as u32, v)).collect())
+        .collect()
+}

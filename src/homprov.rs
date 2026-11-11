@@ -639,7 +639,36 @@ pub fn certify_full_plan<F: Field>(ar: &Arena<F>, s: &mut Schur, src: ExprId, tg
     let pts = points::<F>(ar.k(), seed, plan.npoints + 2, 0);
     let r = stacked_rank(ar, ms, &pts[..plan.npoints], &plan.cosets);
     if r != plan.dim {
-        return Err(format!("certify_full: stacked rank {} < dim {} at {} points ({} detecting cosets, {})", r, plan.dim, plan.npoints, plan.cosets.len(), plan.kind));
+        // Deterministic fallback (a too-small detecting set only causes false negatives): the
+        // full W_lambda-orbits of the common tables, with M + 2 points and then twice as many.
+        // Stacked rank = |S| at any coset set and points proves independence, so the fallback
+        // cannot certify a dependent family. Measured: hom60 case (1,3) F0(1)E0(3)F0(2) ->
+        // E0(3)F0(2)F0(1) degree 6, witness rank 141 < 145 at 18 points.
+        let first = format!("stacked rank {} < dim {} at {} points ({} detecting cosets, {})", r, plan.dim, plan.npoints, plan.cosets.len(), plan.kind);
+        let (ws, wt) = (word(ar, src), word(ar, tgt));
+        let lam = ar.lam().to_vec();
+        let (chs, cht) = (s.ladder_char(&ws), s.ladder_char(&wt));
+        let ts = common_tables(&chs, &cht);
+        let mu = top_of(&lam, &ws);
+        let cs = CosetSpace::new(&lam, &mu);
+        let mut cos: Vec<u64> = vec![];
+        for &(t, _, _) in &ts {
+            cos.extend(cs.cosets_of(s.table(t)));
+        }
+        cos.sort_unstable();
+        cos.dedup();
+        let orb_rows: usize = ts.iter().map(|&(t, a, b)| (a * b) as usize * s.ncosets_of(t) as usize).sum();
+        let np0 = (plan.m + 2).max(plan.dim.div_ceil(orb_rows.max(1)) + 2);
+        for (k, np) in [np0, 2 * np0].into_iter().enumerate() {
+            let pts = points::<F>(ar.k(), seed ^ 0x0b17_0000 ^ k as u64, np + 2, 0);
+            if stacked_rank(ar, ms, &pts[..np], &cos) == plan.dim {
+                if stacked_rank(ar, ms, &pts, &cos) != plan.dim {
+                    return Err(format!("certify_full: residual rank != {} (orbit fallback)", plan.dim));
+                }
+                return Ok(DetectPlan { cosets: cos, npoints: np, kind: if k == 0 { "orbits-fallback" } else { "orbits-fallback-2x" }, dim: plan.dim, m: plan.m, rows_per_point: orb_rows });
+            }
+        }
+        return Err(format!("certify_full: {}; orbit fallback ({} cosets, {} and {} points) also below dim", first, cos.len(), np0, 2 * np0));
     }
     // residual: the 2 fresh points appended (columns only; the rank cannot drop, kept as specified)
     let r2 = stacked_rank(ar, ms, &pts, &plan.cosets);
@@ -919,10 +948,17 @@ impl CostTable {
 fn exact_call<F: Field>(ar: &mut Arena<F>, labels: &[u8], a: &[Rung], b: &[Rung], d: i32, cnt: (&mut usize, &mut f64)) -> Result<Vec<TmplId>, String> {
     let before = ar.lib_ref().stats().computed;
     let t0 = Instant::now();
+    let trace = std::env::var("KRHOM_TRACE").is_ok() && !ar.lib_ref().has_hom(&Window::new(labels, a), &Window::new(labels, b), d);
+    if trace {
+        eprintln!("[exact] start {:?} [{}] -> [{}] degree {} (fibres {} x {}, unknowns {})", labels, wstr(a), wstr(b), d, crate::schur::flows(labels, a), crate::schur::flows(labels, b), hom_unknowns(labels, a, b, d));
+    }
     let ids = ar.lib().try_hom_basis_cap(&Window::new(labels, a), &Window::new(labels, b), d, u128::MAX)?;
     if ar.lib_ref().stats().computed > before {
         *cnt.0 += 1;
         *cnt.1 += elapsed(&t0);
+    }
+    if trace {
+        eprintln!("[exact] done {:.2}s dim {}", elapsed(&t0), ids.len());
     }
     Ok(ids)
 }
