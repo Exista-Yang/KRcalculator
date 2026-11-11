@@ -184,14 +184,25 @@ pub struct Point<F> {
     pub x: Vec<F>,
 }
 
+/// The 32-byte RNG seed of point `id` of a point set: (seed, id) written into disjoint bytes,
+/// so distinct (seed, id) pairs never share a generator (no XOR aliasing; M4a review finding g).
+pub fn point_seed(seed: u64, id: u32) -> [u8; 32] {
+    let mut s = [0u8; 32];
+    s[..8].copy_from_slice(&seed.to_le_bytes());
+    s[8..12].copy_from_slice(&id.to_le_bytes());
+    s[12..20].copy_from_slice(b"krhompts");
+    s
+}
+
 /// `count` points with ids first_id.., each with K pairwise distinct coordinates drawn uniformly
-/// from 1..2·10^9 (redrawn on a collision); point `id` depends only on (seed, id).
+/// from 1..2·10^9 (redrawn on a collision); point `id` depends only on (seed, id), injectively
+/// (`point_seed`).
 pub fn points<F: Field>(k: usize, seed: u64, count: usize, first_id: u32) -> Vec<Point<F>> {
     use rand::{rngs::StdRng, Rng, SeedableRng};
     (0..count)
         .map(|i| {
             let id = first_id + i as u32;
-            let mut rng = StdRng::seed_from_u64(seed ^ (id as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+            let mut rng = StdRng::from_seed(point_seed(seed, id));
             let mut x: Vec<F> = Vec::with_capacity(k);
             while x.len() < k {
                 let v = F::from_i64(rng.gen_range(1..2_000_000_000i64));
@@ -501,6 +512,8 @@ pub struct Arena<F: Field> {
     win_ids: HashMap<Expr, u32>,
     lib: TmplLib<F>,
     consts: HashMap<(ElemKind, (u8, u8)), F>,
+    /// Assoc constants per window pair (src window, tgt window) (M4a review finding e)
+    assoc: HashMap<(Expr, Expr), F>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -554,6 +567,7 @@ impl<F: Field> Arena<F> {
             win_ids: HashMap::new(),
             lib,
             consts: HashMap::new(),
+            assoc: HashMap::new(),
         }
     }
     pub fn lam(&self) -> &[u8] {
@@ -692,9 +706,15 @@ impl<F: Field> Arena<F> {
                             a.expr.rungs, b.expr.rungs
                         ));
                     }
+                    // degree 0 needs equal normalization shifts (M4a review finding e)
+                    if a.expr.shift() != b.expr.shift() {
+                        return Err(format!("Assoc: window shifts differ ({} vs {}) for {:?} -> {:?}", a.expr.shift(), b.expr.shift(), a.expr.rungs, b.expr.rungs));
+                    }
                 }
-                wrec = Some(WinRec { at: *at as u32, first: sp.first as u32, w: w as u32, la: la as u32, lb: lb as u32, ws, wt, elem: Some((*kind, sp.key)) });
-                (*src, *tgt, sp.deg, self.consts.contains_key(&(*kind, sp.key)))
+                let rec = WinRec { at: *at as u32, first: sp.first as u32, w: w as u32, la: la as u32, lb: lb as u32, ws, wt, elem: Some((*kind, sp.key)) };
+                let cert = self.elem_rec_certified(&rec);
+                wrec = Some(rec);
+                (*src, *tgt, sp.deg, cert)
             }
             MapNode::Local { src, tgt, at, first, tmpl } => {
                 self.check_expr(*src)?;
@@ -711,7 +731,7 @@ impl<F: Field> Arena<F> {
                 let wsi = self.win_id(ws);
                 let wti = self.win_id(wt);
                 wrec = Some(WinRec { at: *at as u32, first: *first as u32, w: w as u32, la: la as u32, lb: lb as u32, ws: wsi, wt: wti, elem: None });
-                (*src, *tgt, deg, true)
+                (*src, *tgt, deg, self.lib.is_certified(*tmpl))
             }
             MapNode::Comp(g, f) => {
                 self.check_map(*g)?;
@@ -766,22 +786,72 @@ impl<F: Field> Arena<F> {
         self.wrec.push(wrec);
         Ok((self.nodes.len() - 1) as MapId)
     }
+    /// `MapInfo::certified` is kept consistent with `assert_genuine` (M4a review finding d): it is
+    /// computed at `add` and recomputed for every node whenever a constant or a template is
+    /// certified later (`certify_elem`, `certify_assoc`, `certify_template`). Certification only
+    /// turns leaves from uncertified to certified, so a template certified directly through
+    /// `lib()` (bypassing `certify_template`) can only leave the flag conservatively false.
+    /// Decisions about genuineness use `assert_genuine`, which walks the DAG.
     pub fn info(&self, m: MapId) -> &MapInfo {
         &self.infos[m as usize]
     }
-    /// records a validated constant (A7, A8)
+    /// is the closed form of a window record certified (E2/E3 by (kind, labels); Assoc per window)?
+    fn elem_rec_certified(&self, w: &WinRec) -> bool {
+        match w.elem {
+            Some((ElemKind::Assoc, _)) => self.assoc.contains_key(&(self.wins[w.ws as usize].expr.clone(), self.wins[w.wt as usize].expr.clone())),
+            Some((kind, lab)) => self.consts.contains_key(&(kind, lab)),
+            None => true,
+        }
+    }
+    /// recompute every node's certified flag (children precede parents)
+    fn refresh_certified(&mut self) {
+        for m in 0..self.nodes.len() {
+            let c = match &self.nodes[m] {
+                MapNode::Id(_) | MapNode::Dot { .. } => true,
+                MapNode::Elem { .. } => self.wrec[m].map(|w| self.elem_rec_certified(&w)).unwrap_or(false),
+                MapNode::Local { tmpl, .. } => self.lib.is_certified(*tmpl),
+                MapNode::Comp(g, f) => self.infos[*g as usize].certified && self.infos[*f as usize].certified,
+                MapNode::Lin(t) => t.iter().all(|(_, x)| self.infos[*x as usize].certified),
+                MapNode::Kron(f, _) => self.infos[*f as usize].certified,
+            };
+            self.infos[m].certified = c;
+        }
+    }
+    /// records a validated constant (A7). Assoc constants are per window: use `certify_assoc`.
     pub fn certify_elem(&mut self, kind: ElemKind, labels: (u8, u8), scalar: F) {
+        assert!(kind != ElemKind::Assoc, "certify_elem: Assoc constants are recorded per window pair (certify_assoc)");
         self.consts.insert((kind, labels), scalar);
+        self.refresh_certified();
     }
     pub fn elem_certified(&self, kind: ElemKind, labels: (u8, u8)) -> Option<F> {
         self.consts.get(&(kind, labels)).cloned()
     }
-    /// (kind, labels key) of an Elem node
+    /// records a validated Assoc constant for one window pair (window expressions as in
+    /// `elem_windows`) (A8)
+    pub fn certify_assoc(&mut self, ws: &Expr, wt: &Expr, scalar: F) {
+        self.assoc.insert((ws.clone(), wt.clone()), scalar);
+        self.refresh_certified();
+    }
+    pub fn assoc_certified(&self, ws: &Expr, wt: &Expr) -> Option<F> {
+        self.assoc.get(&(ws.clone(), wt.clone())).cloned()
+    }
+    /// certify an added template of the library (`TmplLib::certify_added`) and refresh the flags
+    pub fn certify_template(&mut self, t: TmplId, seed: u64) -> Result<crate::tmpl::CertReport, String> {
+        let r = self.lib.certify_added(t, seed)?;
+        self.refresh_certified();
+        Ok(r)
+    }
+    /// (kind, labels key) of an Elem node (Assoc: (K_w, w), informational only)
     pub fn elem_key(&self, m: MapId) -> Option<(ElemKind, (u8, u8))> {
         self.wrec[m as usize].and_then(|w| w.elem)
     }
-    /// M4a form of M4b's assert_genuine: Err naming the first Elem leaf whose (kind, labels) has no
-    /// recorded constant (checked now, not at add time)
+    /// window expressions (src window, tgt window) of a Local or Elem node
+    pub fn elem_windows(&self, m: MapId) -> Option<(&Expr, &Expr)> {
+        self.wrec[m as usize].map(|w| (&self.wins[w.ws as usize].expr, &self.wins[w.wt as usize].expr))
+    }
+    /// M4a form of M4b's assert_genuine: Err naming the first leaf that is not certified (checked
+    /// now, not at add time): an Elem whose (kind, labels) (Assoc: window pair) has no recorded
+    /// constant, or a Local whose template is an uncertified added template
     pub fn assert_genuine(&self, m: MapId) -> Result<(), String> {
         let mut stack = vec![m];
         let mut seen = std::collections::HashSet::new();
@@ -789,10 +859,26 @@ impl<F: Field> Arena<F> {
             if !seen.insert(x) {
                 continue;
             }
-            if let Some((kind, lab)) = self.elem_key(x) {
-                if !self.consts.contains_key(&(kind, lab)) {
-                    return Err(format!("map {} is not genuine: closed form {:?} with labels {:?} has no recorded constant (node {})", m, kind, lab, x));
+            match &self.nodes[x as usize] {
+                MapNode::Elem { .. } => {
+                    let w = self.wrec[x as usize].ok_or_else(|| format!("map {}: Elem node {} without window record", m, x))?;
+                    if !self.elem_rec_certified(&w) {
+                        let (kind, lab) = w.elem.unwrap();
+                        if kind == ElemKind::Assoc {
+                            return Err(format!(
+                                "map {} is not genuine: closed form Assoc on the window {:?} -> {:?} has no recorded constant (node {})",
+                                m, self.wins[w.ws as usize].expr.rungs, self.wins[w.wt as usize].expr.rungs, x
+                            ));
+                        }
+                        return Err(format!("map {} is not genuine: closed form {:?} with labels {:?} has no recorded constant (node {})", m, kind, lab, x));
+                    }
                 }
+                MapNode::Local { tmpl, .. } => {
+                    if !self.lib.is_certified(*tmpl) {
+                        return Err(format!("map {} is not genuine: template {} is an uncertified added template (node {})", m, tmpl, x));
+                    }
+                }
+                _ => {}
             }
             stack.extend(children(&self.nodes[x as usize]));
         }

@@ -33,6 +33,7 @@ pub mod coset;
 pub mod sexpr;
 pub mod smap;
 pub mod tmpl;
+pub mod homprov;
 
 /// Number of worker threads: the environment variable KRHOM_THREADS if set
 /// (useful to keep a shared machine responsive), otherwise all available cores.
