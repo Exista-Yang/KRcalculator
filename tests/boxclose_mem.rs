@@ -172,7 +172,16 @@ fn e_staged_rank_stage_41_size_reduced_within_estimate() {
 }
 
 #[test]
-#[ignore = "MBOX (e): unreduced N = 6 at 4_1 size (dim A = 8000; heavy)"]
-fn e_staged_rank_stage_41_size_unreduced_within_estimate() {
-    run_case(None, 27, 14000);
+#[ignore = "MBOX (e): unreduced N = 6 at 4_1 size (dim A = 8000)"]
+fn e_staged_rank_stage_41_size_unreduced_refused_before_allocating() {
+    // Uncapped unreduced N = 6 at 4_1 size: the dense-charge model asks for terabytes (state
+    // spaces up to 54 x 777 rows per degree), so the stage must refuse with Err before it
+    // allocates (open problem: MOY caps from T0 plus a sparse fill model, R3 O4).
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let (data, pairing, _) = synthetic_41(41, 3, 27);
+    let est = staged_mem_estimate(&data, &pairing, 6, None, None);
+    let opts = StagedOpts { cap: Some(14000u128 << 20), rank_cap: None };
+    let (r, peak) = measure(|| try_close_staged(&data, &pairing, 6, None, &opts));
+    eprintln!("(e) unreduced 4_1 size: estimate {:.0} MB -> {:?}; peak before refusal {:.1} MB", est as f64 / 1048576.0, r.as_ref().err(), peak as f64 / 1048576.0);
+    assert!(r.is_err() && peak < (64 << 20));
 }
