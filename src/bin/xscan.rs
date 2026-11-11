@@ -9,14 +9,14 @@ use krhom::crossing::Gen;
 use krhom::field::{Field, F31, F32b};
 use krhom::xengine::{xscan, XOpts};
 
-fn run<F: Field>(labels: &[usize], word: &[Gen], ns: &[usize], reduced: bool, d2: bool, prune_n: Option<usize>) {
+fn run<F: Field>(labels: &[usize], word: &[Gen], ns: &[usize], reduced: bool, d2: bool, prune_n: Option<usize>, stream: bool) {
     if let Some(n0) = prune_n {
         if let Some(&n) = ns.iter().find(|&&n| n > n0) {
             eprintln!("--prune {}: N = {} > {} is not computed by a pruned scan", n0, n, n0);
             std::process::exit(1)
         }
     }
-    let opts = XOpts { check_d2: d2, verbose: true, prune_n, ..Default::default() };
+    let opts = XOpts { check_d2: d2, verbose: true, prune_n, stream, ..Default::default() };
     let t0 = std::time::Instant::now();
     let sc = match xscan::<F>(labels, word, &opts) {
         Ok(s) => s,
@@ -67,8 +67,8 @@ fn main() {
     let prime = args.iter().position(|a| a == "--prime").and_then(|i| args.get(i + 1)).cloned().unwrap_or_else(|| "31".into());
     let prune: Option<usize> = args.iter().position(|a| a == "--prune").map(|i| args.get(i + 1).and_then(|x| x.parse().ok()).expect("--prune N"));
     match prime.as_str() {
-        "31" => run::<F31>(&labels, &word, &ns, flag("--reduced"), !flag("--no-d2"), prune),
-        "32b" => run::<F32b>(&labels, &word, &ns, flag("--reduced"), !flag("--no-d2"), prune),
+        "31" => run::<F31>(&labels, &word, &ns, flag("--reduced"), !flag("--no-d2"), prune, !flag("--full")),
+        "32b" => run::<F32b>(&labels, &word, &ns, flag("--reduced"), !flag("--no-d2"), prune, !flag("--full")),
         p => {
             eprintln!("--prime must be 31 or 32b, not {}", p);
             std::process::exit(1)

@@ -95,12 +95,21 @@ pub struct XOpts {
     /// decomposition (its ι, π are never computed), and the Rickard complexes are built by
     /// `crossing_cx(.., N)` (terms with a label > N dropped). None: the N-independent scan.
     pub prune_n: Option<usize>,
+    /// build C ⊗ X slice by slice in h and eliminate eligible pivots after every slice
+    /// (`tensor_crossing_stream`); false: the full build, then one elimination (cross-check)
+    pub stream: bool,
+    /// keep the closure data of every stage m >= 2 (`XScan::close_stage`)
+    pub close_stages: bool,
+    /// store the components of the complexes compactly (`CMat`; F31 and F32b only)
+    pub compact: bool,
+    /// streaming build: transport d_C ⊗ id rung by rung (`XEngine::transport`, M2S′ step 4)
+    pub rung_transport: bool,
 }
 
 impl Default for XOpts {
     fn default() -> Self {
         let verbose = std::env::var("KRHOM_VERBOSE").map(|v| v != "0" && !v.is_empty()).unwrap_or(false);
-        XOpts { check_d2: true, verbose, seed: 7, rungwise: true, prune_n: None }
+        XOpts { check_d2: true, verbose, seed: 7, rungwise: true, prune_n: None, stream: true, close_stages: false, compact: true, rung_transport: true }
     }
 }
 
@@ -126,6 +135,70 @@ pub struct StageInfo {
     /// summands, zero modulo the ideal of killed types; always 0 for an unpruned scan, where
     /// d∘d = 0 is asserted)
     pub d2_ideal: usize,
+    /// measurements (M2S′ step 0): components and Poly terms of C ⊗ X before `simplify`
+    /// (full build; streaming: the largest unsimplified part held at once) and of the minimal
+    /// complex after it
+    pub mem: StageMem,
+}
+
+/// Memory and time measurements of one stage (M2S′ step 0).
+#[derive(Clone, Debug, Default)]
+pub struct StageMem {
+    /// components / nonzero entries / Poly terms of the complex before simplify
+    pub comps_before: usize,
+    pub entries_before: usize,
+    pub terms_before: usize,
+    /// estimated bytes of the stored components before simplify
+    pub bytes_before: usize,
+    /// the same after simplify (the minimal complex)
+    pub entries_after: usize,
+    pub terms_after: usize,
+    pub bytes_after: usize,
+    /// estimated bytes of the caches (decompositions incl. composite ones, dloc) after the stage
+    pub bytes_caches: usize,
+    /// RSS (kB) after the tensor product (before simplify), after the stage, and the peak RSS
+    /// of the stage (VmHWM, reset at the start of the stage where the kernel allows it)
+    pub rss_tensor_kb: usize,
+    pub rss_end_kb: usize,
+    pub rss_peak_kb: usize,
+    /// seconds: decompositions (Hom spaces, orthogonalization, composites), transport (the
+    /// rest of the tensor product: kron_id, products with ι and π, dloc), elimination, d∘d
+    pub secs_decomp: f64,
+    pub secs_transport: f64,
+    pub secs_elim: f64,
+    pub secs_d2: f64,
+    /// streaming: number of partial simplify calls and the largest object count held at once
+    pub stream_passes: usize,
+    pub peak_objects: usize,
+}
+
+/// (VmRSS, VmHWM) of this process in kB (0 where /proc is unavailable).
+pub fn rss_kb() -> (usize, usize) {
+    let s = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+    let get = |k: &str| s.lines().find(|l| l.starts_with(k)).and_then(|l| l.split_whitespace().nth(1)).and_then(|x| x.parse().ok()).unwrap_or(0);
+    (get("VmRSS:"), get("VmHWM:"))
+}
+
+/// Reset the peak RSS (VmHWM) of this process; false if the kernel refuses.
+pub fn reset_hwm() -> bool {
+    std::fs::write("/proc/self/clear_refs", "5").is_ok()
+}
+
+/// (nonzero entries, Poly terms, estimated heap bytes) of a PMat: a `PVec` entry (u32, Poly) is
+/// 32 B, a term (u128 Mono, F) 32 B, a column header 24 B.
+pub fn pmat_size<F: Field>(m: &PMat<F>) -> (usize, usize, usize) {
+    let mut e = 0;
+    let mut t = 0;
+    let mut b = 24 * m.cols.len() + 48;
+    for c in &m.cols {
+        e += c.len();
+        b += 32 * c.capacity();
+        for (_, p) in c {
+            t += p.t.len();
+            b += 32 * p.t.capacity();
+        }
+    }
+    (e, t, b)
 }
 
 /// Result of a scan: N-independent closure data and statistics.
@@ -169,6 +242,11 @@ pub struct XScan<F: Field> {
     /// (source index, target index into `data.objs`, F[c][a]); `close` checks that the closure
     /// at every requested N kills each of them (so the closed complex is a complex)
     pub final_d2: Vec<(usize, usize, Vec<Vec<EPoly<F>>>)>,
+    /// `XOpts::close_stages`: closure data (and final d∘d components, as `final_d2`) of the
+    /// complex after crossing m, for every m >= 2 whose top labels close up, read by
+    /// `close_stage`; the crossings of the data are `crossings[..m]`
+    #[allow(clippy::type_complexity)]
+    pub stage_data: BTreeMap<usize, (ClosureDataC<F>, Vec<(usize, usize, Vec<Vec<EPoly<F>>>)>)>,
 }
 
 // ------------------------------------------------------------------ internal structures
@@ -195,17 +273,135 @@ struct XObj {
     t: i32,
 }
 
-/// A complex of canonical ladders with exact components.
+// ------------------------------------------------------------------ compact component store
+
+thread_local! {
+    /// interned monomials of the compact store: index -> Mono, Mono -> index
+    static MONOS: std::cell::RefCell<(Vec<crate::mpoly::Mono>, HashMap<crate::mpoly::Mono, u32>)> = std::cell::RefCell::new((vec![], HashMap::new()));
+}
+
+/// Representative in [0, p) of a coefficient of F31 or F32b (None for any other field).
+fn coef_u32<F: Field>(c: &F) -> Option<u32> {
+    let a = c as &dyn std::any::Any;
+    if let Some(x) = a.downcast_ref::<crate::field::F31>() {
+        return Some(x.0 as u32);
+    }
+    a.downcast_ref::<crate::field::F32b>().map(|x| x.0 as u32)
+}
+
+fn packable<F: Field>() -> bool {
+    coef_u32(&F::one()).is_some()
+}
+
+/// A component in the compact store (M2S′ step 2): column-compressed, every entry a row index
+/// and a term range, every term (interned monomial index << 32 | coefficient representative),
+/// i.e. 8 B per entry and 8 B per term instead of 32 B per entry and 32 B per term (u128 Mono +
+/// Fp(u64)) plus vector headers. Only for F31 and F32b (both < 2^32); other fields keep the PMat.
+#[derive(Clone, Debug)]
+pub enum CMat<F: Field> {
+    Plain(PMat<F>),
+    Packed { nrows: u32, ncols: u32, colptr: Vec<u32>, rows: Vec<u32>, tptr: Vec<u32>, terms: Vec<u64> },
+}
+
+impl<F: Field> CMat<F> {
+    /// Encode (compact: pack if the field allows it).
+    pub fn new(m: PMat<F>, compact: bool) -> Self {
+        if !compact || !packable::<F>() {
+            return CMat::Plain(m);
+        }
+        let ne: usize = m.cols.iter().map(|c| c.len()).sum();
+        let mut colptr = Vec::with_capacity(m.ncols + 1);
+        let mut rows = Vec::with_capacity(ne);
+        let mut tptr = Vec::with_capacity(ne + 1);
+        let mut terms = Vec::new();
+        colptr.push(0u32);
+        tptr.push(0u32);
+        MONOS.with(|mt| {
+            let mut mt = mt.borrow_mut();
+            for c in &m.cols {
+                for (r, p) in c {
+                    rows.push(*r);
+                    for (mono, cf) in &p.t {
+                        let idx = match mt.1.get(mono) {
+                            Some(&i) => i,
+                            None => {
+                                let i = mt.0.len() as u32;
+                                mt.0.push(*mono);
+                                mt.1.insert(*mono, i);
+                                i
+                            }
+                        };
+                        terms.push(((idx as u64) << 32) | coef_u32(cf).unwrap() as u64);
+                    }
+                    tptr.push(terms.len() as u32);
+                }
+                colptr.push(rows.len() as u32);
+            }
+        });
+        assert!(terms.len() < u32::MAX as usize && rows.len() < u32::MAX as usize, "compact store: component too large");
+        terms.shrink_to_fit();
+        CMat::Packed { nrows: m.nrows as u32, ncols: m.ncols as u32, colptr, rows, tptr, terms }
+    }
+    /// Decode to a PMat.
+    pub fn get(&self) -> PMat<F> {
+        match self {
+            CMat::Plain(m) => m.clone(),
+            CMat::Packed { nrows, ncols, colptr, rows, tptr, terms } => MONOS.with(|mt| {
+                let mt = mt.borrow();
+                let mut cols = Vec::with_capacity(*ncols as usize);
+                for j in 0..*ncols as usize {
+                    let (e0, e1) = (colptr[j] as usize, colptr[j + 1] as usize);
+                    let mut col: PVec<F> = Vec::with_capacity(e1 - e0);
+                    for e in e0..e1 {
+                        let t: Vec<(crate::mpoly::Mono, F)> = terms[tptr[e] as usize..tptr[e + 1] as usize].iter().map(|&w| (mt.0[(w >> 32) as usize], F::from_i64((w & 0xffff_ffff) as i64))).collect();
+                        col.push((rows[e], Poly { t }));
+                    }
+                    cols.push(col);
+                }
+                PMat { nrows: *nrows as usize, ncols: *ncols as usize, cols }
+            }),
+        }
+    }
+    /// (entries, terms, estimated heap bytes)
+    pub fn size(&self) -> (usize, usize, usize) {
+        match self {
+            CMat::Plain(m) => pmat_size(m),
+            CMat::Packed { colptr, rows, tptr, terms, .. } => (rows.len(), terms.len(), 4 * (colptr.capacity() + rows.capacity() + tptr.capacity()) + 8 * terms.capacity() + 120),
+        }
+    }
+}
+
+/// A complex of canonical ladders with exact components (stored as `CMat`).
 struct XCx<F: Field> {
     objs: BTreeMap<usize, XObj>,
-    out: BTreeMap<usize, BTreeMap<usize, PMat<F>>>,
+    out: BTreeMap<usize, BTreeMap<usize, CMat<F>>>,
     inn: BTreeMap<usize, BTreeSet<usize>>,
     next: usize,
+    /// pack the components (`XOpts::compact`)
+    compact: bool,
 }
 
 impl<F: Field> XCx<F> {
-    fn new() -> Self {
-        XCx { objs: BTreeMap::new(), out: BTreeMap::new(), inn: BTreeMap::new(), next: 0 }
+    /// (components, entries, terms, bytes) of the stored components (+ 64 B per map node)
+    fn size(&self) -> (usize, usize, usize, usize) {
+        let (mut c, mut e, mut t, mut b) = (0, 0, 0, 0);
+        for outs in self.out.values() {
+            for m in outs.values() {
+                let (e1, t1, b1) = m.size();
+                c += 1;
+                e += e1;
+                t += t1;
+                b += b1 + 64;
+            }
+        }
+        (c, e, t, b)
+    }
+    fn new(compact: bool) -> Self {
+        XCx { objs: BTreeMap::new(), out: BTreeMap::new(), inn: BTreeMap::new(), next: 0, compact }
+    }
+    /// the component x → y, decoded
+    fn map(&self, x: usize, y: usize) -> PMat<F> {
+        self.out[&x][&y].get()
     }
     fn add_obj(&mut self, o: XObj) -> usize {
         let id = self.next;
@@ -220,15 +416,16 @@ impl<F: Field> XCx<F> {
         if m.is_zero() {
             return;
         }
+        let compact = self.compact;
         let outs = self.out.get_mut(&x).unwrap();
         let sum = match outs.remove(&y) {
-            Some(old) => old.add(&m),
+            Some(old) => old.get().add(&m),
             None => m,
         };
         if sum.is_zero() {
             self.inn.get_mut(&y).unwrap().remove(&x);
         } else {
-            outs.insert(y, sum);
+            outs.insert(y, CMat::new(sum, compact));
             self.inn.get_mut(&y).unwrap().insert(x);
         }
     }
@@ -391,9 +588,33 @@ struct XEngine<F: Field> {
     stage_dropped: usize,
     dropped_total: usize,
     all_killed_decomps: usize,
+    /// seconds spent in decompositions (cache misses of `decompose`)
+    t_decomp: f64,
+    /// objects inserted by streaming tensor products (all stages)
+    stream_inserted: usize,
+    /// compact component store (`XOpts::compact`)
+    compact: bool,
+    /// transport d_C ⊗ id rung by rung in the streaming build (`XOpts::rung_transport`)
+    transport_rungwise: bool,
 }
 
 impl<F: Field> XEngine<F> {
+    /// estimated bytes of the decomposition and dloc caches
+    fn cache_bytes(&self) -> usize {
+        let mut b = 0;
+        for v in self.wdecomp.values() {
+            for sm in v.iter() {
+                b += pmat_size(&sm.iota).2 + pmat_size(&sm.pi).2;
+            }
+        }
+        for v in self.dloc.values() {
+            for (_, _, m) in v.iter() {
+                b += pmat_size(m).2;
+            }
+        }
+        b
+    }
+
     fn new(lam: &[usize], verbose: bool, prune: Option<usize>) -> Self {
         let lam8: Vec<u8> = lam.iter().map(|&a| a as u8).collect();
         let k: usize = lam.iter().sum();
@@ -426,6 +647,10 @@ impl<F: Field> XEngine<F> {
             stage_dropped: 0,
             dropped_total: 0,
             all_killed_decomps: 0,
+            t_decomp: 0.0,
+            stream_inserted: 0,
+            compact: true,
+            transport_rungwise: true,
         }
     }
 
@@ -569,6 +794,7 @@ impl<F: Field> XEngine<F> {
         if let Some(d) = self.decomp.get(&(p, positive, k)) {
             return d.clone();
         }
+        let t0 = Instant::now();
         let lp = self.ladder(p);
         let mu = lp.b.top_labels.clone();
         let loc = self.local(mu[0], mu[1], positive);
@@ -597,6 +823,7 @@ impl<F: Field> XEngine<F> {
         self.dropped.insert((p, positive, k), dropped);
         self.dropped_total += dropped;
         self.decomp.insert((p, positive, k), r.clone());
+        self.t_decomp += t0.elapsed().as_secs_f64();
         r
     }
 
@@ -829,6 +1056,60 @@ impl<F: Field> XEngine<F> {
         Rc::new(sums)
     }
 
+    /// Transported components of f ⊗ id_W between the summands of L_p ⊗ W and L_p2 ⊗ W
+    /// (W = `rs`, the summand lists of `decompose_word`): (source index, target index,
+    /// π_t ∘ (f ⊗ id) ∘ ι_s), nonzero only. Rung by rung (`rungwise`, M2S′ step 4): with
+    /// ι = (ι_1 ⊗ id) ∘ ι_2 and π = π_2 ∘ (π_1 ⊗ id), π_t (f ⊗ id_{R_1 R_2}) ι_s
+    /// = π_2 ((π_1 (f ⊗ id_{R_1}) ι_1) ⊗ id_{R_2}) ι_2, so f is first transported through R_1
+    /// (between the summands B_r, B_r' of L_p ⊗ R_1, L_p2 ⊗ R_1) and each nonzero result then
+    /// through the rest; the large f ⊗ id_W is never formed.
+    fn transport(&mut self, p: Tid, p2: Tid, f: &PMat<F>, rs: &[Rung]) -> Vec<(usize, usize, PMat<F>)> {
+        let ss = self.decompose_word(p, rs);
+        let ts = self.decompose_word(p2, rs);
+        let mut out = vec![];
+        if ss.is_empty() || ts.is_empty() {
+            return out;
+        }
+        if rs.len() <= 1 || !self.rungwise {
+            let fp = self.ladder(p).b.fsize();
+            let fw = if rs.is_empty() { 1 } else { self.ladder(p).b.add_rungs(rs).fsize() / fp };
+            let phi = if fw == 1 { f.clone() } else { f.kron_id(fw) };
+            for (si, sg) in ss.iter().enumerate() {
+                let a = phi.matmul(&sg.iota);
+                if a.is_zero() {
+                    continue;
+                }
+                for (ti, tu) in ts.iter().enumerate() {
+                    let comp = tu.pi.matmul(&a);
+                    if !comp.is_zero() {
+                        out.push((si, ti, comp));
+                    }
+                }
+            }
+            return out;
+        }
+        let first_s = self.decompose_word(p, &rs[..1]);
+        let first_t = self.decompose_word(p2, &rs[..1]);
+        let offs = |eng: &mut Self, first: &[Summand<F>]| -> Vec<usize> {
+            let mut o = Vec::with_capacity(first.len());
+            let mut acc = 0;
+            for sm in first {
+                o.push(acc);
+                acc += eng.decompose_word(sm.q, &rs[1..]).len();
+            }
+            o
+        };
+        let os = offs(self, &first_s);
+        let ot = offs(self, &first_t);
+        for (i, j, g) in self.transport(p, p2, f, &rs[..1]) {
+            let (qi, qj) = (first_s[i].q, first_t[j].q);
+            for (u, v, h) in self.transport(qi, qj, &g, &rs[1..]) {
+                out.push((os[i] + u, ot[j] + v, h));
+            }
+        }
+        out
+    }
+
     /// Transported components of id_{L_p} ⊗ d_j between the summands, cached (no sign).
     fn dloc(&mut self, p: Tid, positive: bool, j: usize) -> Rc<Vec<(usize, usize, PMat<F>)>> {
         if let Some(d) = self.dloc.get(&(p, positive, j)) {
@@ -864,7 +1145,7 @@ impl<F: Field> XEngine<F> {
         let (c, d) = (labels[0], labels[1]);
         let loc = self.local(c, d, positive);
         let nt = loc.cx.terms.len();
-        let mut out = XCx::new();
+        let mut out = XCx::new(self.compact);
         let mut place: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
         for (&o, ob) in &cx.objs {
             for k in 0..nt {
@@ -882,7 +1163,7 @@ impl<F: Field> XEngine<F> {
             for (&o2, f) in outs {
                 let po2 = cx.objs[&o2].p;
                 for k in 0..nt {
-                    let phi = f.kron_id(loc.fsizes[k]);
+                    let phi = f.get().kron_id(loc.fsizes[k]);
                     let ss = self.decompose(po, positive, k);
                     let ts = self.decompose(po2, positive, k);
                     for (si, sg) in ss.iter().enumerate() {
@@ -912,6 +1193,135 @@ impl<F: Field> XEngine<F> {
         out
     }
 
+    /// Streaming C ⊗ (Rickard complex), simplified (`XOpts::stream`). The objects o of C are
+    /// inserted slice by slice in h(o): slice s brings o ⊗ W_k for every o with h(o) = s, the
+    /// components id ⊗ d inside each o ⊗ X, and d_C ⊗ id from slice s − 1. After slice s, an
+    /// object of slice ≤ s has all its incoming components (they come from slices s − 1 and s)
+    /// and an object of slice ≤ s − 1 all its outgoing ones; a pivot a → b is eliminated only if
+    /// out(a) and in(b) are complete (SPEC_M4_M6a §6.4). Gaussian elimination of a → b uses only
+    /// d_{x b} and d_{a y}; components into a or out of b inserted later are dropped, which is
+    /// what the elimination of a → b does to them in the full build. C is consumed slice by
+    /// slice. Returns the complex (simplified after the last slice), and the largest
+    /// (objects, components, entries, terms, bytes) held at once before a partial pass.
+    #[allow(clippy::type_complexity)]
+    fn tensor_crossing_stream(&mut self, mut cx: XCx<F>, labels: &[usize], positive: bool, mem: &mut StageMem) -> XCx<F> {
+        let (c, d) = (labels[0], labels[1]);
+        let loc = self.local(c, d, positive);
+        let nt = loc.cx.terms.len();
+        let mut out = XCx::new(self.compact);
+        let mut place: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+        let mut slice_of: HashMap<usize, i32> = HashMap::new();
+        let mut by_h: BTreeMap<i32, Vec<usize>> = BTreeMap::new();
+        for (&o, ob) in &cx.objs {
+            by_h.entry(ob.h).or_default().push(o);
+        }
+        let hs: Vec<i32> = by_h.keys().copied().collect();
+        for (si, &hs_cur) in hs.iter().enumerate() {
+            let tt = Instant::now();
+            let td0 = self.t_decomp;
+            for &o in &by_h[&hs_cur] {
+                let ob = cx.objs[&o];
+                for k in 0..nt {
+                    let sums = self.decompose(ob.p, positive, k);
+                    self.stage_dropped += self.dropped[&(ob.p, positive, k)];
+                    let hk = loc.cx.terms[k].hdeg;
+                    let dq = if positive { -(k as i32) } else { k as i32 };
+                    let ids: Vec<usize> = sums.iter().map(|sm| out.add_obj(XObj { p: sm.q, h: ob.h + hk, t: ob.t + dq + sm.s })).collect();
+                    self.stream_inserted += ids.len();
+                    for &id in &ids {
+                        slice_of.insert(id, hs_cur);
+                    }
+                    place.insert((o, k), ids);
+                }
+                // (−1)^h id ⊗ d
+                for j in 0..nt.saturating_sub(1) {
+                    let (ks, kt) = if positive { (j, j + 1) } else { (j + 1, j) };
+                    let comps = self.dloc(ob.p, positive, j);
+                    let neg = ob.h.rem_euclid(2) == 1;
+                    for (sx, tx, m) in comps.iter() {
+                        out.add_map(place[&(o, ks)][*sx], place[&(o, kt)][*tx], if neg { m.neg() } else { m.clone() });
+                    }
+                }
+            }
+            // d_C ⊗ id from slice s − 1 into slice s (sources eliminated as b are skipped)
+            if si > 0 && hs[si - 1] == hs_cur - 1 {
+                for &o in &by_h[&hs[si - 1]] {
+                    let po = cx.objs[&o].p;
+                    let outs = cx.out.remove(&o).unwrap_or_default();
+                    for (o2, f) in outs {
+                        let po2 = cx.objs[&o2].p;
+                        let f = f.get();
+                        for k in 0..nt {
+                            self.decompose(po, positive, k);
+                            self.decompose(po2, positive, k);
+                            let srcs = place[&(o, k)].clone();
+                            if !srcs.iter().any(|x| out.objs.contains_key(x)) {
+                                continue;
+                            }
+                            if self.transport_rungwise {
+                                let wr = loc.cx.terms[k].rungs.clone();
+                                for (sx, tx, comp) in self.transport(po, po2, &f, &wr) {
+                                    if out.objs.contains_key(&srcs[sx]) {
+                                        out.add_map(srcs[sx], place[&(o2, k)][tx], comp);
+                                    }
+                                }
+                                continue;
+                            }
+                            let ss = self.decompose(po, positive, k);
+                            let ts = self.decompose(po2, positive, k);
+                            let phi = f.kron_id(loc.fsizes[k]);
+                            for (sx, sg) in ss.iter().enumerate() {
+                                if !out.objs.contains_key(&srcs[sx]) {
+                                    continue;
+                                }
+                                let a = phi.matmul(&sg.iota);
+                                if a.is_zero() {
+                                    continue;
+                                }
+                                for (tx, tu) in ts.iter().enumerate() {
+                                    let comp = tu.pi.matmul(&a);
+                                    out.add_map(srcs[sx], place[&(o2, k)][tx], comp);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // C's slice s − 1 is no longer needed (its components into slice s are transported)
+            if si > 0 {
+                for &o in &by_h[&hs[si - 1]] {
+                    cx.out.remove(&o);
+                    for k in 0..nt {
+                        place.remove(&(o, k));
+                    }
+                }
+            }
+            let dd = self.t_decomp - td0;
+            mem.secs_decomp += dd;
+            mem.secs_transport += tt.elapsed().as_secs_f64() - dd;
+            let sz = out.size();
+            if sz.3 > mem.bytes_before {
+                (mem.comps_before, mem.entries_before, mem.terms_before, mem.bytes_before) = sz;
+                mem.rss_tensor_kb = rss_kb().0;
+            }
+            mem.peak_objects = mem.peak_objects.max(out.objs.len());
+            self.check_degrees(&out);
+            let te = Instant::now();
+            let last = si + 1 == hs.len();
+            if last {
+                self.simplify(&mut out, None);
+            } else {
+                // out complete: every slice before s (its successors in C have h <= s)
+                let out_done = |x: usize| slice_of[&x] < hs_cur;
+                let in_done = |x: usize| slice_of[&x] <= hs_cur;
+                self.simplify(&mut out, Some((&out_done, &in_done)));
+            }
+            mem.secs_elim += te.elapsed().as_secs_f64();
+            mem.stream_passes += 1;
+        }
+        out
+    }
+
     fn check_degrees(&mut self, cx: &XCx<F>) {
         for (&a, outs) in &cx.out {
             let oa = cx.objs[&a];
@@ -920,7 +1330,7 @@ impl<F: Field> XEngine<F> {
                 let ob = cx.objs[&b];
                 assert_eq!(ob.h, oa.h + 1, "component does not raise h by 1");
                 let lb = self.ladder(ob.p);
-                assert!(homogeneous(m, &la.b, &lb.b, oa.t - ob.t), "component of total q-degree != 0");
+                assert!(homogeneous(&m.get(), &la.b, &lb.b, oa.t - ob.t), "component of total q-degree != 0");
             }
         }
     }
@@ -930,28 +1340,45 @@ impl<F: Field> XEngine<F> {
     /// Cost note: every pivot choice rescans all components, so elimination is quadratic in the
     /// size of the complex. That is irrelevant at M6.0 sizes (at most about 130 objects) but must
     /// not be carried over to sengine, which needs an incrementally updated pivot queue.
-    fn simplify(&self, cx: &mut XCx<F>) {
-        loop {
-            let mut best: Option<(usize, usize, usize)> = None;
-            for (&a, outs) in &cx.out {
-                let oa = cx.objs[&a];
-                for &b in outs.keys() {
-                    let ob = cx.objs[&b];
-                    if oa.p != ob.p || oa.t != ob.t {
-                        continue;
-                    }
-                    let cost = (cx.inn[&b].len() - 1) * (outs.len() - 1);
-                    if best.map_or(true, |x| (cost, a, b) < x) {
-                        best = Some((cost, a, b));
-                    }
+    /// `elig`: (out(a) complete, in(b) complete) for a streaming pass; None: every pivot.
+    #[allow(clippy::type_complexity)]
+    fn simplify(&self, cx: &mut XCx<F>, elig: Option<(&dyn Fn(usize) -> bool, &dyn Fn(usize) -> bool)>) {
+        // Markowitz order (cost, a, b) with an incrementally updated lazy heap: every edge whose
+        // cost (|in(b)| − 1)(|out(a)| − 1) may have changed is pushed again with its current
+        // cost, and a popped entry is used only if its cost is still current, so the pivot
+        // sequence is that of the full rescan (smallest (cost, a, b) among eligible pivots).
+        use std::cmp::Reverse;
+        use std::collections::BinaryHeap;
+        let ok_a = |a: usize| elig.map_or(true, |(f, _)| f(a));
+        let ok_b = |b: usize| elig.map_or(true, |(_, g)| g(b));
+        let is_piv = |cx: &XCx<F>, a: usize, b: usize| {
+            let (oa, ob) = (cx.objs[&a], cx.objs[&b]);
+            oa.p == ob.p && oa.t == ob.t && ok_a(a) && ok_b(b)
+        };
+        let cost = |cx: &XCx<F>, a: usize, b: usize| (cx.inn[&b].len() - 1) * (cx.out[&a].len() - 1);
+        let mut heap: BinaryHeap<Reverse<(usize, usize, usize)>> = BinaryHeap::new();
+        for (&a, outs) in &cx.out {
+            for &b in outs.keys() {
+                if is_piv(cx, a, b) {
+                    heap.push(Reverse((cost(cx, a, b), a, b)));
                 }
             }
-            let Some((_, a, b)) = best else { break };
-            let c = scalar_of(&cx.out[&a][&b]).expect("degree-0 component between equal types is not a scalar");
+        }
+        while let Some(Reverse((c0, a, b))) = heap.pop() {
+            if !cx.objs.contains_key(&a) || !cx.objs.contains_key(&b) || !cx.out[&a].contains_key(&b) {
+                continue;
+            }
+            if cost(cx, a, b) != c0 {
+                continue; // a current entry was pushed when the cost changed
+            }
+            let c = scalar_of(&cx.map(a, b)).expect("degree-0 component between equal types is not a scalar");
             assert!(!c.is_zero());
             let f = c.inv().neg();
-            let xs: Vec<(usize, PMat<F>)> = cx.inn[&b].iter().filter(|&&x| x != a).map(|&x| (x, cx.out[&x][&b].clone())).collect();
-            let ys: Vec<(usize, PMat<F>)> = cx.out[&a].iter().filter(|(y, _)| **y != b).map(|(&y, m)| (y, m.clone())).collect();
+            let xs: Vec<(usize, PMat<F>)> = cx.inn[&b].iter().filter(|&&x| x != a).map(|&x| (x, cx.map(x, b))).collect();
+            let ys: Vec<(usize, PMat<F>)> = cx.out[&a].iter().filter(|(y, _)| **y != b).map(|(&y, m)| (y, m.get())).collect();
+            // objects whose out (resp. in) set may change
+            let mut xo: BTreeSet<usize> = cx.inn[&a].iter().chain(cx.inn[&b].iter()).copied().collect();
+            let mut yi: BTreeSet<usize> = cx.out[&a].keys().chain(cx.out[&b].keys()).copied().collect();
             for (x, g) in &xs {
                 for (y, h) in &ys {
                     let m = scale_const(&h.matmul(g), &f);
@@ -960,6 +1387,24 @@ impl<F: Field> XEngine<F> {
             }
             cx.remove_obj(a);
             cx.remove_obj(b);
+            xo.remove(&a);
+            xo.remove(&b);
+            yi.remove(&a);
+            yi.remove(&b);
+            for &x in &xo {
+                for &v in cx.out[&x].keys() {
+                    if is_piv(cx, x, v) {
+                        heap.push(Reverse((cost(cx, x, v), x, v)));
+                    }
+                }
+            }
+            for &y in &yi {
+                for &u in &cx.inn[&y] {
+                    if is_piv(cx, u, y) {
+                        heap.push(Reverse((cost(cx, u, y), u, y)));
+                    }
+                }
+            }
         }
     }
 
@@ -969,8 +1414,9 @@ impl<F: Field> XEngine<F> {
         for (&x, outs) in &cx.out {
             let mut acc: BTreeMap<usize, PMat<F>> = BTreeMap::new();
             for (&y, f) in outs {
+                let f = f.get();
                 for (&z, g) in &cx.out[&y] {
-                    let m = g.matmul(f);
+                    let m = g.get().matmul(&f);
                     let e = acc.remove(&z);
                     acc.insert(z, match e {
                         None => m,
@@ -1070,7 +1516,7 @@ impl<F: Field> XEngine<F> {
                 let ob = cx.objs[&b];
                 let lb = self.ladder(ob.p);
                 let u = (oa.t - ob.t) - lb.b.shift + la.b.shift;
-                let fm = solve_f(f, u, &bases[&oa.p], &bases[&ob.p], &lb.b).map_err(|e| format!("component {} -> {}: {}", a, b, e))?;
+                let fm = solve_f(&f.get(), u, &bases[&oa.p], &bases[&ob.p], &lb.b).map_err(|e| format!("component {} -> {}: {}", a, b, e))?;
                 edges.push((index[&a], index[&b], fm));
             }
         }
@@ -1147,25 +1593,51 @@ pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<X
     let mut eng = XEngine::<F>::new(labels, opts.verbose, opts.prune_n);
     eng.rungwise = opts.rungwise;
     eng.check_orth = opts.check_d2;
+    eng.compact = opts.compact;
+    eng.transport_rungwise = opts.rung_transport;
     let p0 = eng.identity_type();
     eng.ladder(p0);
-    let mut cx = XCx::<F>::new();
+    let mut cx = XCx::<F>::new(opts.compact);
     cx.add_obj(XObj { p: p0, h: 0, t: 0 });
     let mut labs = labels.to_vec();
     let mut stages = vec![];
     let mut crossings = vec![];
     let mut last_d2: Vec<(usize, usize, PMat<F>)> = vec![];
+    let mut stage_data = BTreeMap::new();
     for (step, g) in word.iter().enumerate() {
         let ts = Instant::now();
         let (c, d) = (labs[0], labs[1]);
         crossings.push((g.positive, c.min(d) as u8));
         eng.decat_step(c, d, g.positive);
         eng.stage_dropped = 0;
-        let mut ncx = eng.tensor_crossing(&cx, &labs, g.positive);
-        let unsimplified = ncx.objs.len();
-        eng.check_degrees(&ncx);
-        eng.simplify(&mut ncx);
+        reset_hwm();
+        let mut mem = StageMem::default();
+        let mut ncx;
+        let unsimplified;
+        if opts.stream {
+            let n_before = eng.stream_inserted;
+            ncx = eng.tensor_crossing_stream(std::mem::replace(&mut cx, XCx::new(opts.compact)), &labs, g.positive, &mut mem);
+            unsimplified = eng.stream_inserted - n_before;
+        } else {
+            let td0 = eng.t_decomp;
+            let tt = Instant::now();
+            ncx = eng.tensor_crossing(&cx, &labs, g.positive);
+            drop(std::mem::replace(&mut cx, XCx::new(opts.compact)));
+            mem.secs_decomp = eng.t_decomp - td0;
+            mem.secs_transport = tt.elapsed().as_secs_f64() - mem.secs_decomp;
+            unsimplified = ncx.objs.len();
+            (mem.comps_before, mem.entries_before, mem.terms_before, mem.bytes_before) = ncx.size();
+            mem.rss_tensor_kb = rss_kb().0;
+            mem.peak_objects = unsimplified;
+            eng.check_degrees(&ncx);
+            let te = Instant::now();
+            eng.simplify(&mut ncx, None);
+            mem.secs_elim = te.elapsed().as_secs_f64();
+        }
+        let (_, ea, ta, ba) = ncx.size();
+        (mem.entries_after, mem.terms_after, mem.bytes_after) = (ea, ta, ba);
         let mut d2_ideal = 0;
+        let t2 = Instant::now();
         if opts.check_d2 {
             let d2 = eng.d2_components(&ncx);
             if !d2.is_empty() {
@@ -1178,6 +1650,7 @@ pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<X
             }
             last_d2 = d2;
         }
+        mem.secs_d2 = t2.elapsed().as_secs_f64();
         labs.swap(0, 1);
         // pruned scan: the class of the pruned complex is the decategorified class with the
         // killed types removed (the killed span is an ideal; dropping it is the projection)
@@ -1192,7 +1665,7 @@ pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<X
         if (ncx.objs.len() as u128) < lb {
             return Err(format!("crossing {}: {} objects < lower bound {}", step + 1, ncx.objs.len(), lb));
         }
-        let info = StageInfo {
+        let mut info = StageInfo {
             step: step + 1,
             labels: labs.clone(),
             unsimplified,
@@ -1202,7 +1675,12 @@ pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<X
             secs: ts.elapsed().as_secs_f64(),
             dropped: eng.stage_dropped,
             d2_ideal,
+            mem,
         };
+        let (r, h) = rss_kb();
+        info.mem.rss_end_kb = r;
+        info.mem.rss_peak_kb = h;
+        info.mem.bytes_caches = eng.cache_bytes();
         if opts.verbose {
             eprintln!(
                 "[xengine] crossing {}/{} ({}{}): {} objects -> {} (LB {}), {} components, {:.2}s{}",
@@ -1217,6 +1695,24 @@ pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<X
                 info.secs,
                 if eng.prune.is_some() { format!(" [pruned at N={}: {} summands dropped, d∘d components in the ideal {}]", eng.prune.unwrap(), info.dropped, d2_ideal) } else { String::new() }
             );
+            let m = &info.mem;
+            eprintln!(
+                "[xengine]   mem: before simplify {} comps / {} entries / {} terms / {:.1} MB; after {} entries / {} terms / {:.1} MB; caches {:.1} MB; RSS tensor {:.0} MB end {:.0} MB peak {:.0} MB; secs decomp {:.2} transport {:.2} elim {:.2} d2 {:.2}",
+                m.comps_before, m.entries_before, m.terms_before, m.bytes_before as f64 / 1e6, m.entries_after, m.terms_after, m.bytes_after as f64 / 1e6, m.bytes_caches as f64 / 1e6,
+                m.rss_tensor_kb as f64 / 1e3, m.rss_end_kb as f64 / 1e3, m.rss_peak_kb as f64 / 1e3, m.secs_decomp, m.secs_transport, m.secs_elim, m.secs_d2
+            );
+            if opts.stream {
+                eprintln!("[xengine]   stream: {} passes, at most {} objects held", m.stream_passes, m.peak_objects);
+            }
+        }
+        if opts.close_stages && step + 1 >= 2 && step + 1 < word.len() && labs == labels {
+            let tc = Instant::now();
+            let d2 = if opts.check_d2 { last_d2.clone() } else { vec![] };
+            let sd = eng.closure_data(&ncx, crossings.clone(), opts.seed, &d2).map_err(|e| format!("closure data of stage {}: {}", step + 1, e))?;
+            if opts.verbose {
+                eprintln!("[xengine]   stage {} closure data: {} objects, {} edges in {:.2}s", step + 1, sd.0.objs.len(), sd.0.edges.len(), tc.elapsed().as_secs_f64());
+            }
+            stage_data.insert(step + 1, sd);
         }
         stages.push(info);
         cx = ncx;
@@ -1266,6 +1762,7 @@ pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<X
         dropped_summands: eng.dropped_total,
         all_killed_decompositions: eng.all_killed_decomps,
         final_d2,
+        stage_data,
     })
 }
 
@@ -1274,19 +1771,50 @@ impl<F: Field> XScan<F> {
     /// A pruned scan (`prune_n = Some(N0)`) is valid for N <= N0 only (panics otherwise); there
     /// the closure of every final d∘d component is first checked to vanish (panics otherwise).
     pub fn close(&self, ns: &[usize], reduced: bool) -> BTreeMap<usize, Poincare> {
-        let marked = if reduced { Some(0) } else { None };
-        ns.iter()
-            .map(|&nn| {
-                if let Some(n0) = self.prune_n {
-                    assert!(nn <= n0, "a scan pruned at N = {} gives the gl_N homology only for N <= {} (requested N = {})", n0, n0, nn);
-                    for (a, b, f) in &self.final_d2 {
-                        assert!(closure_kills_map(&self.data, *a, *b, f, nn, marked), "pruned scan at N = {}: the d∘d component {} -> {} does not close to 0 at gl_{}", n0, a, b, nn);
-                    }
-                }
-                (nn, close_exact_colored(&self.data, nn, marked))
-            })
-            .collect()
+        close_guarded(&self.data, &self.final_d2, self.prune_n, ns, reduced)
     }
+
+    /// Stages whose closure data were kept (`XOpts::close_stages`).
+    pub fn closed_stages(&self) -> Vec<usize> {
+        self.stage_data.keys().copied().collect()
+    }
+
+    /// gl_N Poincaré polynomials of the closure of the first m crossings (the braid word
+    /// `word[..m]`), from the stage data kept with `XOpts::close_stages`; m = word.len() is the
+    /// final complex. The guards of `close` apply: a pruned scan refuses N > prune_n, and the
+    /// stage-m d∘d components must close to 0. Err if stage m was not kept.
+    pub fn close_stage(&self, m: usize, ns: &[usize], reduced: bool) -> Result<BTreeMap<usize, Poincare>, String> {
+        if m == self.word.len() {
+            return Ok(self.close(ns, reduced));
+        }
+        if let Some(n0) = self.prune_n {
+            if let Some(&nn) = ns.iter().find(|&&nn| nn > n0) {
+                return Err(format!("a scan pruned at N = {} gives the gl_N homology only for N <= {} (requested N = {})", n0, n0, nn));
+            }
+        }
+        let (data, d2) = self.stage_data.get(&m).ok_or_else(|| format!("stage {} has no closure data (close_stages off, m < 2, or labels do not close up)", m))?;
+        Ok(close_guarded(data, d2, self.prune_n, ns, reduced))
+    }
+}
+
+/// `XScan::close` on given closure data and final d∘d components.
+#[allow(clippy::type_complexity)]
+fn close_guarded<F: Field>(data: &ClosureDataC<F>, final_d2: &[(usize, usize, Vec<Vec<EPoly<F>>>)], prune_n: Option<usize>, ns: &[usize], reduced: bool) -> BTreeMap<usize, Poincare> {
+    let marked = if reduced { Some(0) } else { None };
+    ns.iter()
+        .map(|&nn| {
+            if let Some(n0) = prune_n {
+                assert!(nn <= n0, "a scan pruned at N = {} gives the gl_N homology only for N <= {} (requested N = {})", n0, n0, nn);
+                for (a, b, f) in final_d2 {
+                    assert!(closure_kills_map(data, *a, *b, f, nn, marked), "pruned scan at N = {}: the d∘d component {} -> {} does not close to 0 at gl_{}", n0, a, b, nn);
+                }
+            }
+            (nn, close_exact_colored(data, nn, marked))
+        })
+        .collect()
+}
+
+impl<F: Field> XScan<F> {
 }
 
 /// Does the closure at gl_N (`marked`: reduced) send the map f: B_x → B_w between two final
