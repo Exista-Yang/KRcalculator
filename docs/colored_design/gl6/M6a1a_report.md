@@ -129,7 +129,7 @@ property (summand bases differ per term), hence the per-term twist; with it the 
 (9 wrong results without the check). The run-time check is stricter than necessary on the untwisted
 model (it refuses harmless cases) — acceptable: it never refuses a correct streaming order.
 
-Full suite `KRHOM_THREADS=4 cargo test --release`: see §6.
+Full suite `KRHOM_THREADS=4 cargo test --release` (commit bf20447): **208 passed, 0 failed, 21 ignored**; wall 5 min 32 s (sengine 11 passed, 1 ignored, 2.2 s).
 
 ## 4. Measured costs on synthetic complexes (release, one thread)
 
