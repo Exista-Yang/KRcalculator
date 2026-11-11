@@ -46,6 +46,11 @@ pub type TmplId = u32;
 pub enum TmplSource {
     HomSpace { index: usize },
     Rickard { c: u8, d: u8, positive: bool, j: usize },
+    /// added through `TmplLib::add_template` (tests, idempotents): uncertified until
+    /// `TmplLib::certify_added` has checked it (degree, exact bimodule check, polynomiality
+    /// certificate with block diagonality); `Arena` and `assert_genuine` treat it as uncertified
+    /// before that (M4a review finding b)
+    Added { certified: bool },
 }
 
 #[derive(Clone, Debug)]
@@ -175,10 +180,18 @@ fn fnv64(s: &str) -> u64 {
     h
 }
 
+/// Version stamp of the algorithms whose output the cache stores (`sbim::hom_space` basis order
+/// and normalization, `cube::local_cx`). Bump it whenever either changes: files with another
+/// stamp are rejected and recomputed (M4a review finding f).
+pub const TMPL_ALG: &str = "hs1.lcx1";
+
 /// cache header line for a call
 pub fn cache_header<F: Field>(kind: &str, key: &str) -> String {
-    format!("krhom-tmpl v1 field={} kind={} key={}", F::name(), kind, key)
+    format!("krhom-tmpl v2 alg={} field={} kind={} key={}", TMPL_ALG, F::name(), kind, key)
 }
+
+/// per-process counter of temporary cache file names
+static TMP_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn hom_key(src: &Window, tgt: &Window, deg: i32) -> String {
     format!("src={};tgt={};deg={}", src.key(), tgt.key(), deg)
@@ -188,7 +201,9 @@ fn rick_key(c: u8, d: u8, positive: bool) -> String {
 }
 
 fn write_cache_file<F: Field>(path: &Path, header: &str, maps: &[&PMat<F>]) -> std::io::Result<()> {
-    let tmp = path.with_extension("tmp");
+    // per-process, per-call temporary name: concurrent writers never share a tmp file
+    let n = TMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = path.with_extension(format!("{}.{}.tmp", std::process::id(), n));
     {
         let mut w = std::io::BufWriter::new(std::fs::File::create(&tmp)?);
         writeln!(w, "{}", header)?;
@@ -207,7 +222,11 @@ fn write_cache_file<F: Field>(path: &Path, header: &str, maps: &[&PMat<F>]) -> s
         writeln!(w, "end")?;
         w.flush()?;
     }
-    std::fs::rename(&tmp, path)
+    let r = std::fs::rename(&tmp, path);
+    if r.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    r
 }
 
 /// Read a cache file; Err if the header differs from `header` or the body is malformed.
@@ -329,9 +348,61 @@ impl<F: Field> TmplLib<F> {
         self.tmpls.push(t);
         (self.tmpls.len() - 1) as TmplId
     }
-    /// add a template built elsewhere (tests: dots, idempotents); not written to the cache
-    pub fn add_template(&mut self, t: Template<F>) -> TmplId {
+    /// add a template built elsewhere (tests: dots, idempotents); not written to the cache.
+    /// Whatever source the caller gives, the template is recorded as `TmplSource::Added
+    /// { certified: false }`: it is not genuine until `certify_added` passes.
+    pub fn add_template(&mut self, mut t: Template<F>) -> TmplId {
+        t.source = TmplSource::Added { certified: false };
         self.push(t, None, None)
+    }
+    /// is the template a certified leaf (hom_space, Rickard, or an added template that passed
+    /// `certify_added`)?
+    pub fn is_certified(&self, t: TmplId) -> bool {
+        match &self.tmpls[t as usize].source {
+            TmplSource::HomSpace { .. } | TmplSource::Rickard { .. } => true,
+            TmplSource::Added { certified } => *certified,
+        }
+    }
+    /// Certify an added template: (1) every entry of φ is homogeneous of the unnormalized degree
+    /// of `deg`; (2) φ commutes exactly with every top operator of the window (bimodule map);
+    /// (3) the polynomiality certificate of its localization passes (including block
+    /// diagonality). On success the template becomes a certified leaf. Templates from hom_space
+    /// or Rickard need no certification (Ok with an empty report).
+    pub fn certify_added(&mut self, t: TmplId, seed: u64) -> Result<CertReport, String> {
+        if !matches!(self.tmpls[t as usize].source, TmplSource::Added { .. }) {
+            return Ok(CertReport::default());
+        }
+        let tm = &self.tmpls[t as usize];
+        let a = &self.aux[t as usize];
+        let u = tm.deg - a.tgt_b.shift + a.src_b.shift;
+        for (b, col) in tm.phi.cols.iter().enumerate() {
+            for (bp, p) in col {
+                for (mono, _) in &p.t {
+                    let want = u + a.src_b.fdeg[b] - a.tgt_b.fdeg[*bp as usize];
+                    if a.src_b.ring.deg(*mono) != want {
+                        return Err(format!("added template {}: entry ({}, {}) has a term of degree {} != {} (normalized degree {})", t, bp, b, a.src_b.ring.deg(*mono), want, tm.deg));
+                    }
+                }
+            }
+        }
+        for (up, (os, ot)) in a.src_b.top.iter().zip(&a.tgt_b.top).enumerate() {
+            for (j, (ms, mt)) in os.iter().zip(ot).enumerate() {
+                if !tm.phi.matmul(ms).sub(&mt.matmul(&tm.phi)).is_zero() {
+                    return Err(format!("added template {}: does not commute with the top operator e_{} of upright {} (not a bimodule map)", t, j + 1, up));
+                }
+            }
+        }
+        let (src, tgt, deg) = (tm.src.clone(), tm.tgt.clone(), tm.deg);
+        let rep = {
+            let me: &TmplLib<F> = self;
+            poly_certificate::<F>(&src, &tgt, deg, &mut |y: &[F]| me.localize(t, y), seed)?
+        };
+        self.tmpls[t as usize].source = TmplSource::Added { certified: true };
+        Ok(rep)
+    }
+    /// is the basis of Hom^deg(src, tgt) already available (in memory or in the disk cache)?
+    pub fn has_hom(&self, src: &Window, tgt: &Window, deg: i32) -> bool {
+        self.hom.contains_key(&(src.clone(), tgt.clone(), deg)) || self.hom_cache_path(src, tgt, deg).map(|p| p.exists()).unwrap_or(false)
     }
     /// exact basis of Hom^deg(src, tgt) (normalized degree), computed once, cached on disk
     pub fn hom_basis(&mut self, src: &Window, tgt: &Window, deg: i32) -> Vec<TmplId> {
@@ -339,6 +410,11 @@ impl<F: Field> TmplLib<F> {
     }
     /// as `hom_basis`; Err for invalid or non-admitted windows (fsize(src)·fsize(tgt) > 1 600)
     pub fn try_hom_basis(&mut self, src: &Window, tgt: &Window, deg: i32) -> Result<Vec<TmplId>, String> {
+        self.try_hom_basis_cap(src, tgt, deg, HOM_WINDOW_CAP)
+    }
+    /// as `try_hom_basis` with another fibre-product cap (the M4b Exact backend admits calls
+    /// through its own rules: label caps or a measured cost table)
+    pub fn try_hom_basis_cap(&mut self, src: &Window, tgt: &Window, deg: i32, cap: u128) -> Result<Vec<TmplId>, String> {
         let k3 = (src.clone(), tgt.clone(), deg);
         if let Some(v) = self.hom.get(&k3) {
             return Ok(v.clone());
@@ -352,8 +428,8 @@ impl<F: Field> TmplLib<F> {
             return Err(format!("window K = {} > {}", se.k(), crate::mpoly::MAXVARS));
         }
         let prod = se.nflows() * te.nflows();
-        if prod > HOM_WINDOW_CAP {
-            return Err(format!("window {} -> {}: fsize product {} > {} (not admitted)", src.key(), tgt.key(), prod, HOM_WINDOW_CAP));
+        if prod > cap {
+            return Err(format!("window {} -> {}: fsize product {} > {} (not admitted)", src.key(), tgt.key(), prod, cap));
         }
         let key = hom_key(src, tgt, deg);
         let sb: SBim<F> = se.sbim();
@@ -412,6 +488,21 @@ impl<F: Field> TmplLib<F> {
             }
         };
         assert_eq!(maps.len(), wins.len().saturating_sub(1), "Rickard ({},{}): wrong number of maps", c, d);
+        // each d_j is the unique map of its degree (M4a review finding c): dim Hom^1 = 1 and
+        // Hom^{<1} = 0 between the term characters (schur::hom_gd), and d_j != 0
+        {
+            let mut sch = crate::schur::Schur::new(&[c, d]);
+            let chars: Vec<crate::schur::Elt> = wins.iter().map(|w| sch.ladder_char(&w.rungs)).collect();
+            let kk = (c as i32 + d as i32).max(1);
+            let lo = -4 * kk * kk - 4;
+            for (j, phi) in maps.iter().enumerate() {
+                let (s, t) = if positive { (j, j + 1) } else { (j + 1, j) };
+                let gd = sch.hom_gd(&chars[s], &chars[t], lo, 1);
+                let n = gd.len();
+                assert!(gd[..n - 1].iter().all(|&x| x == 0) && gd[n - 1] == 1, "Rickard ({},{}) {}: d_{} is not the unique map of degree 1 (dim Hom^<=1 = {:?})", c, d, if positive { "+" } else { "-" }, j, &gd[n.saturating_sub(4)..]);
+                assert!(!phi.is_zero(), "Rickard ({},{}) {}: d_{} is zero", c, d, if positive { "+" } else { "-" }, j);
+            }
+        }
         let mut ids = vec![];
         for (j, phi) in maps.into_iter().enumerate() {
             let (s, t) = if positive { (j, j + 1) } else { (j + 1, j) };
@@ -566,8 +657,16 @@ pub fn poly_certificate<F: Field>(src: &Window, tgt: &Window, deg: i32, f: &mut 
     let u = deg - tb.shift + sb.shift;
     let sfp = fixed_points(&sb);
     let tfp = fixed_points(&tb);
-    let spos = positions(&sfp, &FlowIndex::build(&src.expr()));
-    let tpos = positions(&tfp, &FlowIndex::build(&tgt.expr()));
+    let sfi = FlowIndex::build(&src.expr());
+    let tfi = FlowIndex::build(&tgt.expr());
+    if sfi.top.mu != tfi.top.mu {
+        return Err(format!("certificate: window tops differ ({:?} vs {:?})", sfi.top.mu, tfi.top.mu));
+    }
+    let spos = positions(&sfp, &sfi);
+    let tpos = positions(&tfp, &tfi);
+    // window top coset of every sorted window flow (right-linearity = block diagonality)
+    let scos: Vec<u64> = (0..sfi.nflows() as u32).map(|f| sfi.coset_of_flow(f)).collect();
+    let tcos: Vec<u64> = (0..tfi.nflows() as u32).map(|f| tfi.coset_of_flow(f)).collect();
     let (ns, nt) = (sfp.len(), tfp.len());
     let ring = sb.ring.clone();
     let kw: usize = src.labels.iter().map(|&a| a as usize).sum();
@@ -599,6 +698,19 @@ pub fn poly_certificate<F: Field>(src: &Window, tgt: &Window, deg: i32, f: &mut 
             let wl = f(y);
             if wl.nrows as usize != nt || wl.ncols() != ns {
                 return Err(format!("certificate: WinLoc shape {}x{} != {}x{}", wl.nrows, wl.ncols(), nt, ns));
+            }
+            // block diagonality over the window top cosets (M4a review finding a): a bimodule
+            // map commutes with the top operators, which are diagonal in the localized basis
+            for j in 0..ns {
+                for kk in wl.col_start[j] as usize..wl.col_start[j + 1] as usize {
+                    let i = wl.rows[kk] as usize;
+                    if !wl.vals[kk].is_zero() && tcos[i] != scos[j] {
+                        return Err(format!(
+                            "certificate: entry (tgt flow {}, src flow {}) = {} lies between different window top cosets ({} vs {}) at point {}: not right-linear (not a bimodule map)",
+                            i, j, wl.vals[kk], tcos[i], scos[j], k
+                        ));
+                    }
+                }
             }
             let d = wl.dense();
             let fd: Vec<Vec<F>> = (0..nt).map(|q| (0..ns).map(|pp| d[tpos[q] as usize][spos[pp] as usize].clone()).collect()).collect();

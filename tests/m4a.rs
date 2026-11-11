@@ -941,8 +941,21 @@ fn a8_assoc() {
             let xm = ar.add(MapNode::Local { src: si, tgt: ti, at: 0, first: 0, tmpl: ts[0] }, "A8 exact").unwrap();
             let pts = points::<F>(lab.iter().map(|&x| x as usize).sum(), 81, 3, 0);
             let cst = ratio(&ar, fw, xm, &pts).unwrap_or_else(|e| panic!("A8 ({},{},{}): {}", a, b, c, e));
-            let key = ar.elem_key(fw).unwrap().1;
-            ar.certify_elem(ElemKind::Assoc, key, cst);
+            // Assoc constants are recorded per window pair (M4a review finding e)
+            assert!(ar.assert_genuine(fw).is_err(), "A8: Assoc genuine before its window constant is recorded");
+            let (wsx, wtx) = { let (a1, b1) = ar.elem_windows(fw).unwrap(); (a1.clone(), b1.clone()) };
+            ar.certify_assoc(&wsx, &wtx, cst);
+            ar.assert_genuine(fw).unwrap();
+            assert!(ar.info(fw).certified, "A8: certified flag not refreshed");
+            // the reverse window pair is a different key: certify it by its own comparison
+            assert!(ar.assert_genuine(bw).is_err(), "A8: reverse Assoc certified by the forward constant");
+            let trev = ar.lib().hom_basis(&win(&tx), &win(&sx), 0);
+            assert_eq!(trev.len(), 1);
+            let xrev = ar.add(MapNode::Local { src: ti, tgt: si, at: 0, first: 0, tmpl: trev[0] }, "A8 exact rev").unwrap();
+            let cst_b = ratio(&ar, bw, xrev, &pts).unwrap_or_else(|e| panic!("A8 rev ({},{},{}): {}", a, b, c, e));
+            let (wsb, wtb) = { let (a1, b1) = ar.elem_windows(bw).unwrap(); (a1.clone(), b1.clone()) };
+            ar.certify_assoc(&wsb, &wtb, cst_b);
+            assert_eq!(cst_b, F::one(), "A8: reverse Assoc constant");
             consts.push(format!("Assoc({},{},{}{})={}", a, b, c, if mirror { " F" } else { "" }, cst));
             let rt = ar.add(MapNode::Comp(bw, fw), "A8 round trip").unwrap();
             let id = ar.add(MapNode::Id(si), "id").unwrap();
@@ -1337,15 +1350,30 @@ fn a13_cache_header_and_corruption() {
     let path = lib.hom_cache_path(&w1, &w0, 1).unwrap();
     let text = std::fs::read_to_string(&path).unwrap();
     let header = text.lines().next().unwrap().to_string();
-    assert!(header.starts_with("krhom-tmpl v1 "), "header {:?}", header);
+    assert!(header.starts_with("krhom-tmpl v2 "), "header {:?}", header);
+    assert!(header.contains(&format!("alg={}", TMPL_ALG)), "header without the algorithm stamp: {:?}", header);
     assert!(header.contains(&format!("field={}", F::name())), "header without the field: {:?}", header);
+    // no temporary files are left behind (per-process tmp names, renamed on completion)
+    let tmps: Vec<String> = std::fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.ends_with(".tmp")).collect();
+    assert!(tmps.is_empty(), "temporary cache files left: {:?}", tmps);
     // a fresh library loads without computing
     let mut l2: TmplLib<F> = TmplLib::new(Some(dir.clone()));
     let ids2 = l2.hom_basis(&w1, &w0, 1);
     assert_eq!(l2.stats().computed, 0);
     assert!(lib.get(ids[0]).phi.sub(&l2.get(ids2[0]).phi).is_zero());
+    // another algorithm stamp (e.g. a file written before a hom_space change): rejected
+    let other = text.replacen(&format!("alg={}", TMPL_ALG), "alg=hs0.lcx0", 1);
+    std::fs::write(&path, &other).unwrap();
+    assert!(read_cache_file::<F>(&path, &header).is_err(), "a cache file with another algorithm stamp was accepted");
+    let mut l0: TmplLib<F> = TmplLib::new(Some(dir.clone()));
+    let _ = l0.hom_basis(&w1, &w0, 1);
+    assert_eq!((l0.stats().rejected, l0.stats().computed, l0.stats().loaded), (1, 1, 0), "another algorithm stamp not rejected");
+    // the old-format (v1) header is rejected as well
+    let v1 = text.replacen(&format!("krhom-tmpl v2 alg={} ", TMPL_ALG), "krhom-tmpl v1 ", 1);
+    std::fs::write(&path, &v1).unwrap();
+    assert!(read_cache_file::<F>(&path, &header).is_err(), "a v1 cache file was accepted");
     // corrupted header: rejected (read_cache_file Err; the library recomputes and counts it)
-    let bad = text.replacen("krhom-tmpl v1", "krhom-tmpl v0", 1);
+    let bad = text.replacen("krhom-tmpl v2", "krhom-tmpl v0", 1);
     std::fs::write(&path, bad).unwrap();
     assert!(read_cache_file::<F>(&path, &header).is_err(), "corrupted header accepted");
     let mut l3: TmplLib<F> = TmplLib::new(Some(dir.clone()));
@@ -1681,4 +1709,221 @@ fn perf_flowindex_2222() {
     assert_eq!(big.nflows(), 51_840);
     assert!(dt < 0.3);
     assert!(fi.bytes() <= 4_600_000 + 12 * fi.support().len() + 1024);
+}
+
+// ------------------------------------------------------------------ M4a review findings (fixed in M4b)
+
+/// left-module matrix units E_(i,j) on B_s = [E0(1), F0(1)] whose entries lie between different
+/// top cosets: polynomial, R-linear on the left, but not bimodule maps
+fn left_module_unit(lab: &[u8]) -> (Expr, PMat<F>, i32) {
+    let x = ex(lab, &[e(0, 1), f(0, 1)]);
+    let sb = x.sbim::<F>();
+    let n = sb.fsize();
+    let fi = FlowIndex::build(&x);
+    let fps = fixed_points(&sb);
+    let sp: Vec<u32> = fps.iter().map(|q| fi.locate(&q.moved).unwrap()).collect();
+    // find i != j with a nonzero localized entry between different top cosets
+    let pt = points::<F>(x.k(), 17, 1, 0).remove(0);
+    for i in 0..n {
+        for j in 0..n {
+            if i == j {
+                continue;
+            }
+            let mut phi = PMat::<F>::zero(n, n);
+            phi.cols[j] = vec![(i as u32, Poly::one())];
+            let (_, _, m) = localize_map(&sb, &sb, &phi, &pt.x);
+            let off = m.iter().enumerate().any(|(q, row)| row.iter().enumerate().any(|(p, v)| !v.is_zero() && fi.coset_of_flow(sp[q]) != fi.coset_of_flow(sp[p])));
+            if off {
+                return (x, phi, sb.fdeg[i] - sb.fdeg[j]);
+            }
+        }
+    }
+    panic!("no off-coset matrix unit on {:?}", lab);
+}
+
+#[test]
+fn review_a_certificate_rejects_non_bimodule_maps() {
+    for lab in [vec![1u8, 1], vec![2u8, 1]] {
+        let (x, phi, deg) = left_module_unit(&lab);
+        let sb = x.sbim::<F>();
+        let fi = FlowIndex::build(&x);
+        let n = sb.fsize();
+        let r = poly_certificate::<F>(&win(&x), &win(&x), deg, &mut |y: &[F]| {
+            let (ps, pt, m) = localize_map(&sb, &sb, &phi, y);
+            let sp: Vec<usize> = ps.iter().map(|q| fi.locate(&q.moved).unwrap() as usize).collect();
+            let tp: Vec<usize> = pt.iter().map(|q| fi.locate(&q.moved).unwrap() as usize).collect();
+            let mut d = vec![vec![F::zero(); n]; n];
+            for (q, row) in m.iter().enumerate() {
+                for (p, v) in row.iter().enumerate() {
+                    d[tp[q]][sp[p]] = *v;
+                }
+            }
+            WinLoc::from_dense(&d, n)
+        }, 21);
+        let err = r.expect_err("review (a): a polynomial non-bimodule map passed the certificate");
+        assert!(err.contains("different window top cosets") && err.contains("entry"), "review (a): unexpected error {}", err);
+        eprintln!("[review a] {:?}: rejected: {}", lab, err);
+    }
+}
+
+#[test]
+fn review_b_added_templates_are_uncertified_until_checked() {
+    let lab = [2u8, 1];
+    let mut lib: TmplLib<F> = TmplLib::new(None);
+    let w = Window::new(&lab, &[e(0, 1), f(0, 1)]);
+    let genuine = lib.hom_basis(&w, &w, 2);
+    assert!(!genuine.is_empty());
+    // (1) a non-bimodule PMat claimed as a hom_space template is recorded as Added, uncertified
+    let (x, phi, deg) = left_module_unit(&lab);
+    assert_eq!(win(&x), w);
+    let bad = lib.add_template(Template::new(w.clone(), w.clone(), deg, phi.clone(), TmplSource::HomSpace { index: 0 }));
+    assert_eq!(lib.get(bad).source, TmplSource::Added { certified: false });
+    assert!(!lib.is_certified(bad));
+    // (2) a correct copy of a genuine map with a wrong degree, and with the right degree
+    let good_phi = lib.get(genuine[0]).phi.clone();
+    let wrong_deg = lib.add_template(Template::new(w.clone(), w.clone(), 4, good_phi.clone(), TmplSource::Rickard { c: 0, d: 0, positive: true, j: 0 }));
+    let good = lib.add_template(Template::new(w.clone(), w.clone(), 2, good_phi, TmplSource::HomSpace { index: 0 }));
+    let mut ar = Arena::new(&lab, lib);
+    let xi = ar.expr(x.clone());
+    let mb = ar.add(MapNode::Local { src: xi, tgt: xi, at: 0, first: 0, tmpl: bad }, "bad").unwrap();
+    let mg = ar.add(MapNode::Local { src: xi, tgt: xi, at: 0, first: 0, tmpl: good }, "good").unwrap();
+    let id = ar.add(MapNode::Id(xi), "id").unwrap();
+    let cg = ar.add(MapNode::Lin(vec![(F::one(), mg), (F::from_i64(3), mg)]), "lin").unwrap();
+    for m in [mb, mg, cg] {
+        assert!(!ar.info(m).certified, "review (b): node {} built on an added template is certified", m);
+        let err = ar.assert_genuine(m).unwrap_err();
+        assert!(err.contains("uncertified added template"), "{}", err);
+    }
+    assert!(ar.info(id).certified);
+    // certification: the non-bimodule map fails the exact commutation check; the wrong degree fails
+    let e1 = ar.certify_template(bad, 5).unwrap_err();
+    assert!(e1.contains("degree") || e1.contains("commute"), "review (b): {}", e1);
+    let e2 = ar.certify_template(wrong_deg, 5).unwrap_err();
+    assert!(e2.contains("degree"), "review (b): {}", e2);
+    assert!(!ar.lib_ref().is_certified(bad) && !ar.lib_ref().is_certified(wrong_deg));
+    // the correct one passes; existing nodes become certified (flag refreshed) and genuine
+    ar.certify_template(good, 5).unwrap();
+    assert!(ar.lib_ref().is_certified(good));
+    for m in [mg, cg] {
+        assert!(ar.info(m).certified, "review (b)/(d): flag not refreshed for node {}", m);
+        ar.assert_genuine(m).unwrap();
+    }
+    assert!(!ar.info(mb).certified && ar.assert_genuine(mb).is_err());
+    eprintln!("[review b] added templates: non-bimodule rejected ({}), wrong degree rejected ({})", e1, e2);
+}
+
+#[test]
+#[should_panic(expected = "is zero")]
+fn review_c_rickard_rejects_a_zero_map_from_the_cache() {
+    let dir = cache_dir("review_c");
+    let mut lib: TmplLib<F> = TmplLib::new(Some(dir.clone()));
+    let _ = lib.rickard(2, 1, true);
+    lib.save().unwrap();
+    let path = lib.rickard_cache_path(2, 1, true).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    // keep the header and the shapes, drop every term: every d_j becomes 0
+    let mut out = vec![];
+    for l in text.lines() {
+        if l.starts_with("krhom-tmpl") || l.starts_with("maps ") || l == "end" {
+            out.push(l.to_string());
+        } else if let Some(rest) = l.strip_prefix("map ") {
+            let p: Vec<&str> = rest.split_whitespace().collect();
+            out.push(format!("map {} {} 0", p[0], p[1]));
+        }
+    }
+    std::fs::write(&path, out.join("\n") + "\n").unwrap();
+    let mut l2: TmplLib<F> = TmplLib::new(Some(dir));
+    let _ = l2.rickard(2, 1, true);
+}
+
+#[test]
+fn review_c_rickard_uniqueness_checked_at_compute_time() {
+    // the compute-time check runs for every label pair the default suite uses (both signs), from a
+    // fresh computation and from the cache
+    let dir = cache_dir("review_c2");
+    let mut lib: TmplLib<F> = TmplLib::new(Some(dir.clone()));
+    for (c, d) in [(1u8, 1u8), (2, 1), (1, 2), (2, 2), (3, 1), (1, 3)] {
+        for positive in [true, false] {
+            let (_, ids) = lib.rickard(c, d, positive);
+            assert_eq!(ids.len(), c.min(d) as usize);
+        }
+    }
+    lib.save().unwrap();
+    let mut l2: TmplLib<F> = TmplLib::new(Some(dir));
+    for (c, d) in [(1u8, 1u8), (2, 1), (1, 2), (2, 2), (3, 1), (1, 3)] {
+        for positive in [true, false] {
+            let _ = l2.rickard(c, d, positive);
+        }
+    }
+    assert_eq!(l2.stats().computed, 0);
+}
+
+#[test]
+fn review_d_certified_flag_matches_assert_genuine() {
+    let lab = [2u8, 2];
+    let mut ar = Arena::<F>::new(&lab, TmplLib::new(None));
+    let x0 = ar.expr(ex(&lab, &[]));
+    let x2 = ar.expr(ex(&lab, &[e(0, 2), f(0, 2)]));
+    let eps = ar.add(MapNode::Elem { kind: ElemKind::Eps, src: x2, tgt: x0, at: 0, upright: 0, scalar: F::one() }, "eps").unwrap();
+    let eta = ar.add(MapNode::Elem { kind: ElemKind::Eta, src: x0, tgt: x2, at: 0, upright: 0, scalar: F::one() }, "eta").unwrap();
+    let dot = ar.add(MapNode::Dot { e: x2, level: 1, upright: 0, nu: vec![1] }, "dot").unwrap();
+    let c1 = ar.add(MapNode::Comp(eps, dot), "c1").unwrap();
+    let c2 = ar.add(MapNode::Comp(c1, eta), "c2").unwrap();
+    let k = ar.add(MapNode::Kron(c2, vec![e(0, 1)]), "kron").unwrap();
+    let all = [eps, eta, dot, c1, c2, k];
+    let consistent = |ar: &Arena<F>| all.iter().all(|&m| ar.info(m).certified == ar.assert_genuine(m).is_ok());
+    assert!(consistent(&ar));
+    assert!(!ar.info(c2).certified && !ar.info(k).certified);
+    ar.certify_elem(ElemKind::Eps, (2, 2), F::one());
+    assert!(consistent(&ar), "after certifying Eps");
+    assert!(ar.info(c1).certified && !ar.info(c2).certified);
+    ar.certify_elem(ElemKind::Eta, (2, 2), F::one());
+    assert!(consistent(&ar), "after certifying Eta");
+    assert!(all.iter().all(|&m| ar.info(m).certified), "existing nodes not refreshed");
+}
+
+#[test]
+fn review_e_assoc_constants_per_window() {
+    // A8's window (1,1,1) and the reviewer's thin pair [E0(1),F0(1)] -> [F0(1),E0(1)] on (1,1)
+    let lab = [1u8, 1];
+    let mut lib: TmplLib<F> = TmplLib::new(None);
+    let (s, t) = (ex(&lab, &[e(0, 1), f(0, 1)]), ex(&lab, &[f(0, 1), e(0, 1)]));
+    let ts = lib.hom_basis(&win(&s), &win(&t), 0);
+    assert_eq!(ts.len(), 1);
+    let mut ar = Arena::new(&lab, lib);
+    let (si, ti) = (ar.expr(s.clone()), ar.expr(t.clone()));
+    let a = ar.add(MapNode::Elem { kind: ElemKind::Assoc, src: si, tgt: ti, at: 0, upright: 0, scalar: F::one() }, "assoc").unwrap();
+    let xm = ar.add(MapNode::Local { src: si, tgt: ti, at: 0, first: 0, tmpl: ts[0] }, "exact").unwrap();
+    // the window shifts are equal (degree 0 holds); the key is the window pair, not (K_w, w)
+    assert_eq!(s.shift(), t.shift());
+    assert_eq!(ar.elem_key(a).unwrap().1, (2, 2));
+    // a constant recorded for another window pair with the same (K_w, w) does not certify it
+    let other = (ex(&lab, &[e(0, 1)]), ex(&lab, &[e(0, 1)]));
+    ar.certify_assoc(&other.0, &other.1, F::one());
+    assert!(ar.assert_genuine(a).is_err() && !ar.info(a).certified);
+    let pts = points::<F>(2, 55, 3, 0);
+    let cst = ratio(&ar, a, xm, &pts).unwrap();
+    eprintln!("[review e] Assoc [E0(1),F0(1)] -> [F0(1),E0(1)] on (1,1): constant {} (per window)", cst.signed());
+    let (ws, wt) = { let (x, y) = ar.elem_windows(a).unwrap(); (x.clone(), y.clone()) };
+    ar.certify_assoc(&ws, &wt, cst);
+    assert_eq!(ar.assoc_certified(&ws, &wt), Some(cst));
+    ar.assert_genuine(a).unwrap();
+    assert!(ar.info(a).certified);
+}
+
+#[test]
+fn review_g_points_have_no_seed_aliasing() {
+    const G: u64 = 0x9E37_79B9_7F4A_7C15;
+    for s in [0u64, 1, 7, 2026, u64::MAX] {
+        let a = points::<F>(6, s, 1, 0).remove(0);
+        let b = points::<F>(6, s ^ G, 1, 1).remove(0);
+        assert_ne!(a.x, b.x, "points(seed {}, id 0) aliases points(seed {} ^ G, id 1)", s, s);
+    }
+    // distinct (seed, id) give distinct generator seeds
+    let mut seen = std::collections::HashSet::new();
+    for s in 0..64u64 {
+        for id in 0..64u32 {
+            assert!(seen.insert(point_seed(s, id)), "point_seed collision at ({}, {})", s, id);
+        }
+    }
 }
