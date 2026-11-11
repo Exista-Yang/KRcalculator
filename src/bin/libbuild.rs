@@ -223,6 +223,25 @@ fn cmd_plan(args: &[String]) {
             println!("  {:<40} X {:>6} targets {:?} mult {:?}", j.key(), j.x_flows, j.want_targets, j.want_mult);
         }
     }
+    // --closure-calls FILE: the whole-ladder Exact closure calls of the closure jobs of the set
+    // (Hom^d(R, L_p) and Hom^d(L_p, R) at every c_diag degree), in the `calib --windows` format
+    if let Some(f) = opt(args, "--closure-calls") {
+        let mut lines = vec![];
+        for j in set.jobs.iter().filter(|j| j.spec[0] == "closure") {
+            let p = tid_of(&mut s, &j.spec[1]);
+            let lp = rungs_str(&canonical_ladder(&mut s, p));
+            let cd = s.c_diag(p);
+            for (i, &c) in cd.c.iter().enumerate() {
+                if c != 0 {
+                    let d = cd.lo + i as i32;
+                    lines.push(format!("{} - {} {}", labels_str(&lam), lp, d));
+                    lines.push(format!("{} {} - {}", labels_str(&lam), lp, d));
+                }
+            }
+        }
+        std::fs::write(&f, lines.join("\n") + "\n").unwrap();
+        println!("{} closure calls written to {}", lines.len(), f);
+    }
     if let Some(p) = opt(args, "--json") {
         let recs: Vec<String> = set.jobs.iter().map(|j| format!("{{\"job\":{},\"x_flows\":{},\"want_targets\":{},\"want_mult\":{}}}", jstr(&j.key()), j.x_flows, j.want_targets.map_or("null".into(), |v| v.to_string()), j.want_mult.map_or("null".into(), |v| v.to_string()))).collect();
         std::fs::write(p, format!("{{\"set\":{},\"plan\":{},\"jobs\":[\n{}\n]}}\n", jstr(&set.name), jstr(&plan.summary()), recs.join(",\n"))).unwrap();
@@ -647,6 +666,80 @@ fn cmd_calib(args: &[String]) {
         for r in t.recs {
             table.record(r);
         }
+    }
+    // --windows FILE: Search windows refused by admission (lines "labels a b d", rungs as in
+    // smapio: E0.1,F1.3; "-" for the empty word), e.g. parsed from KRHOM_TRACE choose_window lines
+    if let Some(wf) = opt(args, "--windows") {
+        let text = std::fs::read_to_string(&wf).expect("--windows file");
+        let done: BTreeSet<(Vec<u8>, u128, u128, u128, i32)> = table.recs.iter().map(|r| (r.labels.clone(), r.fs, r.ft, r.unknowns, r.deg)).collect();
+        let mut calls: Vec<(u128, Vec<u8>, String, String, i32)> = vec![];
+        let mut seen = BTreeSet::new();
+        for l in text.lines() {
+            let f: Vec<&str> = l.split_whitespace().collect();
+            if f.len() != 4 {
+                continue;
+            }
+            let lab = parse_lam(f[0]);
+            let pr = |w: &str| if w == "-" { vec![] } else { krhom::smapio::parse_rungs(w).unwrap() };
+            let (a, b, d): (Vec<Rung>, Vec<Rung>, i32) = (pr(f[1]), pr(f[2]), f[3].parse().unwrap());
+            let key = (lab.clone(), flows(&lab, &a), flows(&lab, &b), hom_unknowns(&lab, &a, &b, d), d);
+            if done.contains(&key) || !seen.insert(key.clone()) {
+                continue;
+            }
+            calls.push((key.3, lab, f[1].to_string(), f[2].to_string(), d));
+        }
+        calls.sort_by(|a, b| a.0.cmp(&b.0));
+        eprintln!("[calib] {} distinct unmeasured windows", calls.len());
+        let t0 = Instant::now();
+        let field = field_of(args);
+        let mut skipped = 0;
+        let jobs_n: usize = opt(args, "--jobs").map(|v| v.parse().unwrap()).unwrap_or(1);
+        let queue = Arc::new(Mutex::new(calls.into_iter().rev().collect::<Vec<_>>()));
+        let tab = Arc::new(Mutex::new(table));
+        let skipped_a = Arc::new(Mutex::new(0usize));
+        let mut hs = vec![];
+        for _ in 0..jobs_n {
+            let (queue, tab, skipped_a, field, cache, out) = (queue.clone(), tab.clone(), skipped_a.clone(), field.clone(), cache.clone(), out.clone());
+            hs.push(std::thread::spawn(move || loop {
+                let Some((unk, lab, a, b, d)) = queue.lock().unwrap().pop() else { break };
+                if t0.elapsed().as_secs_f64() > budget_s {
+                    *skipped_a.lock().unwrap() += 1;
+                    continue;
+                }
+                let cmd = vec!["calib-one".to_string(), "--lam".into(), labels_str(&lab), "--field".into(), field.clone(), "--cache".into(), cache.clone(), "--".into(), a.clone(), b.clone(), d.to_string()];
+                let pr = |w: &str| if w == "-" { vec![] } else { krhom::smapio::parse_rungs(w).unwrap() };
+                let (fs, ft) = (flows(&lab, &pr(&a)), flows(&lab, &pr(&b)));
+                let (line, w, peak, killed) = supervised(&cmd, limit, rss, 1);
+                let rec = match (line, killed) {
+                    (Some(l), None) => {
+                        let f: Vec<&str> = l.split_whitespace().collect();
+                        let secs: f64 = f[5].parse().unwrap();
+                        eprintln!("[calib] {:?} {} -> {} d {} ({}x{}, unknowns {}): {:.3}s {:.0} MB dim {}{}", lab, a, b, d, fs, ft, unk, secs, peak, f[6], if f[7] == "0" { " (cached: not a measurement)" } else { "" });
+                        if f[7] == "0" {
+                            None
+                        } else {
+                            Some(CostRec { labels: lab.clone(), fs, ft, unknowns: unk, deg: d, secs, rss_mb: peak, censored: false })
+                        }
+                    }
+                    (_, k) => {
+                        eprintln!("[calib] {:?} {} -> {} d {} ({}x{}, unknowns {}): KILLED ({:?}) after {:.1}s, {:.0} MB", lab, a, b, d, fs, ft, unk, k, w, peak);
+                        Some(CostRec { labels: lab.clone(), fs, ft, unknowns: unk, deg: d, secs: w, rss_mb: peak, censored: true })
+                    }
+                };
+                if let Some(r) = rec {
+                    let mut t = tab.lock().unwrap();
+                    t.record(r);
+                    t.save(Path::new(&out)).unwrap();
+                }
+            }));
+        }
+        for h in hs {
+            h.join().unwrap();
+        }
+        skipped += *skipped_a.lock().unwrap();
+        let t = tab.lock().unwrap();
+        println!("calibration (windows): {} records in {} ({:?}); {} calls skipped by the time budget", t.len(), out, t.classes(), skipped);
+        return;
     }
     let ex = Exact { max_label: lam.iter().copied().max().unwrap(), ..Exact::default() };
     let done: BTreeSet<(u128, u128, u128, i32)> = table.recs.iter().filter(|r| r.labels == lam).map(|r| (r.fs, r.ft, r.unknowns, r.deg)).collect();

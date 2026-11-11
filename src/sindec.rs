@@ -406,6 +406,9 @@ impl<F: Field, P: HomProvider<F> + ?Sized> DecHom<F> for P {
 
 // ------------------------------------------------------------------ provider construction (D8)
 
+/// per-call time limit of Exact at label 3 (admission by cost records only)
+pub const EXACT_L3_MAX_CALL_S: f64 = 120.0;
+
 /// A copy of the cost table with every time multiplied by `slowdown` (machine factor).
 pub fn scaled_costs(t: &CostTable, slowdown: f64) -> CostTable {
     let mut out = CostTable::new();
@@ -440,10 +443,13 @@ pub fn provider_for_stamped<F: Field>(lam: &[u8], costs: Option<&Path>, slowdown
     }
     let mut s_lo = Search::tiers(0, 2);
     s_lo.costs = table.clone();
-    let ex = Exact { max_label: 3, costs: table.clone(), ..Exact::default() };
+    // Exact at label 3 only through measured cost records (the label rule's caps are kept); its
+    // per-call limit is Search's window limit (120 s), since (3,3,3) closure calls of measured
+    // 10-60 s are otherwise vetoed (M5b_measure.md)
+    let ex = Exact { max_label: 3, costs: table.clone(), max_call_s: EXACT_L3_MAX_CALL_S, ..Exact::default() };
     let mut s_hi = Search::tiers(3, 6);
     s_hi.costs = table;
-    (Box::new(Chain::<F>(vec![Box::new(s_lo), Box::new(ex), Box::new(s_hi)])), format!("{} chain=S0-2,Exact(l3),S3-6", stamp))
+    (Box::new(Chain::<F>(vec![Box::new(s_lo), Box::new(ex), Box::new(s_hi)])), format!("{} chain=S0-2,Exact(l3,{}s),S3-6", stamp, EXACT_L3_MAX_CALL_S))
 }
 
 pub fn provider_for<F: Field>(lam: &[u8], costs: Option<&Path>, slowdown: f64) -> Box<dyn HomProvider<F>> {
