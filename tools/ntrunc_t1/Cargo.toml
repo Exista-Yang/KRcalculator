@@ -1,0 +1,12 @@
+[package]
+name = "ntrunc_t1"
+version = "0.1.0"
+edition = "2024"
+description = "N-truncation study tool (decategorified envelope of exterior-colored scans); research scratch, not part of krhom"
+
+[dependencies]
+krhom = { path = "../.." }
+
+[profile.release]
+opt-level = 3
+debug = false
