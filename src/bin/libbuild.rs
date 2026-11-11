@@ -391,8 +391,17 @@ fn child<F: Field>(args: &[String], job: &[String]) {
 
 /// run a child under the watchdog: (stdout RESULT line or None, wall, peak RSS MB, killed reason)
 fn supervised(cmd: &[String], wall: f64, rss_mb: f64, threads: usize) -> (Option<String>, f64, f64, Option<&'static str>) {
+    // a rebuilt binary leaves current_exe() as "<path> (deleted)": spawn <path> then (the child
+    // interface is stable); a spawn failure is an outcome ("spawn"), not a panic of the parent
     let exe = std::env::current_exe().unwrap();
-    let mut child = std::process::Command::new(exe).args(cmd).env("KRHOM_THREADS", threads.to_string()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::inherit()).spawn().expect("spawn child");
+    let exe = PathBuf::from(exe.to_string_lossy().trim_end_matches(" (deleted)").to_string());
+    let mut child = match std::process::Command::new(&exe).args(cmd).env("KRHOM_THREADS", threads.to_string()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::inherit()).spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[libbuild] spawn {}: {}", exe.display(), e);
+            return (None, 0.0, 0.0, Some("spawn"));
+        }
+    };
     let pid = child.id();
     let t0 = Instant::now();
     let mut peak = 0.0f64;
