@@ -241,8 +241,8 @@ fn cmd_plan(args: &[String]) {
             for (i, &c) in cd.c.iter().enumerate() {
                 if c != 0 {
                     let d = cd.lo + i as i32;
-                    lines.push(format!("{} - {} {}", labels_str(&lam), lp, d));
-                    lines.push(format!("{} {} - {}", labels_str(&lam), lp, d));
+                    lines.push(format!("{} - {} {} {}", labels_str(&lam), lp, d, j.spec[1]));
+                    lines.push(format!("{} {} - {} {}", labels_str(&lam), lp, d, j.spec[1]));
                 }
             }
         }
@@ -686,7 +686,8 @@ fn cmd_calib(args: &[String]) {
         let mut seen = BTreeSet::new();
         for l in text.lines() {
             let f: Vec<&str> = l.split_whitespace().collect();
-            if f.len() != 4 {
+            // labels a b d [comment, e.g. the closure type]
+            if f.len() < 4 {
                 continue;
             }
             let lab = parse_lam(f[0]);
