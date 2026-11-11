@@ -2656,22 +2656,40 @@ pub fn staged_mem_estimate<F: Field>(data: &ClosureDataC<F>, pairing: &[(usize, 
     let mut per_type: Vec<u128> = data.types.iter().map(|(x, tb)| staged_type_mem_estimate(&data.lam, nn, marked, tb, rank_cap.and_then(|c| c.get(x)).or(rank_cap.map(|_| &EMPTY_DEG_RANKS)))).collect();
     per_type.sort_unstable_by(|a, b| b.cmp(a));
     let ss: u128 = per_type.iter().take(nt).fold(0u128, |x, y| x.saturating_add(*y));
-    // chain coordinates per (h, q): Σ over objects of the type's dims in that degree
+    // chain coordinates per (h, q): Σ over objects of the type's state-space bound in that
+    // degree, min(#candidate rows, #columns) (or the cap)
     let boxw = box_weight_counts(&data.lam, nn, marked);
     let gq = data.global_q(nn, marked);
+    let cnt = |w: i32| -> u128 { if w < 0 { 0 } else { boxw.get(w as usize).copied().unwrap_or(0) } };
+    let mut tdims: BTreeMap<u32, BTreeMap<i32, u128>> = BTreeMap::new();
+    for (x, tb) in &data.types {
+        let capd = rank_cap.and_then(|c| c.get(x));
+        let mut m = BTreeMap::new();
+        let mut degs = BTreeSet::new();
+        for &da in &tb.ins {
+            for w in 0..boxw.len() as i32 {
+                degs.insert(da + 2 * w);
+            }
+        }
+        for d in degs {
+            let rows: u128 = tb.ins.iter().map(|&da| if (d - da) % 2 == 0 { cnt((d - da) / 2) } else { 0 }).sum();
+            let cols: u128 = tb.outs.iter().map(|&ob| if (d + ob) % 2 == 0 { cnt((d + ob) / 2) } else { 0 }).sum();
+            let r = match capd {
+                Some(c) => c.get(&d).copied().unwrap_or(0) as u128,
+                None if rank_cap.is_some() => 0,
+                None => rows.min(cols),
+            };
+            if r > 0 {
+                m.insert(d, r);
+            }
+        }
+        tdims.insert(*x, m);
+    }
     let mut groups: BTreeMap<(i32, i32), u128> = BTreeMap::new();
     for o in &data.objs {
-        let Some(tb) = data.types.get(&o.0) else { continue };
-        let capd = rank_cap.and_then(|c| c.get(&o.0));
-        for (&da, _) in tb.ins.iter().zip(0..) {
-            for (w, &c) in boxw.iter().enumerate() {
-                let d = da + 2 * w as i32;
-                let c = match capd {
-                    Some(m) => (m.get(&d).copied().unwrap_or(0) as u128).min(c),
-                    None => c,
-                };
-                *groups.entry((o.1, d + o.2 + gq)).or_default() += c;
-            }
+        let Some(m) = tdims.get(&o.0) else { continue };
+        for (d, r) in m {
+            *groups.entry((o.1, d + o.2 + gq)).or_default() += r;
         }
     }
     let coords: u128 = groups.values().sum();

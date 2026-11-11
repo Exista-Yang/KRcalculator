@@ -591,3 +591,52 @@ fn moy_convention_matches_single_type_closure() {
         }
     }
 }
+
+#[test]
+fn extraction_cost_per_entry() {
+    // Mult-adds per entry of the streaming accumulators (outputs |ρ| = w and residuals
+    // |ρ| = w + 1: Σ_μ #{ρ ⊇ μ} with nonzero (S^{-1})_{ρμ}) and memory per entry, by weight; and
+    // the measured time per entry of a full extraction (one random entry per weight). Compare
+    // R3 §3 (streaming: ≤ 4.2e3 for 2 blocks, ≤ 6.1e5 for 3 blocks; ≤ 384 B / 6.2 KB per entry).
+    for (lam, marked) in [(vec![3u8, 3], None), (vec![3, 3], Some(0)), (vec![3, 3, 3], Some(0)), (vec![3, 3, 3], None)] {
+        let grid = Arc::new(BoxGrid::new(BoxNodes::<F31>::new(&lam, 6, 3), marked));
+        let mut sup = vec![];
+        let mut best = (0u64, 0u32, 0usize);
+        let mut tot_ops = 0u64;
+        for w in 0..=grid.top {
+            let mut ops = 0u64;
+            for id in grid.points_up_to((w + 1).min(grid.top)) {
+                for s in [w, w + 1] {
+                    grid.supersets_of_size(id, s, &mut sup);
+                    ops += sup.len() as u64;
+                }
+            }
+            tot_ops += ops;
+            let mem = 8 * (grid.count_of_size(w) + grid.count_of_size(w + 1));
+            if ops > best.0 {
+                best = (ops, w, mem);
+            }
+        }
+        let ring = ERing::new(&lam);
+        let mut rng = StdRng::seed_from_u64(1);
+        let polys: Vec<EPoly<F31>> = (0..=grid.top).map(|w| rand_poly(&ring, w, 3, &mut rng)).collect();
+        let weights: Vec<Option<u32>> = (0..=grid.top).map(Some).collect();
+        let t = Instant::now();
+        extract(&grid, &polys, &weights, None).unwrap();
+        let secs = t.elapsed().as_secs_f64();
+        let maxmem = (0..=grid.top).map(|w| 8 * (grid.count_of_size(w) + grid.count_of_size(w + 1))).max().unwrap();
+        eprintln!(
+            "cost {:?} N=6 marked {:?}: {} points; max mult-adds per entry {} (w = {}), mean over weights {:.0}; max accumulator memory per entry {} B; extraction of {} entries (one per weight, incl. evaluation) {:.3}s = {:.2} ms/entry",
+            lam,
+            marked,
+            grid.npoints,
+            best.0,
+            best.1,
+            tot_ops as f64 / (grid.top + 1) as f64,
+            maxmem,
+            polys.len(),
+            secs,
+            1000.0 * secs / polys.len() as f64
+        );
+    }
+}
