@@ -71,7 +71,7 @@ Ignored, run in this session (197.8 s total): `d3_33_all_pairs_and_decdata_timin
 `d5_against_xengine_33` ((3,3) σ, σ² at N = 3, 4 and unpruned, σ^-2 at N = 4: all equal to xengine;
 σ² unpruned 15 objects, xengine 45.6 s vs sindec mini scan 79.8 s), `gate_plan_333`.
 
-Full suite `KRHOM_THREADS=4 cargo test --release`: see the last section.
+Full suite `KRHOM_THREADS=4 cargo test --release` on the final merged code (c8c676b + report): **196 passed, 0 failed, 20 ignored** (sindec 13 / 3 ignored in 3.9 s; homprov 17 / 3 in 56 s; acceptance 25 in 92 s).
 
 ## Gate output
 
