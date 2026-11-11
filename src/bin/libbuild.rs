@@ -671,7 +671,10 @@ fn cmd_calib(args: &[String]) {
     // smapio: E0.1,F1.3; "-" for the empty word), e.g. parsed from KRHOM_TRACE choose_window lines
     if let Some(wf) = opt(args, "--windows") {
         let text = std::fs::read_to_string(&wf).expect("--windows file");
-        let done: BTreeSet<(Vec<u8>, u128, u128, u128, i32)> = table.recs.iter().map(|r| (r.labels.clone(), r.fs, r.ft, r.unknowns, r.deg)).collect();
+        // --retry-censored: calls whose only records are censored (killed at an earlier, shorter
+        // limit) are measured again at --limit; their censored records are dropped first
+        let retry_c = flag(args, "--retry-censored");
+        let done: BTreeSet<(Vec<u8>, u128, u128, u128, i32)> = table.recs.iter().filter(|r| !(retry_c && r.censored)).map(|r| (r.labels.clone(), r.fs, r.ft, r.unknowns, r.deg)).collect();
         let mut calls: Vec<(u128, Vec<u8>, String, String, i32)> = vec![];
         let mut seen = BTreeSet::new();
         for l in text.lines() {
@@ -689,6 +692,26 @@ fn cmd_calib(args: &[String]) {
             calls.push((key.3, lab, f[1].to_string(), f[2].to_string(), d));
         }
         calls.sort_by(|a, b| a.0.cmp(&b.0));
+        if retry_c {
+            let redo: BTreeSet<(Vec<u8>, u128, u128, u128, i32)> = calls
+                .iter()
+                .map(|(u, lab, a, b, d)| {
+                    let pr = |w: &str| if w == "-" { vec![] } else { krhom::smapio::parse_rungs(w).unwrap() };
+                    (lab.clone(), flows(lab, &pr(a)), flows(lab, &pr(b)), *u, *d)
+                })
+                .collect();
+            let mut t2 = CostTable::new();
+            let mut dropped = 0;
+            for r in table.recs.drain(..) {
+                if r.censored && redo.contains(&(r.labels.clone(), r.fs, r.ft, r.unknowns, r.deg)) {
+                    dropped += 1;
+                } else {
+                    t2.record(r);
+                }
+            }
+            table = t2;
+            eprintln!("[calib] --retry-censored: {} censored records dropped", dropped);
+        }
         eprintln!("[calib] {} distinct unmeasured windows", calls.len());
         let t0 = Instant::now();
         let field = field_of(args);
