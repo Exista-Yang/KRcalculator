@@ -434,3 +434,19 @@ stay small; this is the Bar-Natan principle of closing as early as possible.
 - T(2,5), T(2,7), T(2,9): out of memory at crossing 5 (13.6 GB) in the unpruned exact scan; suspected cause
   the dense final kernel of kernel_lazy (review item 8) or the exact bimodule maps of xengine. Next: fix memory,
   then T(2,n) up to 9 (Wang ranks 396, 848, 1540), then M5/M6a for 3 strands.
+
+### M2S′: memory-first exact 2-strand engine (2026-11-11, branch colored-2s)
+
+- Step 0 (gl6/M2S_step0.md): the out-of-memory of run H was the unsimplified C ⊗ X (3.0 GB of
+  components at crossing 4 of σ^4, about 62 B per Poly term; caches 81 MB constant), not the solver;
+  σ^5 hit 12 GB in the transport of crossing 5. Transport was 70 % of the time.
+- Done in xengine.rs only: streaming insertion by C-degree with the eligibility rule
+  (`XOpts::stream`, full build kept), a compact u32 component store (`CMat`, `XOpts::compact`),
+  rung-by-rung transport (`transport_view`, `XOpts::rung_transport`), threaded transport and fill-in
+  (`par_map`, KRHOM_THREADS), a lazy-heap Markowitz order (same pivot sequence), a sort-based
+  product, `XOpts::close_stages` + `XScan::close_stage(_marked)` with the pruned guards; xscan
+  `--full --plain --close-stages --both --json`. Tests: tests/xstream.rs.
+- Effect: σ^4 peak RSS 3.29 GB → 0.29 GB; σ^5 0.55 GB (from > 12 GB).
+- Gate G2X PASS (gl6/M2S_G2X.md): σ^5 (3,3) at N = 3..8, T(2,5) = Wang 3 N 2 (16 / 106 / 396 /
+  1011 / 2076), Hopf, T(2,3), T(2,4) link recorded, both primes, χ, base point. New Wang blocks
+  3 8 1, 3 8 2, 3 7 4.
