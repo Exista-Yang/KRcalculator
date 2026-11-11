@@ -81,6 +81,8 @@ use crate::web::{Dir, Rung};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 /// Largest label accepted by the exact engine.
@@ -563,6 +565,88 @@ fn rung_key(r: &Rung) -> (u8, usize, usize) {
     (if r.dir == Dir::E { 0 } else { 1 }, r.i, r.r)
 }
 
+/// Key of the composite decomposition cache: (type, rung word).
+type WKey = (Tid, Vec<(u8, usize, usize)>);
+
+/// Map `f` over `jobs` on `crate::num_threads()` scoped threads (in order; sequential for
+/// fewer than two jobs or one thread).
+fn par_map<T: Sync, R: Send>(jobs: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    let nt = crate::num_threads().min(jobs.len());
+    if nt <= 1 {
+        return jobs.iter().map(&f).collect();
+    }
+    let next = AtomicUsize::new(0);
+    let slots: Vec<Mutex<Option<R>>> = (0..jobs.len()).map(|_| Mutex::new(None)).collect();
+    std::thread::scope(|sc| {
+        for _ in 0..nt {
+            sc.spawn(|| loop {
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                if i >= jobs.len() {
+                    break;
+                }
+                let r = f(&jobs[i]);
+                *slots[i].lock().unwrap() = Some(r);
+            });
+        }
+    });
+    slots.into_iter().map(|m| m.into_inner().unwrap().unwrap()).collect()
+}
+
+/// Transported components of f ⊗ id_W between the summands of L_p ⊗ W and L_p2 ⊗ W (W = `rs`)
+/// from the composite decomposition cache `wd`, which must hold every decomposition used
+/// (`XEngine::decompose_word(p, rs)` and `(p2, rs)` fill it): (source index, target index,
+/// π_t ∘ (f ⊗ id) ∘ ι_s), nonzero only. Rung by rung (M2S′ step 4): with ι = (ι_1 ⊗ id) ∘ ι_2
+/// and π = π_2 ∘ (π_1 ⊗ id), π_t (f ⊗ id_{R_1 R_2}) ι_s = π_2 ((π_1 (f ⊗ id_{R_1}) ι_1) ⊗
+/// id_{R_2}) ι_2, so f is first transported through R_1 (between the summands B_r, B_r' of
+/// L_p ⊗ R_1, L_p2 ⊗ R_1) and each nonzero result then through the rest; the large f ⊗ id_W is
+/// never formed. `rungwise = false`: in one step through the summands of L_p ⊗ W.
+fn transport_view<F: Field>(wd: &HashMap<WKey, Arc<Vec<Summand<F>>>>, rungwise: bool, p: Tid, p2: Tid, f: &PMat<F>, rs: &[Rung]) -> Vec<(usize, usize, PMat<F>)> {
+    let get = |q: Tid, w: &[Rung]| wd.get(&(q, w.iter().map(rung_key).collect::<Vec<_>>())).unwrap_or_else(|| panic!("transport: decomposition of type {} ⊗ {:?} not cached", q, w)).clone();
+    let ss = get(p, rs);
+    let ts = get(p2, rs);
+    let mut out = vec![];
+    if ss.is_empty() || ts.is_empty() {
+        return out;
+    }
+    if rs.len() <= 1 || !rungwise {
+        let fw = ss[0].iota.nrows / f.ncols;
+        assert_eq!(fw * f.ncols, ss[0].iota.nrows);
+        let phi = if fw == 1 { f.clone() } else { f.kron_id(fw) };
+        for (si, sg) in ss.iter().enumerate() {
+            let a = phi.matmul(&sg.iota);
+            if a.is_zero() {
+                continue;
+            }
+            for (ti, tu) in ts.iter().enumerate() {
+                let comp = tu.pi.matmul(&a);
+                if !comp.is_zero() {
+                    out.push((si, ti, comp));
+                }
+            }
+        }
+        return out;
+    }
+    let first_s = get(p, &rs[..1]);
+    let first_t = get(p2, &rs[..1]);
+    let offs = |first: &[Summand<F>]| -> Vec<usize> {
+        let mut o = Vec::with_capacity(first.len());
+        let mut acc = 0;
+        for sm in first {
+            o.push(acc);
+            acc += get(sm.q, &rs[1..]).len();
+        }
+        o
+    };
+    let os = offs(&first_s);
+    let ot = offs(&first_t);
+    for (i, j, g) in transport_view(wd, rungwise, p, p2, f, &rs[..1]) {
+        for (u, v, h) in transport_view(wd, rungwise, first_s[i].q, first_t[j].q, &g, &rs[1..]) {
+            out.push((os[i] + u, ot[j] + v, h));
+        }
+    }
+    out
+}
+
 // ------------------------------------------------------------------ the engine
 
 struct XEngine<F: Field> {
@@ -572,8 +656,8 @@ struct XEngine<F: Field> {
     mc: MonoCache,
     lads: HashMap<Tid, Rc<Lad<F>>>,
     locals: HashMap<(usize, usize, bool), Rc<LocalCx<F>>>,
-    decomp: HashMap<(Tid, bool, usize), Rc<Vec<Summand<F>>>>,
-    wdecomp: HashMap<(Tid, Vec<(u8, usize, usize)>), Rc<Vec<Summand<F>>>>,
+    decomp: HashMap<(Tid, bool, usize), Arc<Vec<Summand<F>>>>,
+    wdecomp: HashMap<WKey, Arc<Vec<Summand<F>>>>,
     /// decompose crossing terms rung by rung (default) or in one step
     rungwise: bool,
     /// re-check Π∘Ι = id on composite decompositions
@@ -798,7 +882,7 @@ impl<F: Field> XEngine<F> {
     }
 
     /// Decomposition of L_p ⊗ W_k (term k of the crossing at the top of p), cached.
-    fn decompose(&mut self, p: Tid, positive: bool, k: usize) -> Rc<Vec<Summand<F>>> {
+    fn decompose(&mut self, p: Tid, positive: bool, k: usize) -> Arc<Vec<Summand<F>>> {
         if let Some(d) = self.decomp.get(&(p, positive, k)) {
             return d.clone();
         }
@@ -838,7 +922,7 @@ impl<F: Field> XEngine<F> {
     /// Decomposition of L_p ⊗ (rungs), cached. Rung by rung (default): L_p ⊗ R_1 = ⊕ L_r{s_1},
     /// then L_r ⊗ (R_2 ...) recursively, with ι = (ι_1 ⊗ id) ∘ ι_2 and π = π_2 ∘ (π_1 ⊗ id); in the
     /// direct mode the whole word is decomposed at once.
-    fn decompose_word(&mut self, p: Tid, rs: &[Rung]) -> Rc<Vec<Summand<F>>> {
+    fn decompose_word(&mut self, p: Tid, rs: &[Rung]) -> Arc<Vec<Summand<F>>> {
         let key = (p, rs.iter().map(rung_key).collect::<Vec<_>>());
         if let Some(d) = self.wdecomp.get(&key) {
             return d.clone();
@@ -846,7 +930,7 @@ impl<F: Field> XEngine<F> {
         let r = if rs.is_empty() {
             debug_assert!(!self.killed(p));
             let n = self.ladder(p).b.fsize();
-            Rc::new(vec![Summand { q: p, s: 0, iota: PMat::identity(n), pi: PMat::identity(n) }])
+            Arc::new(vec![Summand { q: p, s: 0, iota: PMat::identity(n), pi: PMat::identity(n) }])
         } else if rs.len() == 1 || !self.rungwise {
             self.decompose_direct(p, rs)
         } else {
@@ -895,14 +979,14 @@ impl<F: Field> XEngine<F> {
                     }
                 }
             }
-            Rc::new(out)
+            Arc::new(out)
         };
         self.wdecomp.insert(key, r.clone());
         r
     }
 
     /// Decomposition of X = L_p ⊗ (rungs) by Hom spaces and intersection forms.
-    fn decompose_direct(&mut self, p: Tid, rs: &[Rung]) -> Rc<Vec<Summand<F>>> {
+    fn decompose_direct(&mut self, p: Tid, rs: &[Rung]) -> Arc<Vec<Summand<F>>> {
         let t0 = Instant::now();
         let lp = self.ladder(p);
         let mult = self.schur.term_mult(p, rs);
@@ -917,7 +1001,7 @@ impl<F: Field> XEngine<F> {
             let xsize = lp.b.fsize() as u128 * flows(&mu8, rs);
             assert_eq!(killed_rank as u128, xsize, "all summands killed: ranks {} != rank {}", killed_rank, xsize);
             self.all_killed_decomps += 1;
-            return Rc::new(vec![]);
+            return Arc::new(vec![]);
         }
         // X is literally the canonical ladder of its only summand B_q (multiplicity 1, shift 0):
         // ι = π = id, no Hom space needed
@@ -935,7 +1019,7 @@ impl<F: Field> XEngine<F> {
                 assert!(same_sbim(&x, &lq.b), "identity decomposition of {} ⊗ {:?}: L_p ⊗ R and the canonical ladder of {} differ as SBims", self.schur.table(p).fmt(), rs, self.schur.table(q).fmt());
                 let n = lq.b.fsize();
                 self.identity_decomps += 1;
-                return Rc::new(vec![Summand { q, s: 0, iota: PMat::identity(n), pi: PMat::identity(n) }]);
+                return Arc::new(vec![Summand { q, s: 0, iota: PMat::identity(n), pi: PMat::identity(n) }]);
             }
         }
         let x = lp.b.add_rungs(rs);
@@ -1061,61 +1145,7 @@ impl<F: Field> XEngine<F> {
                 t0.elapsed().as_secs_f64()
             );
         }
-        Rc::new(sums)
-    }
-
-    /// Transported components of f ⊗ id_W between the summands of L_p ⊗ W and L_p2 ⊗ W
-    /// (W = `rs`, the summand lists of `decompose_word`): (source index, target index,
-    /// π_t ∘ (f ⊗ id) ∘ ι_s), nonzero only. Rung by rung (`rungwise`, M2S′ step 4): with
-    /// ι = (ι_1 ⊗ id) ∘ ι_2 and π = π_2 ∘ (π_1 ⊗ id), π_t (f ⊗ id_{R_1 R_2}) ι_s
-    /// = π_2 ((π_1 (f ⊗ id_{R_1}) ι_1) ⊗ id_{R_2}) ι_2, so f is first transported through R_1
-    /// (between the summands B_r, B_r' of L_p ⊗ R_1, L_p2 ⊗ R_1) and each nonzero result then
-    /// through the rest; the large f ⊗ id_W is never formed.
-    fn transport(&mut self, p: Tid, p2: Tid, f: &PMat<F>, rs: &[Rung]) -> Vec<(usize, usize, PMat<F>)> {
-        let ss = self.decompose_word(p, rs);
-        let ts = self.decompose_word(p2, rs);
-        let mut out = vec![];
-        if ss.is_empty() || ts.is_empty() {
-            return out;
-        }
-        if rs.len() <= 1 || !self.rungwise {
-            let fp = self.ladder(p).b.fsize();
-            let fw = if rs.is_empty() { 1 } else { self.ladder(p).b.add_rungs(rs).fsize() / fp };
-            let phi = if fw == 1 { f.clone() } else { f.kron_id(fw) };
-            for (si, sg) in ss.iter().enumerate() {
-                let a = phi.matmul(&sg.iota);
-                if a.is_zero() {
-                    continue;
-                }
-                for (ti, tu) in ts.iter().enumerate() {
-                    let comp = tu.pi.matmul(&a);
-                    if !comp.is_zero() {
-                        out.push((si, ti, comp));
-                    }
-                }
-            }
-            return out;
-        }
-        let first_s = self.decompose_word(p, &rs[..1]);
-        let first_t = self.decompose_word(p2, &rs[..1]);
-        let offs = |eng: &mut Self, first: &[Summand<F>]| -> Vec<usize> {
-            let mut o = Vec::with_capacity(first.len());
-            let mut acc = 0;
-            for sm in first {
-                o.push(acc);
-                acc += eng.decompose_word(sm.q, &rs[1..]).len();
-            }
-            o
-        };
-        let os = offs(self, &first_s);
-        let ot = offs(self, &first_t);
-        for (i, j, g) in self.transport(p, p2, f, &rs[..1]) {
-            let (qi, qj) = (first_s[i].q, first_t[j].q);
-            for (u, v, h) in self.transport(qi, qj, &g, &rs[1..]) {
-                out.push((os[i] + u, ot[j] + v, h));
-            }
-        }
-        out
+        Arc::new(sums)
     }
 
     /// Transported components of id_{L_p} ⊗ d_j between the summands, cached (no sign).
@@ -1251,45 +1281,37 @@ impl<F: Field> XEngine<F> {
                     }
                 }
             }
-            // d_C ⊗ id from slice s − 1 into slice s (sources eliminated as b are skipped)
+            // d_C ⊗ id from slice s − 1 into slice s (sources eliminated as b are skipped),
+            // transported in parallel (`transport_view`) in chunks, added in job order
             if si > 0 && hs[si - 1] == hs_cur - 1 {
+                let mut jobs: Vec<(usize, usize, usize, Arc<PMat<F>>)> = vec![];
                 for &o in &by_h[&hs[si - 1]] {
                     let po = cx.objs[&o].p;
                     let outs = cx.out.remove(&o).unwrap_or_default();
                     for (o2, f) in outs {
                         let po2 = cx.objs[&o2].p;
-                        let f = f.get();
+                        let f = Arc::new(f.get());
                         for k in 0..nt {
                             self.decompose(po, positive, k);
                             self.decompose(po2, positive, k);
-                            let srcs = place[&(o, k)].clone();
-                            if !srcs.iter().any(|x| out.objs.contains_key(x)) {
-                                continue;
+                            if place[&(o, k)].iter().any(|x| out.objs.contains_key(x)) {
+                                jobs.push((o, o2, k, f.clone()));
                             }
-                            if self.transport_rungwise {
-                                let wr = loc.cx.terms[k].rungs.clone();
-                                for (sx, tx, comp) in self.transport(po, po2, &f, &wr) {
-                                    if out.objs.contains_key(&srcs[sx]) {
-                                        out.add_map(srcs[sx], place[&(o2, k)][tx], comp);
-                                    }
-                                }
-                                continue;
-                            }
-                            let ss = self.decompose(po, positive, k);
-                            let ts = self.decompose(po2, positive, k);
-                            let phi = f.kron_id(loc.fsizes[k]);
-                            for (sx, sg) in ss.iter().enumerate() {
-                                if !out.objs.contains_key(&srcs[sx]) {
-                                    continue;
-                                }
-                                let a = phi.matmul(&sg.iota);
-                                if a.is_zero() {
-                                    continue;
-                                }
-                                for (tx, tu) in ts.iter().enumerate() {
-                                    let comp = tu.pi.matmul(&a);
-                                    out.add_map(srcs[sx], place[&(o2, k)][tx], comp);
-                                }
+                        }
+                    }
+                }
+                let rw = self.transport_rungwise && self.rungwise;
+                let words: Vec<Vec<Rung>> = loc.cx.terms.iter().map(|t| t.rungs.clone()).collect();
+                let chunk = 8 * crate::num_threads().max(1);
+                for part in jobs.chunks(chunk) {
+                    let wd = &self.wdecomp;
+                    let objs = &cx.objs;
+                    let res = par_map(part, |(o, o2, k, f)| transport_view(wd, rw, objs[o].p, objs[o2].p, f, &words[*k]));
+                    for ((o, o2, k, _), comps) in part.iter().zip(res) {
+                        let (srcs, tgts) = (&place[&(*o, *k)], &place[&(*o2, *k)]);
+                        for (sx, tx, comp) in comps {
+                            if out.objs.contains_key(&srcs[sx]) {
+                                out.add_map(srcs[sx], tgts[tx], comp);
                             }
                         }
                     }
@@ -1387,10 +1409,11 @@ impl<F: Field> XEngine<F> {
             // objects whose out (resp. in) set may change
             let mut xo: BTreeSet<usize> = cx.inn[&a].iter().chain(cx.inn[&b].iter()).copied().collect();
             let mut yi: BTreeSet<usize> = cx.out[&a].keys().chain(cx.out[&b].keys()).copied().collect();
-            for (x, g) in &xs {
-                for (y, h) in &ys {
-                    let m = scale_const(&h.matmul(g), &f);
-                    cx.add_map(*x, *y, m);
+            let pairs: Vec<(usize, usize)> = (0..xs.len()).flat_map(|i| (0..ys.len()).map(move |j| (i, j))).collect();
+            for part in pairs.chunks(256) {
+                let prods = if part.len() >= 8 { par_map(part, |&(i, j)| scale_const(&ys[j].1.matmul(&xs[i].1), &f)) } else { part.iter().map(|&(i, j)| scale_const(&ys[j].1.matmul(&xs[i].1), &f)).collect() };
+                for (&(i, j), m) in part.iter().zip(prods) {
+                    cx.add_map(xs[i].0, ys[j].0, m);
                 }
             }
             cx.remove_obj(a);
