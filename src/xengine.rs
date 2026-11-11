@@ -1771,7 +1771,7 @@ impl<F: Field> XScan<F> {
     /// A pruned scan (`prune_n = Some(N0)`) is valid for N <= N0 only (panics otherwise); there
     /// the closure of every final d∘d component is first checked to vanish (panics otherwise).
     pub fn close(&self, ns: &[usize], reduced: bool) -> BTreeMap<usize, Poincare> {
-        close_guarded(&self.data, &self.final_d2, self.prune_n, ns, reduced)
+        close_guarded(&self.data, &self.final_d2, self.prune_n, ns, if reduced { Some(0) } else { None })
     }
 
     /// Stages whose closure data were kept (`XOpts::close_stages`).
@@ -1784,8 +1784,20 @@ impl<F: Field> XScan<F> {
     /// final complex. The guards of `close` apply: a pruned scan refuses N > prune_n, and the
     /// stage-m d∘d components must close to 0. Err if stage m was not kept.
     pub fn close_stage(&self, m: usize, ns: &[usize], reduced: bool) -> Result<BTreeMap<usize, Poincare>, String> {
+        self.close_stage_marked(m, ns, if reduced { Some(0) } else { None })
+    }
+
+    /// `close_stage` with an arbitrary marked block (None: unreduced; Some(i): the block at
+    /// bottom position i is marked). For a knot the reduced homology does not depend on the
+    /// marked block (the base-point check: Some(1) = Some(0)).
+    pub fn close_stage_marked(&self, m: usize, ns: &[usize], marked: Option<usize>) -> Result<BTreeMap<usize, Poincare>, String> {
         if m == self.word.len() {
-            return Ok(self.close(ns, reduced));
+            if let Some(n0) = self.prune_n {
+                if let Some(&nn) = ns.iter().find(|&&nn| nn > n0) {
+                    return Err(format!("a scan pruned at N = {} gives the gl_N homology only for N <= {} (requested N = {})", n0, n0, nn));
+                }
+            }
+            return Ok(close_guarded(&self.data, &self.final_d2, self.prune_n, ns, marked));
         }
         if let Some(n0) = self.prune_n {
             if let Some(&nn) = ns.iter().find(|&&nn| nn > n0) {
@@ -1793,14 +1805,13 @@ impl<F: Field> XScan<F> {
             }
         }
         let (data, d2) = self.stage_data.get(&m).ok_or_else(|| format!("stage {} has no closure data (close_stages off, m < 2, or labels do not close up)", m))?;
-        Ok(close_guarded(data, d2, self.prune_n, ns, reduced))
+        Ok(close_guarded(data, d2, self.prune_n, ns, marked))
     }
 }
 
 /// `XScan::close` on given closure data and final d∘d components.
 #[allow(clippy::type_complexity)]
-fn close_guarded<F: Field>(data: &ClosureDataC<F>, final_d2: &[(usize, usize, Vec<Vec<EPoly<F>>>)], prune_n: Option<usize>, ns: &[usize], reduced: bool) -> BTreeMap<usize, Poincare> {
-    let marked = if reduced { Some(0) } else { None };
+fn close_guarded<F: Field>(data: &ClosureDataC<F>, final_d2: &[(usize, usize, Vec<Vec<EPoly<F>>>)], prune_n: Option<usize>, ns: &[usize], marked: Option<usize>) -> BTreeMap<usize, Poincare> {
     ns.iter()
         .map(|&nn| {
             if let Some(n0) = prune_n {

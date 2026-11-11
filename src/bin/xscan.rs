@@ -61,6 +61,7 @@ fn run<F: Field>(labels: &[usize], word: &[Gen], a: &Args, opts: XOpts) {
     println!("final objects (table, h, t): {:?}", sc.final_objects);
     // (stage m, reduced) -> N -> P
     let mut res: BTreeMap<(usize, bool), BTreeMap<usize, Poincare>> = BTreeMap::new();
+    let mut basepoint: BTreeMap<usize, bool> = BTreeMap::new();
     let tc = std::time::Instant::now();
     let mut stages: Vec<usize> = if a.close_stages { sc.closed_stages() } else { vec![] };
     stages.push(word.len());
@@ -74,6 +75,13 @@ fn run<F: Field>(labels: &[usize], word: &[Gen], a: &Args, opts: XOpts) {
                 println!("  Euler characteristic: {}", p.euler());
             }
             res.insert((m, reduced), r);
+        }
+        // base-point check for knots (odd 2-strand stages close to one component)
+        if a.modes.contains(&true) && labels.len() == 2 && m % 2 == 1 {
+            let r1 = sc.close_stage_marked(m, &a.ns, Some(1)).unwrap_or_else(|e| panic!("{}", e));
+            let ok = r1 == res[&(m, true)];
+            println!("stage {} base-point check (marked block 1 = marked block 0): {}", m, if ok { "PASS" } else { "FAIL" });
+            basepoint.insert(m, ok);
         }
     }
     let t_close = tc.elapsed().as_secs_f64();
@@ -97,7 +105,8 @@ fn run<F: Field>(labels: &[usize], word: &[Gen], a: &Args, opts: XOpts) {
             .collect();
         write!(j, "{}],\"results\":[", st.join(",")).unwrap();
         let rs: Vec<String> = res.iter().flat_map(|((m, red), r)| r.iter().map(move |(nn, p)| format!("{{\"stage\":{},\"reduced\":{},\"N\":{},\"P\":{}}}", m, red, nn, poly_json(p)))).collect();
-        write!(j, "{}]}}\n", rs.join(",")).unwrap();
+        let bp: Vec<String> = basepoint.iter().map(|(m, ok)| format!("\"{}\":{}", m, ok)).collect();
+        write!(j, "{}],\"basepoint_check\":{{{}}}}}\n", rs.join(","), bp.join(",")).unwrap();
         std::fs::write(path, j).expect("write --json");
     }
 }

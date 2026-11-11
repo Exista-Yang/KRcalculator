@@ -214,6 +214,13 @@ fn g2x_sigma5_33() {
                 assert_eq!(out[&(m, false)][&nn].euler(), chi_oracle(&[3, 3], &w[..m], nn), "χ stage {} N={}", m, nn);
             }
         }
+        for m in [3, 5] {
+            assert_eq!(sc.close_stage_marked(m, &ns, Some(1)).unwrap(), out[&(m, true)], "base-point check stage {}", m);
+            for &nn in &ns {
+                // χ(unreduced) = [N choose 3] χ(reduced) for knots
+                assert_eq!(out[&(m, false)][&nn].euler(), out[&(m, true)][&nn].euler().mul(&LPoly::qbinom(nn as i64, 3)), "reduced χ stage {} N={}", m, nn);
+            }
+        }
         for &nn in &ns {
             assert_eq!(out[&(2, false)][&nn], hopf_formula(nn, 3, 3), "Hopf N={}", nn);
             for (m, mm) in [(3, 1), (5, 2)] {
