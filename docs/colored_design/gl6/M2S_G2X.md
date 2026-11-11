@@ -76,7 +76,9 @@ KRHOM_THREADS=4; two runs shared the 4 cores most of the time.
   2 modes × N = 3..8). Scan 5 686 s, closures 236 s, total 5 925 s, **peak RSS 2.78 GB**.
 - **σ^7, F32b** (engine 5e27894 + chi mode): complete, peak RSS 1.66 GB; `m2s/sigma7_33_F32b.json`.
   All 72 stage closures (stages 2-7) identical to the F31 σ^9 run.
-- **σ^9, F32b**: see the session report (it was still running when this section was written).
+- **σ^9, F32b** (engine e8bac5d, the faster sort-based product): complete, scan 3 896 s, total
+  4 032 s, peak RSS 3.03 GB; `m2s/sigma9_33_F32b.json`. **All 96 closures identical to F31**;
+  base-point check PASS at stages 3, 5, 7, 9.
 
 Checks on the F31 σ^9 run (all PASS): χ = `schur::decat_chi` (xscan `--chi-only`) for all 48
 unreduced closures; stage 2 = Hopf formula; T(2,3), T(2,5), T(2,7), T(2,9) = Wang 3 N m as full
