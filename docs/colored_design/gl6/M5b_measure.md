@@ -49,3 +49,37 @@ part of the provider stamp): the first measured (3,3,3) closure calls take 16-20
 measured, uncensored record; no cap of the label rule was changed and no check was touched.
 
 (Calibration results and the second pass: section 3.)
+
+## 3. Calibration rounds and what they bought (F31)
+
+| round | input | measured | censored | effect |
+|---|---|---|---|---|
+| 1 (limit 60 s) | 403 windows refused in the large-X trace + 414 closure calls (corner, level 6), cheapest first; stopped after 215 | 115 | 100 | table v1 (215 records) |
+| 2 (limit 600 s, `--retry-censored`) | the 22 unmeasured / censored corner closure calls | 12 (75-418 s, 0.6-2.6 GB) | 10 (Memory at 3.5 GB or Time 600 s; d >= 14) | table v2 (221 records), Exact l3 ceiling 600 s |
+| 3a (limit 120 s) | 60 windows refused by the 8 remaining large-X pairs | 0 | 32 (stopped) | **not adopted**: the smallest remaining window is 495 308 unknowns (126 x 300, > 120 s at 3.3 GB); the next ones exceed 3.5 GB in 70-95 s |
+| 3b (limit 120 s) | 54 windows refused by 7 level-5 and 3 random level-6 pairs | 14 (55-119 s) | 26 | table v3 (273 records) |
+| 3c (limit 600 s) | 32 closure calls of the 3 level-5 closure types that failed | 7 (58-316 s) | 16 (d >= 15 of 1x600; d >= 6 of the 4 320-flow type 1,1,1/1,1,1/1,1,1) | table v3 |
+
+Outcomes with table v2 (cache with the calibration templates, F31):
+
+| set | jobs | certified | failures |
+|---|---|---|---|
+| level-n4 | 47 | 47 | - |
+| corner-markov-ext-n6 | 32 | 30 | closure 1,0,2/2,0,1/0,3,0 and 0,0,3/3,0,0/0,3,0 (Exhausted at 2x: their top-degree closure calls, d = 15-18, exceed 3.5 GB / 600 s) |
+| sample-largex20-n6 | 20 | 12 | 7 Refused (windows >= 495 308 unknowns), pair 336 Exhausted at 2x |
+| level-n5 (M5b-run work, measured for the projection) | 177 | 167 | 6 pairs Refused, pair 322 Exhausted, 3 closure types Exhausted |
+| sample-random30-n6 (projection) | 30 | 24 | 4 Refused, pairs 336 and 323 Exhausted |
+
+Costs (table v2, F31, warm template cache): level 4 7 s wall; corner 20 s; large-X 77 s; level 5 229 s (sum of certified
+job walls 485 s, mean 2.9 s, max 152 s); random level-6 sample 593 s wall (mean certified job 30.7 s, one pair 573 s).
+Peak RSS 2 749 MB (pair 382 at 2x). F32b without the F31 calibration templates: large-X 182 s, corner 161 s (the corner
+closure templates had to be computed: 12 Exact calls of 75-420 s, run once with `calib-one --field 32b`).
+
+Notes.
+- The cost table enters the layer-A stamp (`costs=hs-kl1:<n>recs:<hash>`), so every table change invalidates layer A.
+  Rebuilding is cheap while the templates (keyed by content, not by the table) stay cached: the final build (section 4 of
+  M5b_report.md) is one pass per prime with table v3.
+- Window admission is by the exact shape of a measured call (`predict_exact`, <= 120 s); Exact admission is by the bucket
+  maximum, so one censored call in a (labels, fibre-product bucket, degree) bucket closes the whole bucket. A template
+  already in the cache is admitted by Search whatever the table says; F32b therefore gets the same templates computed
+  once (`calib-one --field 32b`) so that both primes run the same route.
