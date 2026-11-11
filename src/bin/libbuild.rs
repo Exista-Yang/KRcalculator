@@ -182,10 +182,17 @@ fn build_set(args: &[String], s: &mut Schur, lam: &[u8], n: u8) -> (SetDef, Plan
             jobs.push(closure_job(s, lam, q));
         }
     } else if let Some(sm) = opt(args, "--sample") {
-        assert_eq!(sm, "largex", "unknown sample {}", sm);
+        assert!(sm == "largex" || sm == "random", "unknown sample {} (largex | random)", sm);
         let count: usize = opt(args, "--count").map(|v| v.parse().unwrap()).unwrap_or(20);
         let mut cand: Vec<Job> = (0..plan.pairs.len()).filter(|&k| !plan.pairs[k].p_killed && !plan.pairs[k].identity && !plan.pairs[k].all_killed).map(|k| pair_job(s, lam, &plan, k)).collect();
-        cand.sort_by(|a, b| b.x_flows.cmp(&a.x_flows).then(a.spec[1].parse::<usize>().unwrap().cmp(&b.spec[1].parse::<usize>().unwrap())));
+        if sm == "largex" {
+            cand.sort_by(|a, b| b.x_flows.cmp(&a.x_flows).then(a.spec[1].parse::<usize>().unwrap().cmp(&b.spec[1].parse::<usize>().unwrap())));
+        } else {
+            // uniform sample of the provider pairs (projection of a level), seeded
+            use rand::{rngs::StdRng, seq::SliceRandom, SeedableRng};
+            let seed: u64 = opt(args, "--seed").map(|v| v.parse().unwrap()).unwrap_or(2026);
+            cand.shuffle(&mut StdRng::seed_from_u64(seed));
+        }
         cand.truncate(count);
         jobs = cand;
     } else {
@@ -539,7 +546,7 @@ fn cmd_run(args: &[String], replay: bool) {
     let attempts: Arc<Mutex<Vec<Attempt>>> = Arc::new(Mutex::new(vec![]));
     let t_all = Instant::now();
     let mut base: Vec<String> = vec!["one".into()];
-    for k in ["--lam", "--n", "--field", "--cache", "--costs", "--corner", "--sample", "--count"] {
+    for k in ["--lam", "--n", "--field", "--cache", "--costs", "--corner", "--sample", "--count", "--seed"] {
         if let Some(v) = opt(args, k) {
             base.push(k.into());
             base.push(v);
