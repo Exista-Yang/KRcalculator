@@ -1674,60 +1674,203 @@ pub mod synth {
         out
     }
 
-    /// Build prev ⊗ W into the engine as one crossing: one step per h-level of W (ascending),
-    /// d_prev ⊗ id within a step, (−1)^{h} id ⊗ d_W from step k−1 to step k. Product shapes are
-    /// registered on the fly.
-    pub fn tensor_crossing<F: Field>(eng: &mut PEngine<F>, w: &SCx<F>) -> Result<(), SErr> {
+    /// Build prev ⊗ W as one crossing: one step per h-level of W (ascending), d_prev ⊗ id
+    /// within a step, (−1)^{h} id ⊗ d_W from step k−1 to step k. Product shapes are registered
+    /// on the fly. With `twist = Some((seed, x))` every term is written in its own random basis
+    /// (a unitriangular automorphism Q_k of C ⊗ W_k, applied as Q d Q⁻¹ blockwise over terms):
+    /// an isomorphic complex whose within-term pivots differ from term to term, as the summand
+    /// bases of real decompositions do. Without a twist every within-term pivot of C is
+    /// mirrored in the next term, which makes early elimination harmless (see the report).
+    pub fn tensor_crossing<F: Field>(eng: &mut PEngine<F>, w: &SCx<F>, twist: Option<(u64, F)>) -> Result<(), SErr> {
         let prev = eng.begin_crossing()?;
         let wh: BTreeSet<i32> = w.objs().values().map(|o| o.h).collect();
         let (h0, h1) = (*wh.iter().next().unwrap(), *wh.iter().last().unwrap());
+        let mut full: SCx<F> = SCx::new();
+        let mut term: Vec<u32> = vec![];
         let mut place: HashMap<(usize, usize), usize> = HashMap::new();
         for k in h0..=h1 {
-            eng.begin_step()?;
-            let ws: Vec<usize> = w.objs().iter().filter(|(_, o)| o.h == k).map(|(&i, _)| i).collect();
-            for (&o, oc) in prev.objs() {
-                for &wi in &ws {
-                    let ow = w.objs()[&wi];
+            for (&wi, ow) in w.objs().iter().filter(|(_, o)| o.h == k) {
+                for (&o, oc) in prev.objs() {
                     let (sc, sw) = (eng.reg.shape(oc.p)?.clone(), eng.reg.shape(ow.p)?.clone());
                     let pt = ptid(oc.p, ow.p);
                     if !eng.reg.contains(pt) {
                         eng.register(product_shape(&sc, &sw))?;
                     }
-                    let id = eng.add_obj(SObj { p: pt, h: oc.h + ow.h, t: oc.t + ow.t })?;
-                    place.insert((o, wi), id);
+                    place.insert((o, wi), full.add_obj(SObj { p: pt, h: oc.h + ow.h, t: oc.t + ow.t }));
+                    term.push((k - h0) as u32);
                 }
             }
-            // d_prev ⊗ id within the step
-            for (&o, outs) in prev.out() {
-                for (&o2, f) in outs {
-                    for &wi in &ws {
-                        let ow = w.objs()[&wi];
-                        let (p1, p2) = (prev.objs()[&o].p, prev.objs()[&o2].p);
-                        let lay = eng.layout(ptid(p1, ow.p), ptid(p2, ow.p))?;
-                        let sw = eng.reg.shape(ow.p)?.clone();
-                        let m = kron(lay, f, &sw, &sw, true, &F::one());
-                        eng.add_map(place[&(o, wi)], place[&(o2, wi)], m)?;
-                    }
+        }
+        for (&o, outs) in prev.out() {
+            for (&o2, f) in outs {
+                for (&wi, ow) in w.objs() {
+                    let (p1, p2) = (prev.objs()[&o].p, prev.objs()[&o2].p);
+                    let lay = eng.layout(ptid(p1, ow.p), ptid(p2, ow.p))?;
+                    let sw = eng.reg.shape(ow.p)?.clone();
+                    full.add_map(place[&(o, wi)], place[&(o2, wi)], kron(lay, f, &sw, &sw, true, &F::one()));
                 }
             }
-            // id ⊗ d_W from the previous step
-            for &wi in &ws {
-                for &wj in &w.inn()[&wi] {
-                    let g = w.get(wj, wi).unwrap();
-                    let (pj, pi) = (w.objs()[&wj].p, w.objs()[&wi].p);
-                    for (&o, oc) in prev.objs() {
-                        let lay = eng.layout(ptid(oc.p, pj), ptid(oc.p, pi))?;
-                        let so = eng.reg.shape(oc.p)?.clone();
-                        let sign = if oc.h.rem_euclid(2) == 0 { F::one() } else { F::one().neg() };
-                        let m = kron(lay, g, &so, &so, false, &sign);
-                        eng.add_map(place[&(o, wj)], place[&(o, wi)], m)?;
+        }
+        for (&wj, outs) in w.out() {
+            for (&wi, g) in outs {
+                let (pj, pi) = (w.objs()[&wj].p, w.objs()[&wi].p);
+                for (&o, oc) in prev.objs() {
+                    let lay = eng.layout(ptid(oc.p, pj), ptid(oc.p, pi))?;
+                    let so = eng.reg.shape(oc.p)?.clone();
+                    let sign = if oc.h.rem_euclid(2) == 0 { F::one() } else { F::one().neg() };
+                    full.add_map(place[&(o, wj)], place[&(o, wi)], kron(lay, g, &so, &so, false, &sign));
+                }
+            }
+        }
+        drop(prev);
+        let full = match twist {
+            Some((seed, x)) => twist_terms(&full, &mut eng.reg, &term, seed, x),
+            None => full,
+        };
+        insert_terms(eng, &full, &term)?;
+        eng.end_crossing()?;
+        Ok(())
+    }
+
+    /// Insert a complex whose objects are tagged with terms 0..n into the open crossing, one step
+    /// per term: the objects of term k, the arrows inside term k and from term k−1 to term k.
+    /// Panics if an arrow skips or descends terms.
+    pub fn insert_terms<F: Field>(eng: &mut PEngine<F>, full: &SCx<F>, term: &[u32]) -> Result<(), SErr> {
+        let nt = term.iter().copied().max().map_or(0, |m| m + 1);
+        let mut ids: HashMap<usize, usize> = HashMap::new();
+        for k in 0..nt {
+            eng.begin_step()?;
+            for (&i, &o) in full.objs() {
+                if term[i] == k {
+                    ids.insert(i, eng.add_obj(o)?);
+                }
+            }
+            for (&x, outs) in full.out() {
+                for (&y, m) in outs {
+                    if term[y] != k {
+                        continue;
                     }
+                    assert!(term[x] == k || term[x] + 1 == k, "insert_terms: arrow {} → {} from term {} to {}", x, y, term[x], k);
+                    eng.add_map(ids[&x], ids[&y], m.clone())?;
                 }
             }
             eng.end_step()?;
         }
-        eng.end_crossing()?;
         Ok(())
+    }
+
+    /// Q d Q⁻¹ with Q = I + N block diagonal over terms: N between objects of the same term and
+    /// h, strictly increasing in (−t, id), degree ≥ 0 (degree 0: scalar between equal types).
+    pub fn twist_terms<F: Field>(cx: &SCx<F>, reg: &mut ShapeReg, term: &[u32], seed: u64, x: F) -> SCx<F> {
+        let objs: Vec<SObj> = cx.objs().values().copied().collect();
+        assert!(cx.objs().keys().enumerate().all(|(i, &k)| i == k), "twist_terms: ids must be 0..n");
+        let n = objs.len();
+        let mut rs = StdRng::seed_from_u64(seed ^ 0x7715);
+        let mut vals = Vals { rng: StdRng::seed_from_u64(seed ^ 0x7716), x };
+        let shp: Vec<Arc<TypeShape>> = objs.iter().map(|o| reg.shape(o.p).unwrap().clone()).collect();
+        let allcos: BTreeSet<u64> = shp.iter().flat_map(|s| s.cosets.iter().copied()).collect();
+        let key = |i: usize| (-objs[i].t, i);
+        let mut nmap: Vec<(usize, usize, BTreeMap<u64, Vec<F>>)> = vec![];
+        for i in 0..n {
+            for j in 0..n {
+                let (a, b) = (objs[i], objs[j]);
+                if term[i] != term[j] || a.h != b.h || key(i) >= key(j) {
+                    continue;
+                }
+                let scalar = a.t == b.t;
+                if scalar && a.p != b.p {
+                    continue;
+                }
+                if !rs.gen_bool(0.5) {
+                    continue;
+                }
+                let s = vals.v();
+                let mut blocks = BTreeMap::new();
+                for &c in &allcos {
+                    let (dc, dr) = (shp[i].dim_at(c), shp[j].dim_at(c));
+                    if dc > 0 && dr > 0 {
+                        let blk: Vec<F> = if scalar {
+                            (0..dr * dc).map(|k| if k / dc == k % dc { s.clone() } else { F::zero() }).collect()
+                        } else {
+                            (0..dc * dr).map(|_| vals.v()).collect()
+                        };
+                        blocks.insert(c, blk);
+                    }
+                }
+                nmap.push((i, j, blocks));
+            }
+        }
+        let mut out = SCx::new();
+        for o in &objs {
+            out.add_obj(*o);
+        }
+        let mut comp: BTreeMap<(usize, usize), BTreeMap<u64, Vec<F>>> = BTreeMap::new();
+        for &c in &allcos {
+            let mut off = vec![usize::MAX; n];
+            let mut tot = 0;
+            for i in 0..n {
+                let d = shp[i].dim_at(c) as usize;
+                if d > 0 {
+                    off[i] = tot;
+                    tot += d;
+                }
+            }
+            if tot == 0 {
+                continue;
+            }
+            let dim = |i: usize| shp[i].dim_at(c) as usize;
+            let mut d0 = vec![vec![F::zero(); tot]; tot];
+            for (&i, outs) in cx.out() {
+                for (&j, m) in outs {
+                    let Some(k) = m.lay.index(c) else { continue };
+                    let b = m.block(k);
+                    let (dc, dr) = (dim(i), dim(j));
+                    for r in 0..dr {
+                        for q in 0..dc {
+                            d0[off[j] + r][off[i] + q] = b[r * dc + q].clone();
+                        }
+                    }
+                }
+            }
+            let mut pm = vec![vec![F::zero(); tot]; tot];
+            for (k, row) in pm.iter_mut().enumerate() {
+                row[k] = F::one();
+            }
+            for (i, j, bl) in &nmap {
+                if let Some(b) = bl.get(&c) {
+                    let (dc, dr) = (dim(*i), dim(*j));
+                    for r in 0..dr {
+                        for q in 0..dc {
+                            pm[off[*j] + r][off[*i] + q] = b[r * dc + q].clone();
+                        }
+                    }
+                }
+            }
+            let d = matmul(&matmul(&pm, &d0), &inverse(&pm));
+            for i in 0..n {
+                for j in 0..n {
+                    if off[i] == usize::MAX || off[j] == usize::MAX || objs[j].h != objs[i].h + 1 {
+                        continue;
+                    }
+                    let (dc, dr) = (dim(i), dim(j));
+                    let blk: Vec<F> = (0..dr * dc).map(|k| d[off[j] + k / dc][off[i] + k % dc].clone()).collect();
+                    if blk.iter().any(|v| !v.is_zero()) {
+                        comp.entry((i, j)).or_default().insert(c, blk);
+                    }
+                }
+            }
+        }
+        for ((i, j), bl) in comp {
+            let lay = reg.layout(objs[i].p, objs[j].p).unwrap();
+            let mut m = LocMap::zeros(lay.clone());
+            for (k, &c) in lay.cosets.iter().enumerate() {
+                if let Some(b) = bl.get(&c) {
+                    m.block_mut(k).clone_from_slice(b);
+                }
+            }
+            out.add_map(i, j, m);
+        }
+        out
     }
 
     /// Insert a whole complex as one crossing of one step (then eliminate).

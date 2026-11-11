@@ -14,6 +14,7 @@
 use krhom::field::{Field, F31};
 use krhom::sengine::synth::{self, Params};
 use krhom::sengine::*;
+use krhom::smap::LocMap;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -65,9 +66,12 @@ fn w_params(seed: u64) -> Params {
 fn run_tensor(seed: u64, x: F, o: EngOpts, mode: Mode) -> Result<(PointScan<F>, SCx<F>, PEngineView), SErr> {
     let mut e = PEngine::<F>::new(mode, o);
     let c = synth::generate(seed, &c_params(seed), x.clone(), &mut e.reg);
+    let x2 = x.clone();
     let w = synth::generate(seed ^ 0xabcdef, &w_params(seed), x, &mut e.reg);
     e.load(c.cx)?;
-    synth::tensor_crossing(&mut e, &w.cx)?;
+    // 3 of 4 seeds: every term in its own random basis (see synth::tensor_crossing)
+    let twist = if seed % 4 != 0 { Some((seed, x2)) } else { None };
+    synth::tensor_crossing(&mut e, &w.cx, twist)?;
     let reg = e.reg.clone();
     let (ps, cx) = e.finish(0)?;
     Ok((ps, cx, PEngineView { reg }))
@@ -85,7 +89,7 @@ fn minimal_model(seed: u64, x: F) -> (SCx<F>, ShapeReg) {
         return (SCx::new(), e.reg.clone());
     }
     e.load(c.min).unwrap();
-    synth::tensor_crossing(&mut e, &w.min).unwrap();
+    synth::tensor_crossing(&mut e, &w.min, None).unwrap();
     assert_eq!(e.frozen().pivots(), 0, "the minimal model has no pivot");
     let reg = e.reg.clone();
     (e.finish(0).unwrap().1, reg)
@@ -324,7 +328,7 @@ fn memory_accounting_and_refusal() {
         let w = synth::generate(seed + 1, &wp, xval(1), &mut e.reg);
         e.set_extern_bytes(4096);
         e.load(c.cx)?;
-        synth::tensor_crossing(&mut e, &w.cx)?;
+        synth::tensor_crossing(&mut e, &w.cx, Some((seed, xval(1))))?;
         assert_eq!(e.cx().bytes(), e.cx().recount_bytes());
         Ok(e.finish(0)?.0)
     };
@@ -426,7 +430,9 @@ fn library_trait_and_gram_at_point_on_11() {
             grams.push(g);
         }
         eprintln!("[gram] (1,1) type {}: {} generators, degrees in {:?} out {:?}, rank S = {}, id coset {}", p, grams[0].ins.len(), grams[0].ins, grams[0].outs, sh.s(), grams[0].id_coset);
-        assert_ne!(grams[0].g, grams[1].g, "Gram must depend on the point (degrees > 0 present)");
+        if grams[0].ins.iter().chain(&grams[0].outs).any(|&d| d != 0) {
+            assert_ne!(grams[0].g, grams[1].g, "Gram must depend on the point (degrees > 0 present)");
+        }
     }
     // the trait object is usable from several threads over one Arc
     fn ss<T: Send + Sync + ?Sized>() {}
@@ -443,7 +449,7 @@ fn bench(seed: u64, cp: &Params, wp: &Params, streaming: bool) -> (PointScan<F>,
     let w = synth::generate(seed + 1, wp, xval(1), &mut e.reg);
     e.load(c.cx).unwrap();
     let t = Instant::now();
-    synth::tensor_crossing(&mut e, &w.cx).unwrap();
+    synth::tensor_crossing(&mut e, &w.cx, Some((seed, xval(1)))).unwrap();
     let s = t.elapsed().as_secs_f64();
     (e.finish(0).unwrap().0, s)
 }
@@ -464,7 +470,7 @@ fn cost_table(sizes: &[(usize, usize, usize, usize)]) {
         let w = synth::generate(6, &wp, xval(1), &mut e.reg);
         e.load(c.cx).unwrap();
         let t = Instant::now();
-        synth::tensor_crossing(&mut e, &w.cx).unwrap();
+        synth::tensor_crossing(&mut e, &w.cx, Some((5, xval(1)))).unwrap();
         let sr = t.elapsed().as_secs_f64();
         let st = &s.stages[0];
         eprintln!(
