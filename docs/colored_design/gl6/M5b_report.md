@@ -172,7 +172,7 @@ targets, 84.7 % of Σ mult). What M5b-run has left is not compute but the 68 fai
 
 ## Persistence (data-gl6)
 
-data-gl6/m5b/{f31,f32b}: `layerA_tmpl.tar.gz.part-000` (layer A + template library, one chunk each, < 5 MB) with
+data-gl6/m5b/{f31,f32b}: `layerA_tmpl.tar.gz.part-000` (layer A + template library through level 6, one chunk each, 14-16 MB; 1 469 layer-A files per prime) with
 MANIFEST.txt (λ, field, code commit, layer-A stamps incl. the cost-table hash, file counts, sha256, restore command),
 the run and replay logs (runs/*.jsonl, *.targets) and costs_333.txt. Restore:
 `cat layerA_tmpl.tar.gz.part-* | tar -C CACHE -xzf -` then `libbuild run|replay ... --cache CACHE --costs
