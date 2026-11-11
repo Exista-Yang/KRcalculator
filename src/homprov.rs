@@ -960,6 +960,21 @@ fn exact_call<F: Field>(ar: &mut Arena<F>, labels: &[u8], a: &[Rung], b: &[Rung]
     if trace {
         eprintln!("[exact] done {:.2}s dim {}", elapsed(&t0), ids.len());
     }
+    // KRHOM_WINLOG=PATH: append every exact call (computed or cached) in the `g1 calib --windows`
+    // format (labels, source word, target word, degree), for recalibrating the cost table
+    if let Ok(path) = std::env::var("KRHOM_WINLOG") {
+        use std::io::Write as _;
+        let code = |rs: &[Rung]| -> String {
+            if rs.is_empty() {
+                return "-".into();
+            }
+            rs.iter().map(|r| format!("{}{}.{}", if r.dir == crate::web::Dir::E { "E" } else { "F" }, r.i, r.r)).collect::<Vec<_>>().join(",")
+        };
+        let lab: Vec<String> = labels.iter().map(|x| x.to_string()).collect();
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+            let _ = writeln!(f, "{} {} {} {}", lab.join(","), code(a), code(b), d);
+        }
+    }
     Ok(ids)
 }
 
@@ -1340,6 +1355,9 @@ pub struct Search {
     /// measured costs for window admission (otherwise the unknown-count cap)
     pub costs: Option<CostTable>,
     pub max_window_unknowns: u128,
+    /// fibre-product cap of Search windows without a measured record (6 400; was
+    /// tmpl::HOM_WINDOW_CAP = 1 600 for the old hom_space solver)
+    pub max_window_fibre: u128,
     pub max_window_s: f64,
     /// unknown cap of commutation windows (two rungs, degree 0)
     pub max_comm_unknowns: u128,
@@ -1371,7 +1389,13 @@ impl Search {
             lo,
             hi,
             costs: None,
-            max_window_unknowns: 2500,
+            // measured with linsys::kernel_lazy (cloud box): (2,4,0) [F1(1) F0(1) E0(1)] <->
+            // [F1(2) E0(2) F0(2) E1(1)] degree 0, 32 x 72, 8 762 unknowns: 0.77 / 0.97 s; whole
+            // (2,2,2) ladders with 39 165 unknowns: 7.4 s; (1,5,0) [F1(2) E0(3) F0(2) E1(1)] ->
+            // [E0(4) F1(1) F0(3)] degree 1, 120 x 50, 33 134 unknowns: 5.6 s; (5,1,0) 60 x 90,
+            // 21 300 unknowns: 1.8 s (the old caps were 2 500 / 1 600)
+            max_window_unknowns: 40_000,
+            max_window_fibre: 6400,
             max_window_s: 120.0,
             max_comm_unknowns: 20000,
             max_iso_unknowns: 6000,
@@ -1401,7 +1425,7 @@ impl Search {
         if let Some(t) = self.costs.as_ref().and_then(|c| c.predict_exact(labels, fa, fb, unk, d)) {
             return t <= self.max_window_s;
         }
-        if fp > crate::tmpl::HOM_WINDOW_CAP {
+        if fp > self.max_window_fibre {
             return false;
         }
         if let Some(c) = self.costs.as_ref() {
