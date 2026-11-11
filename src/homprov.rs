@@ -965,7 +965,10 @@ fn exact_call<F: Field>(ar: &mut Arena<F>, labels: &[u8], a: &[Rung], b: &[Rung]
 
 // ------------------------------------------------------------------ the Exact backend (§4.5)
 
-/// defaults: 1 600, 5 000, max_label 2, costs None, max_call_s 10.0 (§4.5)
+/// defaults: 1 600, 40 000, max_label 2, costs None, max_call_s 10.0 (§4.5; the unknown cap was
+/// 5 000 for the old hom_space solver; with `linsys::kernel_lazy` every Hom^d (d = 0..4) between
+/// canonical ladders of (2,1,2) and (2,2,2) with fibre product <= 1 600 takes <= 7.4 s on the
+/// cloud box, at most 39 165 unknowns)
 #[derive(Clone, Debug)]
 pub struct Exact {
     pub max_fibre_product: u64,
@@ -976,7 +979,7 @@ pub struct Exact {
 }
 impl Default for Exact {
     fn default() -> Self {
-        Exact { max_fibre_product: 1600, max_unknowns: 5000, max_label: 2, costs: None, max_call_s: 10.0 }
+        Exact { max_fibre_product: 1600, max_unknowns: 40_000, max_label: 2, costs: None, max_call_s: 10.0 }
     }
 }
 
@@ -1800,6 +1803,9 @@ impl Search {
                         let io_d = if self.win_ok(ar, &labels, lw, &rel, *sdeg) { *sdeg } else { s_lo };
                         let pi_d = if self.win_ok(ar, &labels, &rel, lw, -*sdeg) { -*sdeg } else { -s_hi };
                         if !self.win_ok(ar, &labels, lw, &rel, io_d) || !self.win_ok(ar, &labels, &rel, lw, pi_d) {
+                            if std::env::var("KRHOM_TRACE").is_ok() {
+                                eprintln!("[choose_window] refused {:?} [{}] summand [{}]{{{}}}: iota d {} ({} x {}, unknowns {}), pi d {} (unknowns {})", labels, wstr(&rel), wstr(lw), sdeg, io_d, crate::schur::flows(&labels, lw), crate::schur::flows(&labels, &rel), hom_unknowns(&labels, lw, &rel, io_d), pi_d, hom_unknowns(&labels, &rel, lw, pi_d));
+                            }
                             ok = false;
                             break;
                         }
