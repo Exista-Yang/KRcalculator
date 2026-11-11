@@ -4,6 +4,7 @@
 use crate::field::Field;
 use crate::sparse::{Acc, SpVec};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// Incremental echelon basis of a row space (rows sparse over columns 0..ncols).
 pub struct Echelon<F: Field> {
@@ -197,11 +198,48 @@ impl<F: Field> RankEchelon<F> {
 /// remaining row is violated the scan stops. This is exact: kernel(all) ⊆ kernel(inserted)
 /// always, and a basis of kernel(inserted) annihilating every row gives the reverse inclusion.
 pub fn kernel_lazy<F: Field>(ncols: usize, eqs: &[SpVec<F>]) -> Vec<SpVec<F>> {
+    let (ker, tr) = kernel_lazy_traced(ncols, eqs);
+    LAZY_CALLS.fetch_add(1, Ordering::Relaxed);
+    if tr.early_stop {
+        LAZY_EARLY_STOPS.fetch_add(1, Ordering::Relaxed);
+    }
+    if tr.reinserted > 0 {
+        LAZY_REINSERTS.fetch_add(1, Ordering::Relaxed);
+    }
+    ker
+}
+
+/// What one `kernel_lazy` call did (branch coverage of the early stop; tests and diagnostics)
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KernelTrace {
+    /// number of kernel checks started (after a run of redundant rows)
+    pub checks: usize,
+    /// the scan stopped before the last row (every remaining row annihilated the kernel)
+    pub early_stop: bool,
+    /// rows left unscanned by the early stop
+    pub skipped: usize,
+    /// check rounds that found violated rows, and the rows inserted by them
+    pub reinsert_rounds: usize,
+    pub reinserted: usize,
+}
+
+static LAZY_CALLS: AtomicUsize = AtomicUsize::new(0);
+static LAZY_EARLY_STOPS: AtomicUsize = AtomicUsize::new(0);
+static LAZY_REINSERTS: AtomicUsize = AtomicUsize::new(0);
+
+/// process-wide counters of `kernel_lazy`: (calls, calls that stopped early, calls in which a
+/// check inserted violated rows)
+pub fn kernel_lazy_counters() -> (usize, usize, usize) {
+    (LAZY_CALLS.load(Ordering::Relaxed), LAZY_EARLY_STOPS.load(Ordering::Relaxed), LAZY_REINSERTS.load(Ordering::Relaxed))
+}
+
+/// `kernel_lazy` with its branch trace
+pub fn kernel_lazy_traced<F: Field>(ncols: usize, eqs: &[SpVec<F>]) -> (Vec<SpVec<F>>, KernelTrace) {
     const KER_CHECK_MAX: usize = 128;
     let mut piv: Vec<Option<Vec<(u32, F)>>> = vec![None; ncols];
     let mut acc: Vec<F> = vec![F::zero(); ncols.max(1)];
     let mut rank = 0usize;
-    let mut insert = |v: &SpVec<F>, piv: &mut Vec<Option<Vec<(u32, F)>>>, acc: &mut Vec<F>| -> bool {
+    let insert = |v: &SpVec<F>, piv: &mut Vec<Option<Vec<(u32, F)>>>, acc: &mut Vec<F>| -> bool {
         if v.is_empty() {
             return false;
         }
@@ -252,7 +290,23 @@ pub fn kernel_lazy<F: Field>(ncols: usize, eqs: &[SpVec<F>]) -> Vec<SpVec<F>> {
         }
         r
     };
-    // dense kernel basis of the current pivot rows (back substitution)
+    // back substitution for the free column f into the zeroed buffer x (pivots p > f stay 0)
+    let back = |piv: &Vec<Option<Vec<(u32, F)>>>, f: usize, x: &mut Vec<F>| {
+        x[f] = F::one();
+        for p in (0..f).rev() {
+            if let Some(row) = &piv[p] {
+                let mut s = F::zero();
+                for (j, y) in row {
+                    let xj = &x[*j as usize];
+                    if !xj.is_zero() {
+                        s.fma(y, xj);
+                    }
+                }
+                x[p] = s.neg();
+            }
+        }
+    };
+    // dense kernel basis of the current pivot rows, used only for the check (dimension <= KER_CHECK_MAX)
     let kernel_dense = |piv: &Vec<Option<Vec<(u32, F)>>>| -> Vec<(usize, Vec<F>)> {
         let mut out = vec![];
         for f in 0..ncols {
@@ -260,20 +314,28 @@ pub fn kernel_lazy<F: Field>(ncols: usize, eqs: &[SpVec<F>]) -> Vec<SpVec<F>> {
                 continue;
             }
             let mut x = vec![F::zero(); ncols];
-            x[f] = F::one();
-            for p in (0..f).rev() {
-                if let Some(row) = &piv[p] {
-                    let mut s = F::zero();
-                    for (j, y) in row {
-                        let xj = &x[*j as usize];
-                        if !xj.is_zero() {
-                            s.fma(y, xj);
-                        }
-                    }
-                    x[p] = s.neg();
+            back(piv, f, &mut x);
+            out.push((f, x));
+        }
+        out
+    };
+    // the final kernel, built sparsely: one reused dense buffer, each vector pushed sparse at once
+    // (peak memory O(ncols + nnz(kernel)) instead of dim · ncols)
+    let kernel_sparse = |piv: &Vec<Option<Vec<(u32, F)>>>| -> Vec<SpVec<F>> {
+        let mut out = vec![];
+        let mut x = vec![F::zero(); ncols.max(1)];
+        for f in 0..ncols {
+            if piv[f].is_some() {
+                continue;
+            }
+            back(piv, f, &mut x);
+            let mut v: SpVec<F> = vec![];
+            for (j, xj) in x.iter_mut().enumerate().take(f + 1) {
+                if !xj.is_zero() {
+                    v.push((j as u32, std::mem::replace(xj, F::zero())));
                 }
             }
-            out.push((f, x));
+            out.push(v);
         }
         out
     };
@@ -290,7 +352,7 @@ pub fn kernel_lazy<F: Field>(ncols: usize, eqs: &[SpVec<F>]) -> Vec<SpVec<F>> {
     let mut run_max = 64usize;
     let mut run = 0usize;
     let mut i = 0usize;
-    let mut finished_early: Option<Vec<(usize, Vec<F>)>> = None;
+    let mut tr = KernelTrace::default();
     while i < eqs.len() {
         if !done[i] {
             if insert(&eqs[i], &mut piv, &mut acc) {
@@ -304,29 +366,30 @@ pub fn kernel_lazy<F: Field>(ncols: usize, eqs: &[SpVec<F>]) -> Vec<SpVec<F>> {
         i += 1;
         if run >= run_max && ncols - rank <= KER_CHECK_MAX && i < eqs.len() {
             run = 0;
+            tr.checks += 1;
             loop {
                 let ker = kernel_dense(&piv);
                 let bad: Vec<usize> = (i..eqs.len()).filter(|&j| !done[j] && violated(&eqs[j], &ker)).collect();
                 if bad.is_empty() {
-                    finished_early = Some(ker);
+                    tr.early_stop = true;
+                    tr.skipped = (i..eqs.len()).filter(|&j| !done[j]).count();
                     break;
                 }
+                tr.reinsert_rounds += 1;
                 for j in bad {
                     if insert(&eqs[j], &mut piv, &mut acc) {
                         rank += 1;
                     }
+                    tr.reinserted += 1;
                     done[j] = true;
                 }
             }
-            if finished_early.is_some() {
+            if tr.early_stop {
                 break;
             }
             run_max *= 2;
         }
     }
     let _ = rank;
-    let ker = finished_early.unwrap_or_else(|| kernel_dense(&piv));
-    ker.into_iter()
-        .map(|(_, x)| x.into_iter().enumerate().filter(|(_, v)| !v.is_zero()).map(|(j, v)| (j as u32, v)).collect())
-        .collect()
+    (kernel_sparse(&piv), tr)
 }

@@ -1,4 +1,4 @@
-krhom-costs v1 fields=labels,fs,ft,unknowns,deg,secs,rss_mb,censored
+krhom-costs v2 alg=hs-kl1 host=4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz fields=labels,fs,ft,unknowns,deg,secs,rss_mb,censored
 3,3 1 12 29 1 0.000866 0.0 0
 3,3 12 1 29 1 0.000957 0.0 0
 3,3 1 12 61 3 0.001164 0.0 0
