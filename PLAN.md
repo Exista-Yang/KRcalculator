@@ -393,3 +393,31 @@ stay small; this is the Bar-Natan principle of closing as early as possible.
   (x)_i H*(Gr(lambda_i, N)), reduced mode, global_q, (Delta G) adapter to the restriction tower,
   exact closure data of small ladders), g4_free (gate G4 certified for 2 <= a <= 5, a <= N <= 10),
   tests/cclose.rs. Checked against MOY, StateSpace, Wang's Hopf formula, the full cube and engine2.
+
+## Target narrowed: 3-colored gl_6 (2026-11-10, user)
+
+- For now the showcase is wedge^3-colored gl_6 homology (knots, up to Conway size), instead of
+  5-colored gl_10. First 2-strand T(2,n) (Wang: 3-colored trefoil gl_6 rank 136), then 3-strand knots.
+- Fixed N = 6 allows (to be validated): (1) N-truncation: drop every type B_p whose Lusztig cell weight
+  mu(p) (conjectured: RSK shape of the column-reversed table) has mu_1 > N, at every stage of the scan;
+  (2) closure only at N = 6, with unknowns restricted to the Gr(3,6) box (<= 20 monomials per block).
+- 2-strand (3,3) at N = 6 prunes nothing (max internal label 6), so M4b (fast certified Hom spaces) stays
+  on the critical path.
+
+### N-truncation validated (2026-11-10, branch trunc-n)
+
+- Rule: B_p maps to 0 in Foam_N iff mu(p)_1 > N, mu(p) = RSK shape of the column-reversed table
+  (= RS(p_max)^T; Greene: mu_1 = largest entry sum along a down-left chain, an O(nm) DP).
+  Decategorified: 0 mismatches against the MOY trace kernel on 9 833 (type, N) pairs (51 (lambda, N) rows,
+  up to (3,3,3) and (2,2,2,2)); literature: CKM Thm 4.4.1, Lusztig 29.2 / Doty Thm 4.2, Cui-Luo-Wang
+  Prop 5.6(3). The categorified statement is assumed via the engine's Hom formula; dropping killed
+  types mid-scan only needs the decategorified kernel + positivity + the closure contract.
+- Categorified: pruned = unpruned 2-strand scans on every feasible case (tests/ntrunc.rs); new:
+  3-colored Hopf/trefoil/T(2,5) at N = 3, 4 (Wang, Hopf formula, chi, duality with uncolored gl_4).
+- Do NOT use "the minimal-flow ladder has a label > N" as a kill criterion (false for (3,3,3,1)).
+- Envelope at N = 6: 3-strand (3,3,3) knots LB ~0.49x, kept-summand peak ~0.36x of untruncated
+  (pre-decomposition tensors still ~0.62x); 4_1 LB 276, 8_19 LB 776, 12a_1248 LB 7.4e5.
+  (3,3,3,3): 790 of 2 008 types survive; closure in the Gr(3,6)^4 box instead of 1.9e9 e-monomials
+  (weight vs box-degree convention still to be checked for weights 37-40).
+- N = 5 on (3,3) still needs a 5401 s Hom between kept types; N = 6 prunes nothing on 2 strands:
+  M4b remains the critical path. Pruning must be built into M5/M6a (decompositions drop killed summands).
