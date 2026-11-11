@@ -616,6 +616,63 @@ fn rung_key(r: &Rung) -> (u8, usize, usize) {
     (if r.dir == Dir::E { 0 } else { 1 }, r.i, r.r)
 }
 
+/// a · b for PMats, by sorting the term products of each column instead of hashing them
+/// (same result as `PMat::matmul`, in the same canonical form: rows ascending, monomials
+/// ascending, no zero entries or terms); `c`: also scale by the constant c.
+fn mm<F: Field>(a: &PMat<F>, b: &PMat<F>, c: Option<&F>) -> PMat<F> {
+    assert_eq!(a.ncols, b.nrows);
+    let mut buf: Vec<(u32, crate::mpoly::Mono, F)> = vec![];
+    let cols = b
+        .cols
+        .iter()
+        .map(|col| {
+            buf.clear();
+            for (k, pk) in col {
+                for (i, pa) in &a.cols[*k as usize] {
+                    for (ma, ca) in &pa.t {
+                        for (mb, cb) in &pk.t {
+                            buf.push((*i, ma + mb, ca.mul(cb)));
+                        }
+                    }
+                }
+            }
+            buf.sort_unstable_by_key(|x| (x.0, x.1));
+            let mut out: PVec<F> = vec![];
+            let mut cur: Option<(u32, Vec<(crate::mpoly::Mono, F)>)> = None;
+            let mut j = 0;
+            while j < buf.len() {
+                let (r, m) = (buf[j].0, buf[j].1);
+                let mut v = buf[j].2.clone();
+                j += 1;
+                while j < buf.len() && buf[j].0 == r && buf[j].1 == m {
+                    v.add_assign(&buf[j].2);
+                    j += 1;
+                }
+                if let Some(cc) = c {
+                    v.mul_assign(cc);
+                }
+                if v.is_zero() {
+                    continue;
+                }
+                match &mut cur {
+                    Some((cr, t)) if *cr == r => t.push((m, v)),
+                    _ => {
+                        if let Some((cr, t)) = cur.take() {
+                            out.push((cr, Poly { t }));
+                        }
+                        cur = Some((r, vec![(m, v)]));
+                    }
+                }
+            }
+            if let Some((cr, t)) = cur {
+                out.push((cr, Poly { t }));
+            }
+            out
+        })
+        .collect();
+    PMat { nrows: a.nrows, ncols: b.ncols, cols }
+}
+
 /// Key of the composite decomposition cache: (type, rung word).
 type WKey = (Tid, Vec<(u8, usize, usize)>);
 
@@ -664,12 +721,12 @@ fn transport_view<F: Field>(wd: &HashMap<WKey, Arc<Vec<Summand<F>>>>, rungwise: 
         assert_eq!(fw * f.ncols, ss[0].iota.nrows);
         let phi = if fw == 1 { f.clone() } else { f.kron_id(fw) };
         for (si, sg) in ss.iter().enumerate() {
-            let a = phi.matmul(&sg.iota);
+            let a = mm(&phi, &sg.iota, None);
             if a.is_zero() {
                 continue;
             }
             for (ti, tu) in ts.iter().enumerate() {
-                let comp = tu.pi.matmul(&a);
+                let comp = mm(&tu.pi, &a, None);
                 if !comp.is_zero() {
                     out.push((si, ti, comp));
                 }
@@ -1467,7 +1524,7 @@ impl<F: Field> XEngine<F> {
             for part in pairs.chunks(256) {
                 let jobs: Vec<(usize, usize, Option<CMat<F>>)> = part.iter().map(|&(i, j)| (i, j, cx.out[&xs[i].0].get(&ys[j].0).cloned())).collect();
                 let work = |(i, j, old): &(usize, usize, Option<CMat<F>>)| -> Option<Option<CMat<F>>> {
-                    let m = scale_const(&ys[*j].1.matmul(&xs[*i].1), &f);
+                    let m = mm(&ys[*j].1, &xs[*i].1, Some(&f));
                     if m.is_zero() {
                         return None; // unchanged
                     }
@@ -1955,4 +2012,40 @@ pub fn closure_kills_map<F: Field>(data: &ClosureDataC<F>, x: usize, w: usize, f
 pub fn khr_singular_exact<F: Field>(labels: &[usize], word: &[Gen], ns: &[usize], reduced: bool) -> Result<BTreeMap<usize, Poincare>, String> {
     let scan = xscan::<F>(labels, word, &XOpts::default())?;
     Ok(scan.close(ns, reduced))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::field::F31;
+
+    #[test]
+    fn sort_product_equals_matmul() {
+        let mut rng = StdRng::seed_from_u64(5);
+        let rnd = |rng: &mut StdRng, nr: usize, nc: usize| {
+            let mut m = PMat::<F31>::zero(nr, nc);
+            for col in m.cols.iter_mut() {
+                for i in 0..nr {
+                    if rng.gen_bool(0.5) {
+                        let mut t: Vec<(crate::mpoly::Mono, F31)> = (0..rng.gen_range(1..4)).map(|_| ((rng.gen_range(0..3u128)) << (8 * rng.gen_range(0..4)), F31::from_i64(rng.gen_range(-3..4)))).collect();
+                        t.sort_by_key(|x| x.0);
+                        t.dedup_by_key(|x| x.0);
+                        t.retain(|x| !x.1.is_zero());
+                        if !t.is_empty() {
+                            col.push((i as u32, Poly { t }));
+                        }
+                    }
+                }
+            }
+            m
+        };
+        for _ in 0..200 {
+            let (n, k, m) = (rng.gen_range(1..6), rng.gen_range(1..6), rng.gen_range(1..6));
+            let a = rnd(&mut rng, n, k);
+            let b = rnd(&mut rng, k, m);
+            let c = F31::from_i64(rng.gen_range(1..5));
+            assert_eq!(mm(&a, &b, None).cols, a.matmul(&b).cols);
+            assert_eq!(mm(&a, &b, Some(&c)).cols, scale_const(&a.matmul(&b), &c).cols);
+        }
+    }
 }
