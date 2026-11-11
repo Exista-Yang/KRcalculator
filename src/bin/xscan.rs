@@ -11,6 +11,7 @@
 //!   --close-stages: also close every stage m >= 2 (the braid word[..m]) at every N
 //!   --both: unreduced and reduced closures (default: unreduced, or reduced with --reduced)
 //!   --json OUT: write per-stage measurements and all Poincaré polynomials to OUT
+//!   --chi-only: no scan; print schur::decat_chi of every prefix word[..m] (m >= 2) at every N
 use krhom::crossing::Gen;
 use krhom::field::{Field, F31, F32b};
 use krhom::laurent::Poincare;
@@ -131,6 +132,26 @@ fn main() {
     let prune: Option<usize> = args.iter().position(|a| a == "--prune").map(|i| args.get(i + 1).and_then(|x| x.parse().ok()).expect("--prune N"));
     let json = args.iter().position(|a| a == "--json").map(|i| args.get(i + 1).cloned().expect("--json OUT"));
     let modes = if flag("--both") { vec![false, true] } else { vec![flag("--reduced")] };
+    if flag("--chi-only") {
+        // decategorified χ (schur::decat_chi, unreduced) of every prefix word[..m], m >= 2, at
+        // every N: "chi m N [[e, c], ...]", for checking the closures of a scan
+        let lam: Vec<u8> = labels.iter().map(|&a| a as u8).collect();
+        let w: Vec<i32> = word.iter().map(|g| if g.positive { g.i as i32 + 1 } else { -(g.i as i32 + 1) }).collect();
+        for m in 2..=w.len() {
+            let mut sch = krhom::schur::Schur::new(&lam);
+            let opts = krhom::schur::ScanOpts { peak: false, every_stage: false, marked_block: None };
+            let res = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| krhom::schur::decat_scan(&mut sch, &w[..m], &opts))) {
+                Ok(r) => r,
+                Err(_) => continue, // colors do not close up
+            };
+            for &nn in &ns {
+                let c = krhom::schur::decat_chi(&mut sch, &res, &w[..m], nn);
+                let t: Vec<String> = c.c.iter().map(|(e, k)| format!("[{},{}]", e, k)).collect();
+                println!("chi {} {} [{}]", m, nn, t.join(","));
+            }
+        }
+        return;
+    }
     let a = Args { ns, modes, close_stages: flag("--close-stages"), json };
     let opts = XOpts { check_d2: !flag("--no-d2"), verbose: true, prune_n: prune, stream: !flag("--full"), compact: !flag("--plain"), close_stages: flag("--close-stages"), stage_close_ns: if flag("--close-stages") { a.ns.clone() } else { vec![] }, ..Default::default() };
     match prime.as_str() {
