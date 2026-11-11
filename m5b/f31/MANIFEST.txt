@@ -1,9 +1,9 @@
 lambda: 3,3,3
 field: F31
 label: f31
-code commit: 3602c7d (branch colored-m5)
+code commit: bc6a628 (branch colored-m5)
 layer-A stamps: krhom-sindec v2 ladfn=schur.ladder_minflow.v1 tmpl_alg=hs1.lcx1 prov=homprov[hs-kl1] maxl=3 costs=hs-kl1:273recs:b8c4807fa14298b4 slowdown=1 chain=S0-2,Exact(l3,600s),S3-6
-files: layer_a 668, tmpl 837
+files: layer_a 1469, tmpl 1158
 restore: cat layerA_tmpl.tar.gz.part-* | tar -C CACHE_DIR -xzf -   (then libbuild run/replay --cache CACHE_DIR --costs tests/data/homprov/costs_333.txt)
 sha256:
-17a38904490a3254a84e4fbc61cf3f726269b222e47923c53a07cecec8c4b23c  layerA_tmpl.tar.gz.part-000
+9f3f600ccaad119c03ed852c8e86b960cc0b050796333ee41542043a9f84ca6a  layerA_tmpl.tar.gz.part-000
