@@ -205,6 +205,42 @@ impl Table {
             .collect::<Vec<_>>()
             .join("/")
     }
+    /// Two-sided cell weight ν(p) of the canonical basis element b_p (a partition of K, parts in
+    /// decreasing order): the RSK shape of the table with its columns reversed. See
+    /// [`Schur::cell_weight`] for the rule and its status.
+    ///
+    /// RSK of a nonnegative integer matrix M (Knuth): the two-line array of the pairs (i, j),
+    /// each repeated M_ij times, in lexicographic order; the j's are row-inserted (Schensted:
+    /// an entry x bumps the leftmost entry > x of a row into the next row). The shape does not
+    /// depend on whether rows or columns are reversed (Schützenberger: RSK(R M R) has the shape
+    /// of RSK(M)), nor on transposing.
+    pub fn cell_weight(&self) -> Comp {
+        let (n, m) = (self.nr as usize, self.nc as usize);
+        let mut rows: Vec<Vec<u8>> = vec![];
+        for i in 0..n {
+            for j in 0..m {
+                // column-reversed table: entry (i, j) of M' is M[i][m-1-j]
+                for _ in 0..self.e[i * m + (m - 1 - j)] {
+                    let mut x = j as u8;
+                    let mut r = 0;
+                    loop {
+                        if r == rows.len() {
+                            rows.push(vec![x]);
+                            break;
+                        }
+                        let pos = rows[r].partition_point(|&y| y <= x);
+                        if pos == rows[r].len() {
+                            rows[r].push(x);
+                            break;
+                        }
+                        std::mem::swap(&mut rows[r][pos], &mut x);
+                        r += 1;
+                    }
+                }
+            }
+        }
+        rows.iter().map(|r| r.len() as u8).collect()
+    }
 }
 
 /// All tables with row sums lam and column sums mu, sorted by (lmax, e).
@@ -1363,6 +1399,47 @@ impl Schur {
         self.tcache.insert(key, e.clone());
         e
     }
+    /// Two-sided cell weight ν(p) of b_p: the RSK shape of the table p with its columns reversed
+    /// ([`Table::cell_weight`]).
+    ///
+    /// **Rule (conjectured, validated by computation).** Under skew Howe duality the q-Schur
+    /// algebra S(n, K) of the n uprights acts on Λ^K(C^n ⊗ C^N) = ⊕_ν V_ν(gl_n) ⊗ V_ν'(gl_N),
+    /// ν ⊢ K with at most n rows and ν_1 ≤ N; its canonical basis is cellular with two-sided
+    /// cells indexed by partitions ν, and b_p annihilates V_μ unless ν(p) ⊴ μ. So the kernel of
+    /// the gl_N quotient (the image of S(n, K) in Foam_N) is the span of the b_p with
+    /// ν(p)_1 > N, and since the classes of indecomposables are a positive basis, B_p ↦ 0 in
+    /// Foam_N (Karoubi completed) exactly for those p ([`Schur::killed_at`]). The convention
+    /// "RSK of the column-reversed table" puts the identity diag(λ) into the smallest cell
+    /// sort(λ) and the full merge-split (anti-diagonal) into the largest one (K); for the
+    /// Rickard terms p_k of a (c, d) crossing it gives (max(c, d) + k, min(c, d) − k), whose
+    /// first part is the intermediate label of W_k, so killed_at(p_k, N) is exactly the label
+    /// pruning of `crossing::crossing_cx(.., N)`. Hand-checked: diag(3,3) → (3,3), the
+    /// anti-diagonal (3,3) table → (6), diag(3,3,3) → (3,3,3), and for (2,2) at N = 2 only the
+    /// identity survives. Decategorified check (unit test `kernel_of_gl_n_quotient`): the MOY
+    /// trace pairing tr_N(b_p · y) vanishes for every y exactly on the killed p, and the kept b_p
+    /// stay linearly independent modulo it, on all blocks of (2,2), (3,3), (2,1), (3,2), (1,1,1),
+    /// (2,1,2) and the end blocks of (1,1,1,1), (2,2,2), (3,3,3) (`#[ignore]`: (2,2,2,2)), at
+    /// every N from the largest label to K. Categorified check: `xengine::XOpts::prune_n`
+    /// (pruned and unpruned scans give the same gl_N homology, tests/ntrunc.rs).
+    ///
+    /// Use this (Greene: ν(p)_1 = the largest entry sum along a down-left chain of p), never
+    /// "the minimal-flow ladder of p has a label > N": the two agree on every 2- and 3-strand
+    /// block tested, but not in general. Counterexample (review, 2026-11-10): λ = (3,3,3,1), end
+    /// block, p = 1,0,2,0/0,1,1,1/2,1,0,0/0,1,0,0 has cell (7,3) and <b_p, b_{p^T}>_6 = 0
+    /// (killed at N = 6), while its minimal-flow ladder never exceeds label 6.
+    pub fn cell_weight(&self, p: Tid) -> Comp {
+        self.tabs[p as usize].cell_weight()
+    }
+    /// True if B_p maps to 0 in the gl_N theory: a boundary label (row or column sum) > N, or
+    /// ν(p)_1 > N for the cell weight ν(p) = [`Schur::cell_weight`] (the first condition is
+    /// implied by the second, since ν(p) dominates both margins; it is kept as a cheap guard).
+    pub fn killed_at(&self, p: Tid, n: usize) -> bool {
+        let t = &self.tabs[p as usize];
+        if t.rows().iter().chain(t.cols().iter()).any(|&a| a as usize > n) {
+            return true;
+        }
+        t.cell_weight().first().map_or(false, |&a| a as usize > n)
+    }
     /// header "schur-cb v1 lam=.. mu=.."; then CB, LAD (bfs) and LADMF (minimal-flow) lines
     pub fn save_basis(&self, mu: &[u8], path: &std::path::Path) -> std::io::Result<()> {
         use std::io::Write;
@@ -1942,6 +2019,252 @@ mod tests {
         // release builds do not check overflow: the stage counters must
         assert!(std::panic::catch_unwind(|| add_mul_u128(u128::MAX, 1, 1)).is_err());
         assert!(std::panic::catch_unwind(|| add_mul_u128(0, u128::MAX, 2)).is_err());
+    }
+
+    // ----------------------------------------------------------------- cell weights (Foam_N pruning)
+
+    #[test]
+    fn cell_weight_hand_checked() {
+        let w = |s: &str| Table::parse(s).cell_weight();
+        assert_eq!(w("3,0/0,3"), vec![3, 3]); // diag(3,3): the identity, smallest cell
+        assert_eq!(w("0,3/3,0"), vec![6]); // anti-diagonal: the full merge-split
+        assert_eq!(w("3,0,0/0,3,0/0,0,3"), vec![3, 3, 3]);
+        assert_eq!(w("2,1/1,2"), vec![4, 2]);
+        assert_eq!(w("1,2/2,1"), vec![5, 1]);
+        assert_eq!(w("1,1/1,1"), vec![3, 1]);
+        // permutation matrices: the transpose of the RSK shape of w (identity -> (1^n), w0 -> (n))
+        assert_eq!(w("1,0,0/0,1,0/0,0,1"), vec![1, 1, 1]);
+        assert_eq!(w("0,0,1/0,1,0/1,0,0"), vec![3]);
+        assert_eq!(w("0,1,0/1,0,0/0,0,1"), vec![2, 1]);
+        // reversing rows instead of columns, or transposing, gives the same shape
+        for s in ["2,1,0/0,1,2/1,0,1", "1,0,2/2,1,0", "0,2/1,1/2,0", "3,1,0,1/0,2,2,0"] {
+            let t = Table::parse(s);
+            let (n, m) = (t.nr as usize, t.nc as usize);
+            let rev_rows = Table { nr: t.nr, nc: t.nc, e: (0..n).flat_map(|i| t.e[(n - 1 - i) * m..(n - i) * m].to_vec()).collect() };
+            let rev_both = Table { nr: t.nr, nc: t.nc, e: rev_rows.e.chunks(m).flat_map(|r| r.iter().rev().copied().collect::<Vec<_>>()).collect() };
+            let tr = Table { nr: t.nc, nc: t.nr, e: (0..m).flat_map(|j| (0..n).map(move |i| (i, j))).map(|(i, j)| t.e[i * m + j]).collect() };
+            // column reversal of rev_both = row reversal of t
+            assert_eq!(rev_both.cell_weight(), t.cell_weight(), "{}", s);
+            assert_eq!(tr.cell_weight(), t.cell_weight(), "{} transposed", s);
+            let k: u32 = t.e.iter().map(|&a| a as u32).sum();
+            assert_eq!(t.cell_weight().iter().map(|&a| a as u32).sum::<u32>(), k);
+        }
+    }
+
+    #[test]
+    fn killed_at_examples() {
+        // (2,2) at N = 2: only the identity type survives (M6.0's 2-colored gl_2 results are q^0)
+        let mut s = Schur::new(&[2, 2]);
+        let ids: Vec<Tid> = tables(&[2, 2], &[2, 2]).into_iter().map(|t| s.intern(t)).collect();
+        let alive: Vec<String> = ids.iter().filter(|&&p| !s.killed_at(p, 2)).map(|&p| s.table(p).fmt()).collect();
+        assert_eq!(alive, vec!["2,0/0,2".to_string()]);
+        assert_eq!(ids.iter().filter(|&&p| !s.killed_at(p, 3)).count(), 2); // (2,2), (3,1)
+        assert_eq!(ids.iter().filter(|&&p| !s.killed_at(p, 4)).count(), 3);
+        // a boundary label > N kills
+        let t = s.intern(Table::parse("2,0/2,0"));
+        assert!(s.killed_at(t, 3) && !s.killed_at(t, 4));
+        // (3,3) at N = 3, 4, 5, 6: 1, 2, 3, 4 surviving types
+        let mut s = Schur::new(&[3, 3]);
+        let ids: Vec<Tid> = tables(&[3, 3], &[3, 3]).into_iter().map(|t| s.intern(t)).collect();
+        for (n, alive) in [(3usize, 1usize), (4, 2), (5, 3), (6, 4)] {
+            assert_eq!(ids.iter().filter(|&&p| !s.killed_at(p, n)).count(), alive, "N={}", n);
+        }
+        // Rickard terms: killed_at(p_k, N) iff the web W_k has a label > N (crossing_cx's pruning)
+        for c in 1..=4u8 {
+            for d in 1..=4u8 {
+                for positive in [true, false] {
+                    let mut s = Schur::new(&[c, d]);
+                    for t in crossing_terms(c, d, positive, 0) {
+                        let ch = s.ladder_char(&t.rungs);
+                        let e = s.expand(&ch);
+                        assert!(e.len() == 1 && e[0].1 == Lp::one(), "Rickard term not indecomposable");
+                        let p = e[0].0;
+                        let mut lab = vec![c as usize, d as usize];
+                        let mut top = c.max(d) as usize;
+                        for r in &t.rungs {
+                            lab = r.apply(&lab, 64).unwrap();
+                            top = top.max(lab[0]).max(lab[1]);
+                        }
+                        assert_eq!(s.cell_weight(p)[0] as usize, top, "({},{}) {} {:?}", c, d, positive, t.rungs);
+                        for n in c.max(d) as usize..=(c + d) as usize {
+                            assert_eq!(s.killed_at(p, n), top > n);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    const PR: u64 = 2_147_483_647;
+
+    fn pow_mod(mut b: u64, mut e: u64) -> u64 {
+        let mut r = 1u64;
+        b %= PR;
+        while e > 0 {
+            if e & 1 == 1 {
+                r = r * b % PR;
+            }
+            b = b * b % PR;
+            e >>= 1;
+        }
+        r
+    }
+
+    /// value of a Laurent polynomial at v = x, mod PR
+    fn eval_mod(p: &LPoly, x: u64) -> u64 {
+        let xi = pow_mod(x, PR - 2);
+        let mut acc = 0u64;
+        for (&e, &k) in &p.c {
+            let pw = if e >= 0 { pow_mod(x, e as u64) } else { pow_mod(xi, (-e) as u64) };
+            let km = k.rem_euclid(PR as i128) as u64;
+            acc = (acc + km * pw % PR) % PR;
+        }
+        acc
+    }
+
+    fn rank_mod(mut rows: Vec<Vec<u64>>) -> usize {
+        let mut rank = 0;
+        let ncols = rows.first().map_or(0, |r| r.len());
+        for c in 0..ncols {
+            let Some(piv) = (rank..rows.len()).find(|&i| rows[i][c] != 0) else { continue };
+            rows.swap(rank, piv);
+            let inv = pow_mod(rows[rank][c], PR - 2);
+            for i in 0..rows.len() {
+                if i != rank && rows[i][c] != 0 {
+                    let f = rows[i][c] * inv % PR;
+                    for j in c..ncols {
+                        let sub = f * rows[rank][j] % PR;
+                        rows[i][j] = (rows[i][j] + PR - sub) % PR;
+                    }
+                }
+            }
+            rank += 1;
+        }
+        rank
+    }
+
+    fn compositions(k: u8, parts: usize) -> Vec<Comp> {
+        if parts == 1 {
+            return vec![vec![k]];
+        }
+        let mut out = vec![];
+        for a in 0..=k {
+            for mut rest in compositions(k - a, parts - 1) {
+                rest.insert(0, a);
+                out.push(rest);
+            }
+        }
+        out
+    }
+
+    /// Decategorified check of the cell rule on the block (lam, mu) at gl_N: the trace pairing
+    /// T[p][q] = tr_N(b_p · ch(L_q^rev)) (L_q^rev = the minimal-flow ladder of q read top to
+    /// bottom, a ladder mu -> lam; these characters span 1_mu S 1_lam) vanishes identically on
+    /// the killed p, and the kept rows have full rank (evaluated at v = 3 and v = 5 mod p).
+    /// Since the MOY closure is the gl_N quantum trace and the trace form is nondegenerate on
+    /// the semisimple gl_N quotient, this says: the kernel of the gl_N quotient on the block is
+    /// exactly the span of the killed b_p. Returns (killed, kept, killed types whose canonical
+    /// ladder never leaves the labels <= N).
+    fn kernel_check(s: &mut Schur, mu: &[u8], n: usize, memo: &mut FxMap<Tid, LPoly>) -> (usize, usize, usize) {
+        let lam = s.lam.clone();
+        let ids: Vec<Tid> = tables(&lam, mu).into_iter().map(|t| s.intern(t)).collect();
+        let cb = s.canonical_basis(mu);
+        let bs: Vec<Elt> = ids.iter().map(|p| cb.b[p].clone()).collect();
+        let lads: Vec<Vec<Rung>> = ids.iter().map(|p| cb.ladder_minflow[p].clone()).collect();
+        let revs: Vec<Vec<Rung>> = lads.iter().map(|l| l.iter().rev().map(|r| Rung { i: r.i, dir: if r.dir == Dir::E { Dir::F } else { Dir::E }, r: r.r }).collect()).collect();
+        let (mut killed, mut kept, mut invisible) = (0, 0, 0);
+        let mut kept_rows: Vec<Vec<LPoly>> = vec![];
+        for (ip, &p) in ids.iter().enumerate() {
+            let mut row = vec![];
+            for y in &revs {
+                let x = s.mul_rungs(&bs[ip], y);
+                let mut v = LPoly::zero();
+                for (r, m) in s.expand(&x) {
+                    let t = trace_b(s, r, n, false, memo);
+                    v = v.add(&m.to_lpoly().mul(&t));
+                }
+                row.push(v);
+            }
+            // does the canonical (minimal-flow) ladder of p stay within the labels <= N?
+            let mut lab: Vec<usize> = lam.iter().map(|&a| a as usize).collect();
+            let mut within = lab.iter().all(|&a| a <= n);
+            for r in &lads[ip] {
+                lab = r.apply(&lab, 64).unwrap();
+                within &= lab.iter().all(|&a| a <= n);
+            }
+            if s.killed_at(p, n) {
+                killed += 1;
+                assert!(row.iter().all(|v| v.is_zero()), "{:?} -> {:?} N={}: killed type {} (cell {:?}) pairs nontrivially", lam, mu, n, s.table(p).fmt(), s.cell_weight(p));
+                if within {
+                    invisible += 1;
+                }
+            } else {
+                // B_p is a summand of its ladder, which is 0 in Foam_N if it has a label > N
+                assert!(within, "{:?} -> {:?} N={}: kept type {} (cell {:?}) has a ladder through a label > N", lam, mu, n, s.table(p).fmt(), s.cell_weight(p));
+                kept += 1;
+                kept_rows.push(row);
+            }
+        }
+        let rk = [3u64, 5].iter().map(|&x| rank_mod(kept_rows.iter().map(|r| r.iter().map(|v| eval_mod(v, x)).collect()).collect())).max().unwrap_or(0);
+        assert_eq!(rk, kept, "{:?} -> {:?} N={}: the kept b_p are dependent modulo the gl_N kernel (rank {} < {})", lam, mu, n, rk, kept);
+        (killed, kept, invisible)
+    }
+
+    #[test]
+    fn kernel_of_gl_n_quotient() {
+        let t0 = std::time::Instant::now();
+        // (lambda, N range, all blocks mu or only mu = lambda)
+        let cases: Vec<(Vec<u8>, std::ops::RangeInclusive<usize>, bool)> = vec![
+            (vec![2, 2], 2..=4, true),
+            (vec![3, 3], 3..=6, true),
+            (vec![2, 1], 2..=3, true),
+            (vec![3, 2], 3..=5, true),
+            (vec![1, 1, 1], 1..=3, true),
+            (vec![2, 1, 2], 2..=5, true),
+            (vec![1, 1, 1, 1], 1..=4, false),
+            (vec![2, 2, 2], 2..=6, false),
+            (vec![3, 3, 3], 3..=6, false),
+        ];
+        let (mut nk, mut nalive, mut ninv, mut nblocks) = (0, 0, 0, 0);
+        let mut report = vec![];
+        for (lam, ns, all_mu) in cases {
+            let k: u8 = lam.iter().sum();
+            let mus = if all_mu { compositions(k, lam.len()) } else { vec![lam.clone()] };
+            for n in ns {
+                let mut s = Schur::new(&lam);
+                let mut memo: FxMap<Tid, LPoly> = FxMap::default();
+                let (mut a, mut b, mut c) = (0, 0, 0);
+                for mu in &mus {
+                    let (x, y, z) = kernel_check(&mut s, mu, n, &mut memo);
+                    a += x;
+                    b += y;
+                    c += z;
+                    nblocks += 1;
+                }
+                report.push(format!("{:?} N={}: {} killed, {} kept, {} killed with all ladder labels <= N", lam, n, a, b, c));
+                nk += a;
+                nalive += b;
+                ninv += c;
+            }
+        }
+        for l in &report {
+            eprintln!("{}", l);
+        }
+        eprintln!("kernel_of_gl_n_quotient: {} blocks, {} killed, {} kept, {} invisible killed, {:.1}s", nblocks, nk, nalive, ninv, t0.elapsed().as_secs_f64());
+        assert!(nk > 0 && nalive > 0);
+    }
+
+    #[test]
+    #[ignore]
+    fn kernel_of_gl_n_quotient_2222() {
+        // (2,2,2,2) -> (2,2,2,2) (282 types) at N = 2..5; slow (282^2 products per N)
+        let t0 = std::time::Instant::now();
+        for n in 2..=5usize {
+            let mut s = Schur::new(&[2, 2, 2, 2]);
+            let mut memo: FxMap<Tid, LPoly> = FxMap::default();
+            let (a, b, c) = kernel_check(&mut s, &[2, 2, 2, 2], n, &mut memo);
+            eprintln!("[2, 2, 2, 2] N={}: {} killed, {} kept, {} killed with all ladder labels <= N ({:.1}s)", n, a, b, c, t0.elapsed().as_secs_f64());
+        }
     }
 
     #[test]

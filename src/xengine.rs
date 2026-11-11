@@ -37,8 +37,30 @@
 //!   F per final component by an exact solve (`cclose::solve_f`). The closure is the CL1 exact
 //!   oracle `cclose::close_exact_colored` per N (unreduced, or reduced with block 0 marked) with
 //!   `cclose::global_q`. One scan serves every N; labels > N give 0.
+//!
+//! **Pruning (`XOpts::prune_n = Some(N)`, a scan for gl_N' with N' <= N only).** A type q is
+//! killed at N when `schur::Schur::killed_at(q, N)` (cell weight ν(q)_1 > N, the rule documented
+//! at `Schur::cell_weight`): B_q maps to 0 in Foam_N. The killed types span a two-sided ideal I_N
+//! (the killed b_q span one, with positive structure constants), so the scan can run in the
+//! quotient SSBim / I_N, which the gl_N closure factors through when the rule is right:
+//! * after every decomposition L_p ⊗ (rungs) the killed summands are dropped (their ι, π, i.e.
+//!   their Hom spaces, are never computed; rung by rung, a killed intermediate summand is not
+//!   tensored further); the kept summands keep Π∘Ι = id among themselves, which is a
+//!   decomposition modulo I_N; ranks are asserted as Σ kept + Σ killed (`schur::rank`);
+//! * the Rickard complexes are built by `crossing_cx(.., N)`, which drops the terms W_k with a
+//!   label > N. This is consistent: W_k = B_{p_k} with ν(p_k) = (max(c,d) + k, min(c,d) − k),
+//!   so the dropped terms are exactly the killed ones (asserted per crossing), and the kept
+//!   terms W_0..W_kmax with their differentials are a stupid truncation of the untruncated
+//!   complex, isomorphic to it modulo I_N;
+//! * the K_0 assertion compares with the decategorified class with the killed types removed
+//!   (the projection along the killed span); the lower bound is that of the truncated class;
+//! * d∘d is no longer 0 on the nose: dropping a killed y between kept x and z leaves
+//!   −Σ_y d_{yz} d_{xy} ∈ I_N. With `check_d2` the nonzero components are counted per stage
+//!   (`StageInfo::d2_ideal`), and those of the final complex are kept (`XScan::final_d2`) and
+//!   checked to close to 0 at every requested N before the closure (`closure_kills_map`);
+//! * the closure is valid for every N' <= N (I_N ⊆ I_N'), and `XScan::close` refuses N' > N.
 
-use crate::cclose::{close_exact_colored, det_criterion, gram_of, rlambda_bases, solve_f, ClosureDataC, LadderBasis, TypeBasisC};
+use crate::cclose::{close_exact_colored, det_criterion, gram_of, rlambda_bases, solve_f, ClosureDataC, EPoly, LadderBasis, TypeBasisC};
 use crate::crossing::Gen;
 use crate::cube::{apply_local_poly, local_cx, LocalCx};
 use crate::field::Field;
@@ -46,7 +68,7 @@ use crate::laurent::Poincare;
 use crate::mpoly::{MonoCache, Poly};
 use crate::pmat::{PAcc, PMat, PVec};
 use crate::sbim::{hom_space, SBim};
-use crate::schur::{crossing_terms, flows, Elt, Schur, Tid};
+use crate::schur::{crossing_terms, flows, Elt, Lp, Schur, Tid};
 use crate::web::{Dir, Rung};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -68,12 +90,17 @@ pub struct XOpts {
     /// decompose L_p ⊗ W_k rung by rung (L_p ⊗ R_1 first, then each summand ⊗ R_2); false:
     /// decompose L_p ⊗ W_k in one step (larger Hom spaces; kept as a cross-check)
     pub rungwise: bool,
+    /// Foam_N pruning for a scan that is closed only at gl_N' with N' <= N (module doc,
+    /// "Pruning"): every summand B_q with `Schur::killed_at(q, N)` is dropped right after each
+    /// decomposition (its ι, π are never computed), and the Rickard complexes are built by
+    /// `crossing_cx(.., N)` (terms with a label > N dropped). None: the N-independent scan.
+    pub prune_n: Option<usize>,
 }
 
 impl Default for XOpts {
     fn default() -> Self {
         let verbose = std::env::var("KRHOM_VERBOSE").map(|v| v != "0" && !v.is_empty()).unwrap_or(false);
-        XOpts { check_d2: true, verbose, seed: 7, rungwise: true }
+        XOpts { check_d2: true, verbose, seed: 7, rungwise: true, prune_n: None }
     }
 }
 
@@ -89,9 +116,16 @@ pub struct StageInfo {
     /// objects and components of the minimal complex
     pub objects: usize,
     pub components: usize,
-    /// Grothendieck lower bound Σ |signed multiplicities| of the K_0 class
+    /// Grothendieck lower bound Σ |signed multiplicities| of the K_0 class (pruned scan: of
+    /// the truncated class, killed types removed)
     pub lower_bound: u128,
     pub secs: f64,
+    /// pruned scan: summands of C ⊗ X killed at N and dropped (counted with multiplicity)
+    pub dropped: usize,
+    /// pruned scan: nonzero components of d∘d on the minimal complex (maps through dropped
+    /// summands, zero modulo the ideal of killed types; always 0 for an unpruned scan, where
+    /// d∘d = 0 is asserted)
+    pub d2_ideal: usize,
 }
 
 /// Result of a scan: N-independent closure data and statistics.
@@ -103,7 +137,8 @@ pub struct XScan<F: Field> {
     pub stages: Vec<StageInfo>,
     /// final objects (table, h, t), sorted
     pub final_objects: Vec<(String, i32, i32)>,
-    /// K_0 class of the final complex: (table, t, Σ_h (−1)^h multiplicity)
+    /// K_0 class of the final complex: (table, t, Σ_h (−1)^h multiplicity) (pruned scan: the
+    /// decategorified class with the killed types removed, as asserted after every crossing)
     pub k0: Vec<(String, i32, i128)>,
     /// `hom_space` calls of the scan (decompositions): count, total and maximal seconds
     pub hom_calls: usize,
@@ -124,6 +159,16 @@ pub struct XScan<F: Field> {
     pub scan_ladders: BTreeMap<String, Vec<Rung>>,
     /// seconds: (scan, closure data)
     pub timings: (f64, f64),
+    /// the N of a pruned scan (`XOpts::prune_n`); `close` then accepts only N' <= N
+    pub prune_n: Option<usize>,
+    /// pruned scan: summands dropped in the decompositions computed (with multiplicity), and
+    /// decompositions whose summands were all killed (no Hom space computed)
+    pub dropped_summands: usize,
+    pub all_killed_decompositions: usize,
+    /// pruned scan: the nonzero components of d∘d on the final complex, as closure data F
+    /// (source index, target index into `data.objs`, F[c][a]); `close` checks that the closure
+    /// at every requested N kills each of them (so the closed complex is a complex)
+    pub final_d2: Vec<(usize, usize, Vec<Vec<EPoly<F>>>)>,
 }
 
 // ------------------------------------------------------------------ internal structures
@@ -338,10 +383,18 @@ struct XEngine<F: Field> {
     hom_max: f64,
     max_x: usize,
     verbose: bool,
+    /// Foam_N pruning (`XOpts::prune_n`)
+    prune: Option<usize>,
+    /// killed summands (with multiplicity) of L_p ⊗ W_k, per (p, positive, k)
+    dropped: HashMap<(Tid, bool, usize), usize>,
+    /// killed summands dropped in the current stage, and in the decompositions computed
+    stage_dropped: usize,
+    dropped_total: usize,
+    all_killed_decomps: usize,
 }
 
 impl<F: Field> XEngine<F> {
-    fn new(lam: &[usize], verbose: bool) -> Self {
+    fn new(lam: &[usize], verbose: bool, prune: Option<usize>) -> Self {
         let lam8: Vec<u8> = lam.iter().map(|&a| a as u8).collect();
         let k: usize = lam.iter().sum();
         let mut schur = Schur::new(&lam8);
@@ -368,7 +421,31 @@ impl<F: Field> XEngine<F> {
             hom_max: 0.0,
             max_x: 0,
             verbose,
+            prune,
+            dropped: HashMap::new(),
+            stage_dropped: 0,
+            dropped_total: 0,
+            all_killed_decomps: 0,
         }
+    }
+
+    /// Is B_q zero in the gl_N theory of a pruned scan?
+    fn killed(&self, q: Tid) -> bool {
+        self.prune.is_some_and(|n| self.schur.killed_at(q, n))
+    }
+
+    /// Σ over the killed summands B_q{s} of L_p ⊗ (rungs) of rank(B_q), with multiplicity
+    /// (0 for an unpruned scan): with the kept summands it adds up to the rank of L_p ⊗ (rungs).
+    fn killed_rank(&mut self, p: Tid, rs: &[Rung]) -> usize {
+        let Some(n) = self.prune else { return 0 };
+        let mut r: u128 = 0;
+        for (q, m) in self.schur.term_mult(p, rs) {
+            if self.schur.killed_at(q, n) {
+                let mu = self.schur.table(q).cols();
+                r += m.at1() as u128 * self.schur.rank(&mu, q);
+            }
+        }
+        r as usize
     }
 
     fn identity_type(&mut self) -> Tid {
@@ -439,14 +516,33 @@ impl<F: Field> XEngine<F> {
         if let Some(l) = self.locals.get(&(c, d, positive)) {
             return l.clone();
         }
-        let loc = local_cx::<F>(Gen { i: 0, positive }, c, d, c + d);
-        assert_eq!(loc.cx.terms.len(), c.min(d) + 1, "Rickard complex pruned");
+        // pruned scan: crossing_cx(.., N) drops the terms W_k whose web has a label > N; the
+        // kept terms are W_0..W_kmax (the intermediate label grows with k) and their SBims, hence
+        // the unique differentials between them, are those of the untruncated complex
+        // (`SBim::identity(n, ..)` records n but neither add_rungs nor hom_space uses it)
+        let n = self.prune.map_or(c + d, |nn| nn.min(c + d));
+        let loc = local_cx::<F>(Gen { i: 0, positive }, c, d, n);
         let st = crossing_terms(c as u8, d as u8, positive, 0);
-        assert_eq!(st.len(), loc.cx.terms.len());
-        for (k, (a, b)) in loc.cx.terms.iter().zip(&st).enumerate() {
-            assert_eq!(a.k, k);
+        assert!(loc.cx.terms.len() <= st.len() && !loc.cx.terms.is_empty());
+        for (k, a) in loc.cx.terms.iter().enumerate() {
+            let b = &st[k];
+            assert_eq!(a.k, k, "pruned Rickard complex of ({},{}) is not W_0..W_kmax", c, d);
             assert_eq!(a.rungs, b.rungs, "crossing.rs and schur.rs disagree on term {} of ({},{})", k, c, d);
             assert_eq!(a.hdeg, b.hdeg);
+        }
+        match self.prune {
+            None => assert_eq!(loc.cx.terms.len(), c.min(d) + 1, "Rickard complex pruned"),
+            Some(nn) => {
+                // the label pruning of crossing.rs is the cell rule: W_k = B_{p_k} is dropped iff
+                // p_k is killed at N (schur::Schur::cell_weight(p_k) = (max(c,d) + k, min(c,d) − k))
+                let mut sc = Schur::new(&[c as u8, d as u8]);
+                for (k, t) in st.iter().enumerate() {
+                    let ch = sc.ladder_char(&t.rungs);
+                    let e = sc.expand(&ch);
+                    assert!(e.len() == 1 && e[0].1 == Lp::one(), "Rickard term {} of ({},{}) is not indecomposable", k, c, d);
+                    assert_eq!(sc.killed_at(e[0].0, nn), k >= loc.cx.terms.len(), "Rickard term {} of ({},{}): label pruning at N={} != cell rule (cell {:?})", k, c, d, nn, sc.cell_weight(e[0].0));
+                }
+            }
         }
         let l = Rc::new(loc);
         self.locals.insert((c, d, positive), l.clone());
@@ -483,8 +579,14 @@ impl<F: Field> XEngine<F> {
         for sm in r.iter() {
             *got.entry((sm.q, sm.s)).or_insert(0) += 1;
         }
+        // (pruned scan: the kept part of b_p * [W_k]; the killed part is dropped)
         let mut want: BTreeMap<(Tid, i32), i128> = BTreeMap::new();
+        let mut dropped = 0usize;
         for (q, m) in self.schur.term_mult(p, &wr) {
+            if self.killed(q) {
+                dropped += m.at1() as usize;
+                continue;
+            }
             for (i, &c) in m.c.iter().enumerate() {
                 if c != 0 {
                     want.insert((q, m.lo + i as i32), c);
@@ -492,6 +594,8 @@ impl<F: Field> XEngine<F> {
             }
         }
         assert_eq!(got, want, "decomposition of {} ⊗ W_{}: summands != schur::term_mult", self.schur.table(p).fmt(), k);
+        self.dropped.insert((p, positive, k), dropped);
+        self.dropped_total += dropped;
         self.decomp.insert((p, positive, k), r.clone());
         r
     }
@@ -505,6 +609,7 @@ impl<F: Field> XEngine<F> {
             return d.clone();
         }
         let r = if rs.is_empty() {
+            debug_assert!(!self.killed(p));
             let n = self.ladder(p).b.fsize();
             Rc::new(vec![Summand { q: p, s: 0, iota: PMat::identity(n), pi: PMat::identity(n) }])
         } else if rs.len() == 1 || !self.rungwise {
@@ -524,8 +629,29 @@ impl<F: Field> XEngine<F> {
                     out.push(Summand { q: s2.q, s: s1.s + s2.s, iota: i1.matmul(&s2.iota), pi: s2.pi.matmul(&p1) });
                 }
             }
+            // pruned scan: a killed summand B_r of L_p ⊗ R_1 has only killed summands in
+            // B_r ⊗ R_2 ... (the killed span is a two-sided ideal with positive structure
+            // constants), so the kept summands of L_p ⊗ (rungs) all come from kept B_r
             let total: usize = out.iter().map(|sm| self.lads[&sm.q].b.fsize()).sum();
-            assert_eq!(total, x.fsize(), "rung-by-rung decomposition: summand ranks {} != rank {}", total, x.fsize());
+            let killed = self.killed_rank(p, rs);
+            assert_eq!(total + killed, x.fsize(), "rung-by-rung decomposition: summand ranks {} + killed {} != rank {}", total, killed, x.fsize());
+            if self.prune.is_some() {
+                let mut got: BTreeMap<(Tid, i32), i128> = BTreeMap::new();
+                for sm in &out {
+                    *got.entry((sm.q, sm.s)).or_insert(0) += 1;
+                }
+                let mut want: BTreeMap<(Tid, i32), i128> = BTreeMap::new();
+                for (q, m) in self.schur.term_mult(p, rs) {
+                    if !self.killed(q) {
+                        for (i, &c) in m.c.iter().enumerate() {
+                            if c != 0 {
+                                want.insert((q, m.lo + i as i32), c);
+                            }
+                        }
+                    }
+                }
+                assert_eq!(got, want, "pruned rung-by-rung decomposition of {}: kept summands != schur::term_mult", self.schur.table(p).fmt());
+            }
             if self.check_orth {
                 for (t, a) in out.iter().enumerate() {
                     for (u, b) in out.iter().enumerate() {
@@ -545,6 +671,19 @@ impl<F: Field> XEngine<F> {
         let t0 = Instant::now();
         let lp = self.ladder(p);
         let mult = self.schur.term_mult(p, rs);
+        // pruned scan: the killed summands are dropped; only the kept ones get ι, π (Hom
+        // spaces). Any family of kept summands with Π∘Ι = id is a decomposition in the quotient
+        // by the ideal of killed types: its complement is a summand with the killed multiset
+        // (Krull-Schmidt), hence killed.
+        let killed_rank = self.killed_rank(p, rs);
+        let kept: Vec<(Tid, Lp)> = mult.iter().filter(|(q, _)| !self.killed(*q)).cloned().collect();
+        if kept.is_empty() {
+            let mu8: Vec<u8> = lp.b.top_labels.iter().map(|&a| a as u8).collect();
+            let xsize = lp.b.fsize() as u128 * flows(&mu8, rs);
+            assert_eq!(killed_rank as u128, xsize, "all summands killed: ranks {} != rank {}", killed_rank, xsize);
+            self.all_killed_decomps += 1;
+            return Rc::new(vec![]);
+        }
         // X is literally the canonical ladder of its only summand B_q (multiplicity 1, shift 0):
         // ι = π = id, no Hom space needed
         if mult.len() == 1 && mult[0].1 == crate::schur::Lp::one() {
@@ -568,7 +707,7 @@ impl<F: Field> XEngine<F> {
         self.max_x = self.max_x.max(x.fsize());
         let word = || rs.iter().map(|r| format!("{}{}({})", if r.dir == Dir::E { "E" } else { "F" }, r.i, r.r)).collect::<Vec<_>>().join(" ");
         let mut sums: Vec<Summand<F>> = vec![];
-        for (q, m) in mult {
+        for (q, m) in kept {
             let lq = self.ladder(q);
             assert_eq!(lq.b.top_labels, x.top_labels);
             for (i, &cnt) in m.c.iter().enumerate() {
@@ -614,7 +753,7 @@ impl<F: Field> XEngine<F> {
             }
         }
         let total: usize = sums.iter().map(|sm| self.lads[&sm.q].b.fsize()).sum();
-        assert_eq!(total, x.fsize(), "decomposition of {} ⊗ [{}]: summand ranks {} != rank {}", self.schur.table(p).fmt(), word(), total, x.fsize());
+        assert_eq!(total + killed_rank, x.fsize(), "decomposition of {} ⊗ [{}]: summand ranks {} + killed {} != rank {}", self.schur.table(p).fmt(), word(), total, killed_rank, x.fsize());
         // Π∘Ι = I + N with N nilpotent; Π <- (I + N)^{-1} Π
         let n = sums.len();
         let mut nb: Blocks<F> = vec![vec![None; n]; n];
@@ -730,6 +869,7 @@ impl<F: Field> XEngine<F> {
         for (&o, ob) in &cx.objs {
             for k in 0..nt {
                 let sums = self.decompose(ob.p, positive, k);
+                self.stage_dropped += self.dropped[&(ob.p, positive, k)];
                 let hk = loc.cx.terms[k].hdeg;
                 let dq = if positive { -(k as i32) } else { k as i32 };
                 let ids: Vec<usize> = sums.iter().map(|sm| out.add_obj(XObj { p: sm.q, h: ob.h + hk, t: ob.t + dq + sm.s })).collect();
@@ -823,7 +963,9 @@ impl<F: Field> XEngine<F> {
         }
     }
 
-    fn check_d2(&self, cx: &XCx<F>) -> Result<(), String> {
+    /// The nonzero components x -> z of d∘d.
+    fn d2_components(&self, cx: &XCx<F>) -> Vec<(usize, usize, PMat<F>)> {
+        let mut out = vec![];
         for (&x, outs) in &cx.out {
             let mut acc: BTreeMap<usize, PMat<F>> = BTreeMap::new();
             for (&y, f) in outs {
@@ -836,11 +978,9 @@ impl<F: Field> XEngine<F> {
                     });
                 }
             }
-            if let Some((z, _)) = acc.iter().find(|(_, m)| !m.is_zero()) {
-                return Err(format!("d∘d != 0 from object {} to object {}", x, z));
-            }
+            out.extend(acc.into_iter().filter(|(_, m)| !m.is_zero()).map(|(z, m)| (x, z, m)));
         }
-        Ok(())
+        out
     }
 
     fn decat_step(&mut self, c: usize, d: usize, positive: bool) {
@@ -876,7 +1016,9 @@ impl<F: Field> XEngine<F> {
     }
 
     /// Exact contract-v2 closure data of the final complex.
-    fn closure_data(&mut self, cx: &XCx<F>, crossings: Vec<(bool, u8)>, seed: u64) -> Result<ClosureDataC<F>, String> {
+    /// (`d2`: nonzero components of d∘d of a pruned scan, returned as closure data F matrices.)
+    #[allow(clippy::type_complexity)]
+    fn closure_data(&mut self, cx: &XCx<F>, crossings: Vec<(bool, u8)>, seed: u64, d2: &[(usize, usize, PMat<F>)]) -> Result<(ClosureDataC<F>, Vec<(usize, usize, Vec<Vec<EPoly<F>>>)>), String> {
         let lam8: Vec<u8> = self.lam.iter().map(|&a| a as u8).collect();
         let k: usize = self.lam.iter().sum();
         let mut rng = StdRng::seed_from_u64(seed);
@@ -932,9 +1074,17 @@ impl<F: Field> XEngine<F> {
                 edges.push((index[&a], index[&b], fm));
             }
         }
+        let mut d2f = vec![];
+        for (a, b, f) in d2 {
+            let (oa, ob) = (cx.objs[a], cx.objs[b]);
+            let (la, lb) = (self.ladder(oa.p), self.ladder(ob.p));
+            let u = (oa.t - ob.t) - lb.b.shift + la.b.shift;
+            let fm = solve_f(f, u, &bases[&oa.p], &bases[&ob.p], &lb.b).map_err(|e| format!("d∘d component {} -> {}: {}", a, b, e))?;
+            d2f.push((index[a], index[b], fm));
+        }
         let data = ClosureDataC { lam: lam8, objs, types: tbs, edges, crossings };
         data.validate()?;
-        Ok(data)
+        Ok((data, d2f))
     }
 }
 
@@ -983,8 +1133,18 @@ fn check_input(labels: &[usize], word: &[Gen]) -> Result<(), String> {
 /// The N-independent scan of a colored braid on at most 2 strands, with exact closure data.
 pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<XScan<F>, String> {
     check_input(labels, word)?;
+    if let Some(n) = opts.prune_n {
+        if labels.iter().any(|&a| a > n) {
+            return Err(format!("prune_n = {} is below a color {:?}: the gl_N homology is 0 for every N <= {}", n, labels, n));
+        }
+        if !opts.check_d2 {
+            // a pruned complex has d∘d = 0 only modulo I_N; its final components are certified
+            // (closure_kills_map) only when check_d2 collects them, so refuse the uncertified path
+            return Err(format!("prune_n = {} requires check_d2: d∘d vanishes only modulo the killed ideal, and the closure certifies the final components only when they are collected", n));
+        }
+    }
     let t0 = Instant::now();
-    let mut eng = XEngine::<F>::new(labels, opts.verbose);
+    let mut eng = XEngine::<F>::new(labels, opts.verbose, opts.prune_n);
     eng.rungwise = opts.rungwise;
     eng.check_orth = opts.check_d2;
     let p0 = eng.identity_type();
@@ -994,20 +1154,35 @@ pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<X
     let mut labs = labels.to_vec();
     let mut stages = vec![];
     let mut crossings = vec![];
+    let mut last_d2: Vec<(usize, usize, PMat<F>)> = vec![];
     for (step, g) in word.iter().enumerate() {
         let ts = Instant::now();
         let (c, d) = (labs[0], labs[1]);
         crossings.push((g.positive, c.min(d) as u8));
         eng.decat_step(c, d, g.positive);
+        eng.stage_dropped = 0;
         let mut ncx = eng.tensor_crossing(&cx, &labs, g.positive);
         let unsimplified = ncx.objs.len();
         eng.check_degrees(&ncx);
         eng.simplify(&mut ncx);
+        let mut d2_ideal = 0;
         if opts.check_d2 {
-            eng.check_d2(&ncx)?;
+            let d2 = eng.d2_components(&ncx);
+            if !d2.is_empty() {
+                if eng.prune.is_none() {
+                    return Err(format!("d∘d != 0 from object {} to object {}", d2[0].0, d2[0].1));
+                }
+                // pruned: d∘d = −Σ_{killed y} d_{y·} d_{·y} lies in the ideal of killed types;
+                // its components on the final complex are checked to close to 0 (`XScan::close`)
+                d2_ideal = d2.len();
+            }
+            last_d2 = d2;
         }
         labs.swap(0, 1);
-        let want = eng.decat_k0();
+        // pruned scan: the class of the pruned complex is the decategorified class with the
+        // killed types removed (the killed span is an ideal; dropping it is the projection)
+        let mut want = eng.decat_k0();
+        want.retain(|(p, _), _| !eng.killed(*p));
         let got = ncx.k0();
         if want != got {
             let fmt = |m: &BTreeMap<(Tid, i32), i128>, s: &Schur| m.iter().map(|((p, t), c)| format!("{}{{{}}}:{}", s.table(*p).fmt(), t, c)).collect::<Vec<_>>().join(" ");
@@ -1017,10 +1192,20 @@ pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<X
         if (ncx.objs.len() as u128) < lb {
             return Err(format!("crossing {}: {} objects < lower bound {}", step + 1, ncx.objs.len(), lb));
         }
-        let info = StageInfo { step: step + 1, labels: labs.clone(), unsimplified, objects: ncx.objs.len(), components: ncx.components(), lower_bound: lb, secs: ts.elapsed().as_secs_f64() };
+        let info = StageInfo {
+            step: step + 1,
+            labels: labs.clone(),
+            unsimplified,
+            objects: ncx.objs.len(),
+            components: ncx.components(),
+            lower_bound: lb,
+            secs: ts.elapsed().as_secs_f64(),
+            dropped: eng.stage_dropped,
+            d2_ideal,
+        };
         if opts.verbose {
             eprintln!(
-                "[xengine] crossing {}/{} ({}{}): {} objects -> {} (LB {}), {} components, {:.2}s",
+                "[xengine] crossing {}/{} ({}{}): {} objects -> {} (LB {}), {} components, {:.2}s{}",
                 step + 1,
                 word.len(),
                 if g.positive { "+" } else { "-" },
@@ -1029,7 +1214,8 @@ pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<X
                 info.objects,
                 lb,
                 info.components,
-                info.secs
+                info.secs,
+                if eng.prune.is_some() { format!(" [pruned at N={}: {} summands dropped, d∘d components in the ideal {}]", eng.prune.unwrap(), info.dropped, d2_ideal) } else { String::new() }
             );
         }
         stages.push(info);
@@ -1037,7 +1223,10 @@ pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<X
     }
     let t_scan = t0.elapsed().as_secs_f64();
     let t1 = Instant::now();
-    let data = eng.closure_data(&cx, crossings, opts.seed)?;
+    if word.is_empty() || !opts.check_d2 {
+        last_d2.clear();
+    }
+    let (data, final_d2) = eng.closure_data(&cx, crossings, opts.seed, &last_d2)?;
     let t_data = t1.elapsed().as_secs_f64();
     if opts.verbose {
         eprintln!("[xengine] closure data: {} objects, {} types, {} edges in {:.2}s", data.objs.len(), data.types.len(), data.edges.len(), t_data);
@@ -1073,14 +1262,46 @@ pub fn xscan<F: Field>(labels: &[usize], word: &[Gen], opts: &XOpts) -> Result<X
         type_ladders,
         scan_ladders,
         timings: (t_scan, t_data),
+        prune_n: opts.prune_n,
+        dropped_summands: eng.dropped_total,
+        all_killed_decompositions: eng.all_killed_decomps,
+        final_d2,
     })
 }
 
 impl<F: Field> XScan<F> {
     /// gl_N Poincaré polynomials for every N in `ns` (reduced: block 0 marked). Colors > N give 0.
+    /// A pruned scan (`prune_n = Some(N0)`) is valid for N <= N0 only (panics otherwise); there
+    /// the closure of every final d∘d component is first checked to vanish (panics otherwise).
     pub fn close(&self, ns: &[usize], reduced: bool) -> BTreeMap<usize, Poincare> {
-        ns.iter().map(|&nn| (nn, close_exact_colored(&self.data, nn, if reduced { Some(0) } else { None }))).collect()
+        let marked = if reduced { Some(0) } else { None };
+        ns.iter()
+            .map(|&nn| {
+                if let Some(n0) = self.prune_n {
+                    assert!(nn <= n0, "a scan pruned at N = {} gives the gl_N homology only for N <= {} (requested N = {})", n0, n0, nn);
+                    for (a, b, f) in &self.final_d2 {
+                        assert!(closure_kills_map(&self.data, *a, *b, f, nn, marked), "pruned scan at N = {}: the d∘d component {} -> {} does not close to 0 at gl_{}", n0, a, b, nn);
+                    }
+                }
+                (nn, close_exact_colored(&self.data, nn, marked))
+            })
+            .collect()
     }
+}
+
+/// Does the closure at gl_N (`marked`: reduced) send the map f: B_x → B_w between two final
+/// objects of `data` (closure-data F matrix, rows = ins of w, columns = ins of x; normalized
+/// degree t_x − t_w) to 0? The two objects are placed in homological degrees 0 and 1 with the
+/// single edge f; the closed map is 0 iff the Poincaré polynomial equals that without the edge.
+pub fn closure_kills_map<F: Field>(data: &ClosureDataC<F>, x: usize, w: usize, f: &[Vec<EPoly<F>>], nn: usize, marked: Option<usize>) -> bool {
+    let (ox, ow) = (data.objs[x], data.objs[w]);
+    let mut types = BTreeMap::new();
+    types.insert(ox.0, data.types[&ox.0].clone());
+    types.insert(ow.0, data.types[&ow.0].clone());
+    let two = |edges| ClosureDataC { lam: data.lam.clone(), objs: vec![(ox.0, 0, ox.2), (ow.0, 1, ow.2)], types: types.clone(), edges, crossings: data.crossings.clone() };
+    let with = two(vec![(0, 1, f.to_vec())]);
+    with.validate().unwrap_or_else(|e| panic!("closure_kills_map: {}", e));
+    close_exact_colored(&with, nn, marked) == close_exact_colored(&two(vec![]), nn, marked)
 }
 
 /// Colored gl_N homology of the closure of a braid on at most 2 strands (labels per bottom
