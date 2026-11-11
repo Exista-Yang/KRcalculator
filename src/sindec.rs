@@ -464,8 +464,12 @@ pub struct SIndec<F: Field> {
     rick: HashMap<(Tid, usize, bool, usize), Arc<Vec<(usize, usize, MapId)>>>,
     clos: HashMap<Tid, Arc<ClosureGens>>,
     stats: DecStats,
-    /// per-target provider seconds (q table, s, mult, seconds), for the report
-    pub target_log: Vec<(String, String, i32, usize, f64)>,
+    /// per fresh provider call: (p table, q table or "closure-ins|outs", s, mult, seconds,
+    /// provider summary with tier hits), for the report
+    pub target_log: Vec<(String, String, i32, usize, f64, String)>,
+    /// when set, every `target_log` entry is also appended at once to this file (one JSON line),
+    /// so that a job killed by a watchdog keeps the timings of its finished targets
+    pub target_log_file: Option<PathBuf>,
 }
 
 impl<F: Field> SIndec<F> {
@@ -493,6 +497,7 @@ impl<F: Field> SIndec<F> {
             clos: HashMap::new(),
             stats: DecStats::default(),
             target_log: vec![],
+            target_log_file: None,
         }
     }
     pub fn prune_n(&self) -> Option<u8> {
@@ -701,7 +706,8 @@ impl<F: Field> SIndec<F> {
                 let (n, z) = dechom_postcheck(&self.ar, &self.schur, t, &o.maps_in, &o.maps_out, self.opts.seed).map_err(DecErr::Check)?;
                 self.stats.scaling_entries += n;
                 self.stats.scaling_zero += z;
-                self.target_log.push((self.tfmt(p), self.tfmt(t.q), t.s, t.mult, o.secs));
+                let e = (self.tfmt(p), self.tfmt(t.q), t.s, t.mult, o.secs, o.summary.clone());
+                self.log_target(e);
                 let mut all = o.maps_in.clone();
                 all.extend(&o.maps_out);
                 self.layer_a_save(&key, &all)?;
@@ -1032,6 +1038,8 @@ impl<F: Field> SIndec<F> {
                     match r {
                         Ok(o) => {
                             self.stats.provider_secs += o.secs;
+                            let e = (self.tfmt(p), format!("closure-{}", if outs { "outs" } else { "ins" }), 0, want.len(), o.secs, o.summary.clone());
+                            self.log_target(e);
                             let ms = if outs { o.maps_out } else { o.maps_in };
                             self.layer_a_save(&key, &ms)?;
                             ms
@@ -1049,6 +1057,18 @@ impl<F: Field> SIndec<F> {
         let g = Arc::new(ClosureGens { p, ins, outs });
         self.clos.insert(p, g.clone());
         Ok(g)
+    }
+
+    fn log_target(&mut self, e: (String, String, i32, usize, f64, String)) {
+        if let Some(f) = &self.target_log_file {
+            use std::io::Write;
+            let esc = |x: &str| x.replace('\\', "\\\\").replace('"', "\\\"");
+            let line = format!("{{\"p\":\"{}\",\"q\":\"{}\",\"s\":{},\"mult\":{},\"secs\":{:.3},\"summary\":\"{}\"}}\n", esc(&e.0), esc(&e.1), e.2, e.3, e.4, esc(&e.5));
+            if let Ok(mut fh) = std::fs::OpenOptions::new().create(true).append(true).open(f) {
+                let _ = fh.write_all(line.as_bytes());
+            }
+        }
+        self.target_log.push(e);
     }
 
     /// visit every kept-source pair of a plan (dec_rung), in order; returns the failures
