@@ -189,7 +189,7 @@ See the final answer of this session (git log on `colored-box`).
 
 ## 6. Full suite
 
-`KRHOM_THREADS=4 cargo test --release`: result recorded at the end of the session (§8).
+`KRHOM_THREADS=4 cargo test --release` passes (exit 0). Per binary: lib 22, acceptance 25 (108 s), boxclose 13 (+2 ignored, run separately and passing), boxclose_mem 1 (+1 ignored, passing), cclose 24, hom_lazy 2, homprov 17 (63 s), m4a 25, ntrunc 12, pd 11, schur 26, xengine 19. No existing test was changed.
 
 ## 7. Open problems
 
@@ -216,5 +216,3 @@ See the final answer of this session (git log on `colored-box`).
    length ≤ 8, so the failing branch of the test uses a synthetic non-ideal term (§2).
 7. **The R3 sweep alternative** (per-block S^{-1}) for unreduced extraction is not implemented (§3).
 
-## 8. Full-suite result
-(filled below)
