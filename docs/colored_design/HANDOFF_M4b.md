@@ -289,8 +289,23 @@ Command: `g1 a --cache /tmp/tmpl_g1a --costs tests/data/homprov/costs_cloud.txt 
 
 ### Open problems
 
-- Search `full` completeness: 24 / 605 of (2,1,2) are Exhausted through Search alone. The
-  ignored B2 (3,3) / (2,2,2) result is below.
+- Search `full` completeness: 24 / 605 of (2,1,2) are Exhausted through Search alone.
+- Ignored B2 run through the Chain (`cargo test --release --test homprov -- --ignored`,
+  914 s), test `b2_type_pairs_33_222_through_chain`: **FAILED**.
+  - (3,3): 80 / 80, all through Search (dim0 52, S6 20, S0 4, S2 4).
+  - (2,2,2): 2064 / 2205 (dim0 1650, Exact 316, S6 84, S0 7, S2 7), so 141 are missing.
+    - In every miss, Exact was refused by the label-rule caps (fibre product above 1 600, or
+      more than 40 000 unknowns) with no cost-table entry.
+    - Of the 40 misses printed, Search ended 19 Exhausted and 21 Refused (window admission).
+    - The misses are high-fibre type pairs, d = 1..4, between types such as 0,1,1/1,0,1/1,1,0,
+      1,0,1/0,2,0/1,0,1 and 0,0,2/1,1,0/1,1,0.
+  - So Search `full` / `end0` is not complete on (2,2,2) at d >= 1 for large ladders. The
+    ignored test documents this and is left failing (not weakened).
+  - G1(a) does not need these spaces (pairs and closure only). M5's end0 needs d = 0: none of
+    the 40 printed misses is at d = 0, but the test prints only the first 40 of 141. Before M5 relies on `full` at d > 0, add cost records or raise the caps,
+    or improve Search S4 / S6.
+  - The other ignored tests pass: b3_b4_faith_e1f1e1f1 and b4b_detecting_set_fallback (the
+    forced witness set fails the counting assertion; the basis certifies through the fallback).
 - The (3,3,3) decomposable type 0,1,2/1,1,1/2,1,0 has 10 500 flows, so its End^0 through Exact
   is not admitted by the label rule. M5 needs Search `end0` (or a cost record) for its e_p.
 - costs_cloud.txt is stamped for this machine class only. Recalibrate (`g1 calib`) on another.
