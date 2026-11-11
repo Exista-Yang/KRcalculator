@@ -396,8 +396,13 @@ pub struct SearchStats {
     pub indexed_words: usize,
     pub peak_index_bytes: u64,
     pub peak_arena_bytes: u64,
+    /// computed (not cached) whole-ladder hom_space calls of the Exact backend
     pub exact_calls: usize,
     pub exact_secs: f64,
+    /// computed (not cached) exact window calls made by Search (splits, commutations, rex moves,
+    /// leaf isomorphisms, S6 windows); counted apart from the Exact backend (review tests F5)
+    pub window_calls: usize,
+    pub window_secs: f64,
     pub detect: &'static str, /* "witness" | "orbits" | "more-points" */
 }
 impl SearchStats {
@@ -417,6 +422,8 @@ impl SearchStats {
         self.peak_arena_bytes = self.peak_arena_bytes.max(o.peak_arena_bytes);
         self.exact_calls += o.exact_calls;
         self.exact_secs += o.exact_secs;
+        self.window_calls += o.window_calls;
+        self.window_secs += o.window_secs;
         if !o.detect.is_empty() {
             self.detect = o.detect;
         }
@@ -465,6 +472,12 @@ pub trait HomProvider<F: Field> {
     fn closure(&mut self, ar: &mut Arena<F>, s: &mut Schur, lp: ExprId, p: Tid, ep: Option<MapId>, outs: bool, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>>;
     /// a spanning set of End^0(L) (certified by stacked rank = Hom formula)
     fn end0(&mut self, ar: &mut Arena<F>, s: &mut Schur, l: ExprId, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>>;
+    /// the counters of the last call if it failed (None after a success; Chain absorbs them so
+    /// that the time and candidates of failed providers are reported). Additive to the SPEC
+    /// interface.
+    fn failed_stats(&self) -> Option<SearchStats> {
+        None
+    }
 }
 
 fn miss(what: &str, degree: i32, stratum: Option<String>, got: usize, want: usize, kind: MissKind) -> Vec<Missing> {
@@ -577,6 +590,7 @@ pub fn detecting_cosets<F: Field>(ar: &Arena<F>, s: &mut Schur, src: ExprId, tgt
 /// dimension, M, detecting set and number of points for Hom^d(src, tgt) (§4.3 items 1-3)
 pub fn detect_plan<F: Field>(ar: &Arena<F>, s: &mut Schur, src: ExprId, tgt: ExprId, d: i32) -> DetectPlan {
     let lam = ar.lam().to_vec();
+    assert_eq!(s.lam, lam, "detect_plan: Schur lambda != arena lambda");
     let (ws, wt) = (word(ar, src), word(ar, tgt));
     let chs = s.ladder_char(&ws);
     let cht = s.ladder_char(&wt);
@@ -619,6 +633,14 @@ pub fn stacked_rank<F: Field>(ar: &Arena<F>, ms: &[MapId], pts: &[Point<F>], cos
 /// first), rank still |S| with 2 fresh points appended, every map genuine with the right ends and
 /// degree. Returns the detecting plan used.
 pub fn certify_full_plan<F: Field>(ar: &Arena<F>, s: &mut Schur, src: ExprId, tgt: ExprId, d: i32, ms: &[MapId], seed: u64) -> Result<DetectPlan, String> {
+    let plan = detect_plan(ar, s, src, tgt, d);
+    certify_full_at(ar, s, src, tgt, d, ms, seed, plan)
+}
+
+/// `certify_full_plan` at a given detecting plan (tests force a plan, B4b); the counting bound
+/// rows_per_point · npoints >= dim is asserted before any ranking
+#[allow(clippy::too_many_arguments)]
+pub fn certify_full_at<F: Field>(ar: &Arena<F>, s: &mut Schur, src: ExprId, tgt: ExprId, d: i32, ms: &[MapId], seed: u64, plan: DetectPlan) -> Result<DetectPlan, String> {
     for &m in ms {
         let i = ar.info(m);
         if (i.src, i.tgt, i.deg) != (src, tgt, d) {
@@ -626,7 +648,6 @@ pub fn certify_full_plan<F: Field>(ar: &Arena<F>, s: &mut Schur, src: ExprId, tg
         }
         assert_genuine(ar, m)?;
     }
-    let plan = detect_plan(ar, s, src, tgt, d);
     if ms.len() != plan.dim {
         return Err(format!("certify_full: {} maps, dim Hom^{} = {}", ms.len(), d, plan.dim));
     }
@@ -645,20 +666,7 @@ pub fn certify_full_plan<F: Field>(ar: &Arena<F>, s: &mut Schur, src: ExprId, tg
         // cannot certify a dependent family. Measured: hom60 case (1,3) F0(1)E0(3)F0(2) ->
         // E0(3)F0(2)F0(1) degree 6, witness rank 141 < 145 at 18 points.
         let first = format!("stacked rank {} < dim {} at {} points ({} detecting cosets, {})", r, plan.dim, plan.npoints, plan.cosets.len(), plan.kind);
-        let (ws, wt) = (word(ar, src), word(ar, tgt));
-        let lam = ar.lam().to_vec();
-        let (chs, cht) = (s.ladder_char(&ws), s.ladder_char(&wt));
-        let ts = common_tables(&chs, &cht);
-        let mu = top_of(&lam, &ws);
-        let cs = CosetSpace::new(&lam, &mu);
-        let mut cos: Vec<u64> = vec![];
-        for &(t, _, _) in &ts {
-            cos.extend(cs.cosets_of(s.table(t)));
-        }
-        cos.sort_unstable();
-        cos.dedup();
-        let orb_rows: usize = ts.iter().map(|&(t, a, b)| (a * b) as usize * s.ncosets_of(t) as usize).sum();
-        let np0 = (plan.m + 2).max(plan.dim.div_ceil(orb_rows.max(1)) + 2);
+        let (cos, orb_rows, np0) = orbit_fallback(ar, s, src, tgt, &plan);
         for (k, np) in [np0, 2 * np0].into_iter().enumerate() {
             let pts = points::<F>(ar.k(), seed ^ 0x0b17_0000 ^ k as u64, np + 2, 0);
             if stacked_rank(ar, ms, &pts[..np], &cos) == plan.dim {
@@ -676,6 +684,27 @@ pub fn certify_full_plan<F: Field>(ar: &Arena<F>, s: &mut Schur, src: ExprId, tg
         return Err(format!("certify_full: residual rank {} != {}", r2, plan.dim));
     }
     Ok(plan)
+}
+
+/// the orbit fallback of `certify_full_plan`: the full W_λ-orbits of the common tables
+/// (deduplicated), their rows per point, and the first point count max(M + 2, ⌈dim/rows⌉ + 2)
+/// (the second attempt doubles it)
+pub fn orbit_fallback<F: Field>(ar: &Arena<F>, s: &mut Schur, src: ExprId, tgt: ExprId, plan: &DetectPlan) -> (Vec<u64>, usize, usize) {
+    let (ws, wt) = (word(ar, src), word(ar, tgt));
+    let lam = ar.lam().to_vec();
+    let (chs, cht) = (s.ladder_char(&ws), s.ladder_char(&wt));
+    let ts = common_tables(&chs, &cht);
+    let mu = top_of(&lam, &ws);
+    let cs = CosetSpace::new(&lam, &mu);
+    let mut cos: Vec<u64> = vec![];
+    for &(t, _, _) in &ts {
+        cos.extend(cs.cosets_of(s.table(t)));
+    }
+    cos.sort_unstable();
+    cos.dedup();
+    let orb_rows: usize = ts.iter().map(|&(t, a, b)| (a * b) as usize * s.ncosets_of(t) as usize).sum();
+    let np0 = (plan.m + 2).max(plan.dim.div_ceil(orb_rows.max(1)) + 2);
+    (cos, orb_rows, np0)
 }
 
 pub fn certify_full<F: Field>(ar: &Arena<F>, s: &mut Schur, src: ExprId, tgt: ExprId, d: i32, ms: &[MapId], seed: u64) -> Result<(), String> {
@@ -745,9 +774,26 @@ fn with_idem<F: Field>(ar: &mut Arena<F>, eq: Option<MapId>, iotas: &mut [MapId]
     Ok(())
 }
 
-/// pairs certification (§4.3 item 6): rank `mult`, the same matrix at a second point, genuine maps;
+/// ends and degree of a map
+fn check_info<F: Field>(ar: &Arena<F>, m: MapId, src: ExprId, tgt: ExprId, deg: i32, what: &str) -> Result<(), String> {
+    let i = ar.info(m);
+    if (i.src, i.tgt, i.deg) != (src, tgt, deg) {
+        return Err(format!("{}: map {} is {}->{} of degree {}, expected {}->{} degree {}", what, m, i.src, i.tgt, i.deg, src, tgt, deg));
+    }
+    Ok(())
+}
+
+/// pairs certification (§4.3 item 6): every ι is L_q -> X of degree sdeg and every π is X -> L_q
+/// of degree -sdeg (review F3), rank `mult`, the same matrix at a second point, genuine maps;
 /// returns exactly `mult` ι and `mult` π with an invertible form
-fn certify_pairs<F: Field>(ar: &Arena<F>, iotas: &[MapId], pis: &[MapId], c: u64, mult: usize, seed: u64) -> Result<Pairs<F>, String> {
+#[allow(clippy::too_many_arguments)]
+pub fn certify_pairs<F: Field>(ar: &Arena<F>, x: ExprId, lq: ExprId, sdeg: i32, iotas: &[MapId], pis: &[MapId], c: u64, mult: usize, seed: u64) -> Result<Pairs<F>, String> {
+    for &m in iotas {
+        check_info(ar, m, lq, x, sdeg, "pairs (iota)")?;
+    }
+    for &m in pis {
+        check_info(ar, m, x, lq, -sdeg, "pairs (pi)")?;
+    }
     let pts = points::<F>(ar.k(), seed, 2, 0);
     let g1 = form_at(ar, iotas, pis, c, &pts[0])?;
     let (ii, jj) = select_form(&g1, iotas.len(), mult).ok_or_else(|| format!("form rank != {}", mult))?;
@@ -767,9 +813,152 @@ fn certify_pairs<F: Field>(ar: &Arena<F>, iotas: &[MapId], pis: &[MapId], c: u64
     Ok(Pairs { iotas: io, pis: pi, form: f1 })
 }
 
-/// closure check (§4.3 item 7): degree multiset = c_diag(b_p), n×n identity-coset matrix
-/// nonsingular at two points
-fn certify_closure<F: Field>(ar: &Arena<F>, lam: &[u8], ms: &[MapId], want_degs: &[i32], outs: bool, seed: u64) -> Result<(), String> {
+/// row-major square matrix product
+fn sq_mul<F: Field>(a: &[F], b: &[F], n: usize) -> Vec<F> {
+    let mut out = vec![F::zero(); n * n];
+    for i in 0..n {
+        for k in 0..n {
+            let x = &a[i * n + k];
+            if x.is_zero() {
+                continue;
+            }
+            for j in 0..n {
+                out[i * n + j].fma(x, &b[k * n + j]);
+            }
+        }
+    }
+    out
+}
+
+/// The e_q / e_p contract (SPEC §5.2 item 6, checked cheaply here): e is a genuine degree-0
+/// endomorphism of L, b_p occurs in char L exactly once in degree 0, and at two points, at the
+/// witness coset rep(t) of every table t of char L, block(e) is idempotent of rank c_t(b_p)(1);
+/// at rep(p) (one flow) its scalar is 1. With these ranks Krull-Schmidt gives Im e ≅ B_p.
+pub fn check_idempotent<F: Field>(ar: &Arena<F>, s: &mut Schur, l: ExprId, p: Tid, e: MapId, seed: u64) -> Result<(), String> {
+    let lam = ar.lam().to_vec();
+    check_info(ar, e, l, l, 0, "idempotent")?;
+    assert_genuine(ar, e)?;
+    let mu = s.table(p).cols();
+    let ch = s.ladder_char(&word(ar, l));
+    let mult = s.expand(&ch).into_iter().find(|t| t.0 == p).map(|t| t.1).unwrap_or_else(crate::schur::Lp::zero);
+    if mult != crate::schur::Lp::one() {
+        return Err(format!("idempotent: b_p occurs in char L with multiplicity {:?}, expected 1", mult));
+    }
+    let bp = s.canonical_basis(&mu).b[&p].clone();
+    let tables: Vec<Tid> = ch.t.iter().map(|t| t.0).collect();
+    for pt in points::<F>(ar.k(), seed, 2, 0) {
+        let mut ev = Eval::new(ar, pt);
+        for &t in &tables {
+            let c = rep_rank(s, &lam, t);
+            let b = ev.block(e, c);
+            if b.rows != b.cols {
+                return Err(format!("idempotent: block at rep({}) is {}x{}", s.table(t).fmt(), b.rows, b.cols));
+            }
+            let n = b.rows as usize;
+            if sq_mul(&b.a, &b.a, n) != b.a {
+                return Err(format!("idempotent: e^2 != e at rep({})", s.table(t).fmt()));
+            }
+            let rows: Vec<Vec<F>> = (0..n).map(|i| b.a[i * n..(i + 1) * n].to_vec()).collect();
+            let r = if n == 0 { 0 } else { crate::dense::rank(&rows, n) } as i128;
+            let want = bp.coef(t).at1();
+            if r != want {
+                return Err(format!("idempotent: rank {} at rep({}), c_t(b_p)(1) = {}", r, s.table(t).fmt(), want));
+            }
+            if t == p && (n != 1 || b.a[0] != F::one()) {
+                return Err(format!("idempotent: top-coset scalar at rep({}) is not 1 ({} flows)", s.table(p).fmt(), n));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Preconditions of `pairs`, checked by every backend before any work (review F1, F2): the ends
+/// have the top of q, L_q is indecomposable of type q (char L_q = b_q) unless an idempotent e_q
+/// is given (then `check_idempotent`), and `mult` = [v^sdeg] of the multiplicity of b_q in char X.
+/// Err = Refused.
+#[allow(clippy::too_many_arguments)]
+pub fn pairs_precheck<F: Field>(ar: &Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, eq: Option<MapId>, sdeg: i32, mult: usize) -> Result<(), String> {
+    let lam = ar.lam().to_vec();
+    if s.lam != lam {
+        return Err(format!("Schur lambda {:?} != arena lambda {:?}", s.lam, lam));
+    }
+    let (xw, qw) = (word(ar, x), word(ar, lq));
+    let mu = s.table(q).cols();
+    if top_of(&lam, &qw) != mu || top_of(&lam, &xw) != mu {
+        return Err(format!("tops: L_q {:?}, X {:?}, q is a table of {:?}", top_of(&lam, &qw), top_of(&lam, &xw), mu));
+    }
+    match eq {
+        None => {
+            let chq = s.ladder_char(&qw);
+            let ex = s.expand(&chq);
+            if ex.len() != 1 || ex[0].0 != q || ex[0].1 != crate::schur::Lp::one() {
+                let parts: Vec<String> = ex.iter().map(|(t, c)| format!("{}{{{}}}", s.table(*t).fmt(), c.fmt_ec())).collect();
+                return Err(format!("L_q decomposable: e_q required (char L_q = {} for q = {})", parts.join(" + "), s.table(q).fmt()));
+            }
+        }
+        Some(e) => check_idempotent(ar, s, lq, q, e, 0x5eed_e000).map_err(|m| format!("e_q rejected: {}", m))?,
+    }
+    let chx = s.ladder_char(&xw);
+    let m = s.expand(&chx).into_iter().find(|t| t.0 == q).map(|t| t.1.coef(sdeg)).unwrap_or(0);
+    if m != mult as i128 {
+        return Err(format!("mult {} != [v^{}] of the multiplicity of b_q in char X = {}", mult, sdeg, m));
+    }
+    Ok(())
+}
+
+/// Preconditions of `closure` (review F1/F4): L_p has top λ and p is a type of (λ, λ); without
+/// an idempotent L_p must be indecomposable of type p (char L_p = b_p), with one it must pass
+/// `check_idempotent`. Err = Refused.
+pub fn closure_precheck<F: Field>(ar: &Arena<F>, s: &mut Schur, lp: ExprId, p: Tid, ep: Option<MapId>) -> Result<(), String> {
+    let lam = ar.lam().to_vec();
+    if s.lam != lam {
+        return Err(format!("Schur lambda {:?} != arena lambda {:?}", s.lam, lam));
+    }
+    let w = word(ar, lp);
+    if top_of(&lam, &w) != lam || s.table(p).cols() != lam {
+        return Err(format!("closure: L_p has top {:?} and p is a table of {:?}, expected {:?}", top_of(&lam, &w), s.table(p).cols(), lam));
+    }
+    match ep {
+        None => {
+            let ch = s.ladder_char(&w);
+            let ex = s.expand(&ch);
+            if ex.len() != 1 || ex[0].0 != p || ex[0].1 != crate::schur::Lp::one() {
+                let parts: Vec<String> = ex.iter().map(|(t, c)| format!("{}{{{}}}", s.table(*t).fmt(), c.fmt_ec())).collect();
+                return Err(format!("L_p decomposable: e_p required (char L_p = {} for p = {})", parts.join(" + "), s.table(p).fmt()));
+            }
+            Ok(())
+        }
+        Some(e) => check_idempotent(ar, s, lp, p, e, 0x5eed_e001).map_err(|m| format!("e_p rejected: {}", m)),
+    }
+}
+
+/// closure check (§4.3 item 7): every map is R^λ -> L_p (ins) or L_p -> R^λ (outs) (review F3),
+/// degree multiset = c_diag(b_p), identity-coset matrix of rank n at two points.
+///
+/// Without e_p the identity-coset blocks have exactly n = c_diag(b_p)(1) entries (n×n matrix).
+/// With e_p (SPEC §4.3 item 7, review F4) every map must be e_p∘g (ins) or g∘e_p (outs) as a DAG
+/// node, so it lies in Hom(R^λ, B_p) resp. Hom(B_p, R^λ) with B_p = Im e_p; its block has N >= n
+/// entries in the n-dimensional image (resp. coimage) of the block of e_p, and rank n of the n×N
+/// matrix is the same as nonsingularity in reduced coordinates of Im e_p. The determinant argument
+/// then applies to the free rank-n module Hom(R^λ, B_p) (degree multiset c_diag(b_p)).
+#[allow(clippy::too_many_arguments)]
+pub fn certify_closure<F: Field>(ar: &Arena<F>, lam: &[u8], r0: ExprId, lp: ExprId, ep: Option<MapId>, ms: &[MapId], want_degs: &[i32], outs: bool, seed: u64) -> Result<(), String> {
+    let (a, b) = if outs { (lp, r0) } else { (r0, lp) };
+    for &m in ms {
+        let i = ar.info(m);
+        if (i.src, i.tgt) != (a, b) {
+            return Err(format!("closure: map {} is {}->{}, expected {}->{} ({})", m, i.src, i.tgt, a, b, if outs { "outs" } else { "ins" }));
+        }
+        if let Some(e) = ep {
+            let wrapped = match ar.node(m) {
+                MapNode::Comp(g, h) => if outs { *h == e } else { *g == e },
+                _ => false,
+            };
+            if !wrapped {
+                return Err(format!("closure: map {} is not {} (not in the image of e_p)", m, if outs { "g∘e_p" } else { "e_p∘g" }));
+            }
+        }
+    }
     let mut degs: Vec<i32> = ms.iter().map(|&m| ar.info(m).deg).collect();
     degs.sort_unstable();
     let mut w = want_degs.to_vec();
@@ -782,10 +971,11 @@ fn certify_closure<F: Field>(ar: &Arena<F>, lam: &[u8], ms: &[MapId], want_degs:
         let mut ev = Eval::new(ar, p);
         let rows: Vec<Vec<F>> = ms.iter().map(|&m| ev.block(m, c).a.clone()).collect();
         let n = ms.len();
-        if rows.iter().any(|r| r.len() != n) {
-            return Err(format!("closure: identity-coset blocks are not of size {} ({})", n, if outs { "outs" } else { "ins" }));
+        let width = if ep.is_some() { rows.first().map_or(n, |r| r.len()) } else { n };
+        if rows.iter().any(|r| r.len() != width) || width < n {
+            return Err(format!("closure: identity-coset blocks are not of size {} ({})", width, if outs { "outs" } else { "ins" }));
         }
-        if crate::dense::rank(&rows, n) != n {
+        if crate::dense::rank(&rows, width) != n {
             return Err("closure: identity-coset matrix singular".into());
         }
     }
@@ -823,12 +1013,40 @@ pub struct CostRec {
     pub censored: bool,
 }
 
+/// Generation of the exact solver whose timings a cost table holds (`sbim::hom_space` with
+/// `linsys::kernel_lazy`); bump when the solver's cost changes. Tables with another stamp are
+/// rejected (review tests finding 3).
+pub const COST_ALG: &str = "hs-kl1";
+
+/// The machine class a cost table was measured on: CPU count and model name (not the host name,
+/// which is random in cloud containers).
+pub fn host_stamp() -> String {
+    let n = std::thread::available_parallelism().map(|x| x.get()).unwrap_or(1);
+    let model = std::fs::read_to_string("/proc/cpuinfo")
+        .ok()
+        .and_then(|t| t.lines().find(|l| l.starts_with("model name")).and_then(|l| l.split_once(':')).map(|(_, m)| m.trim().to_string()))
+        .or_else(|| {
+            std::process::Command::new("sysctl").args(["-n", "machdep.cpu.brand_string"]).output().ok().and_then(|o| String::from_utf8(o.stdout).ok()).map(|x| x.trim().to_string()).filter(|x| !x.is_empty())
+        })
+        .unwrap_or_else(|| "unknown".into());
+    let model: String = model.chars().map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '@' { c } else { '_' }).collect();
+    format!("{}cpu-{}", n, model)
+}
+
 /// measured hom_space / rlambda_bases costs keyed by (sorted labels, fibre product rounded up to a
 /// power of 2, degree) -> max seconds observed; built and saved (text) in M4b
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct CostTable {
     pub recs: Vec<CostRec>,
     map: BTreeMap<(Vec<u8>, u32, i32), f64>,
+    /// solver generation and machine class of the measurements (header stamp)
+    pub alg: String,
+    pub host: String,
+}
+impl Default for CostTable {
+    fn default() -> Self {
+        CostTable { recs: vec![], map: BTreeMap::new(), alg: COST_ALG.to_string(), host: host_stamp() }
+    }
 }
 
 fn bucket(fp: u128) -> u32 {
@@ -851,8 +1069,10 @@ impl CostTable {
     pub fn record(&mut self, r: CostRec) {
         let k = CostTable::key(&r.labels, r.fs * r.ft, r.deg);
         let e = self.map.entry(k).or_insert(0.0);
-        // a censored record is a lower bound: it can only raise the bucket maximum
-        *e = e.max(r.secs);
+        // a censored record is only a lower bound (killed at its limit): the bucket prediction
+        // becomes +infinity, so it can never admit a call (review tests finding 3: a bucket
+        // whose maximum was a censored 60 s record admitted every window in it)
+        *e = if r.censored { f64::INFINITY } else { e.max(r.secs) };
         self.recs.push(r);
     }
     pub fn len(&self) -> usize {
@@ -898,7 +1118,7 @@ impl CostTable {
         let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
         {
             let mut w = std::io::BufWriter::new(std::fs::File::create(&tmp)?);
-            writeln!(w, "krhom-costs v1 fields=labels,fs,ft,unknowns,deg,secs,rss_mb,censored")?;
+            writeln!(w, "krhom-costs v2 alg={} host={} fields=labels,fs,ft,unknowns,deg,secs,rss_mb,censored", self.alg, self.host)?;
             for r in &self.recs {
                 let l: Vec<String> = r.labels.iter().map(|x| x.to_string()).collect();
                 writeln!(w, "{} {} {} {} {} {:.6} {:.1} {}", l.join(","), r.fs, r.ft, r.unknowns, r.deg, r.secs, r.rss_mb, if r.censored { 1 } else { 0 })?;
@@ -912,10 +1132,26 @@ impl CostTable {
         let bad = |l: &str| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("cost table: bad line {:?}", l));
         let mut lines = text.lines();
         let h = lines.next().unwrap_or("");
-        if !h.starts_with("krhom-costs v1 ") {
+        let mismatch = |m: String| std::io::Error::new(std::io::ErrorKind::InvalidData, m);
+        if h.starts_with("krhom-costs v1 ") {
+            return Err(mismatch(format!("{}: unstamped v1 cost table (no solver / host stamp; recalibrate with `g1 calib`)", path.display())));
+        }
+        if !h.starts_with("krhom-costs v2 ") {
             return Err(bad(h));
         }
-        let mut t = CostTable::new();
+        let field = |k: &str| h.split_whitespace().find_map(|f| f.strip_prefix(k)).unwrap_or("").to_string();
+        let (alg, host) = (field("alg="), field("host="));
+        if alg != COST_ALG {
+            return Err(mismatch(format!("{}: cost table solver stamp {:?} != {:?} (recalibrate with `g1 calib`)", path.display(), alg, COST_ALG)));
+        }
+        let here = host_stamp();
+        if host != here {
+            if std::env::var("KRHOM_COSTS_ANY_HOST").is_err() {
+                return Err(mismatch(format!("{}: cost table host stamp {:?} != this machine {:?} (recalibrate, or set KRHOM_COSTS_ANY_HOST=1)", path.display(), host, here)));
+            }
+            eprintln!("[costs] warning: {} was measured on {:?}, this machine is {:?} (KRHOM_COSTS_ANY_HOST)", path.display(), host, here);
+        }
+        let mut t = CostTable { alg, host, ..CostTable::new() };
         for l in lines {
             if l.trim().is_empty() {
                 continue;
@@ -991,10 +1227,12 @@ pub struct Exact {
     pub max_label: u8,
     pub costs: Option<CostTable>,
     pub max_call_s: f64,
+    /// counters of the last call if it failed (`failed_stats`)
+    pub failed: Option<SearchStats>,
 }
 impl Default for Exact {
     fn default() -> Self {
-        Exact { max_fibre_product: 1600, max_unknowns: 40_000, max_label: 2, costs: None, max_call_s: 10.0 }
+        Exact { max_fibre_product: 1600, max_unknowns: 40_000, max_label: 2, costs: None, max_call_s: 10.0, failed: None }
     }
 }
 
@@ -1039,10 +1277,13 @@ impl<F: Field> HomProvider<F> for Exact {
         let t0 = Instant::now();
         let mark = ar.mark();
         let mut st = SearchStats::default();
+        self.failed = None;
         let ms = match self.basis(ar, src, tgt, d, &mut st) {
             Ok(v) => v,
             Err((k, e)) => {
                 ar.commit(mark, &[]);
+                st.secs = elapsed(&t0);
+                self.failed = Some(st);
                 return Err(miss(&format!("Exact full: {}", e), d, None, 0, 0, k));
             }
         };
@@ -1058,6 +1299,8 @@ impl<F: Field> HomProvider<F> for Exact {
             }
             Err(e) => {
                 ar.commit(mark, &[]);
+                st.secs = elapsed(&t0);
+                self.failed = Some(st);
                 Err(miss(&format!("Exact full: {}", e), d, None, ms.len(), 0, MissKind::Exhausted))
             }
         }
@@ -1066,15 +1309,17 @@ impl<F: Field> HomProvider<F> for Exact {
         let t0 = Instant::now();
         let mark = ar.mark();
         let mut st = SearchStats::default();
+        self.failed = None;
         let strat = Some(s.table(q).fmt());
         let lam = ar.lam().to_vec();
         let r = (|| -> Result<Pairs<F>, (MissKind, String)> {
+            pairs_precheck(ar, s, x, q, lq, eq, sdeg, mult).map_err(|e| (MissKind::Refused, e))?;
             let mut io = self.basis(ar, lq, x, sdeg, &mut st)?;
             let mut pi = self.basis(ar, x, lq, -sdeg, &mut st)?;
             st.candidates = io.len() + pi.len();
             st.evaluated = st.candidates;
             with_idem(ar, eq, &mut io, &mut pi).map_err(|e| (MissKind::Exhausted, e))?;
-            certify_pairs(ar, &io, &pi, rep_rank(s, &lam, q), mult, 0x5eed_0002).map_err(|e| (MissKind::Exhausted, e))
+            certify_pairs(ar, x, lq, sdeg, &io, &pi, rep_rank(s, &lam, q), mult, 0x5eed_0002).map_err(|e| (MissKind::Exhausted, e))
         })();
         match r {
             Ok(p) => {
@@ -1087,6 +1332,8 @@ impl<F: Field> HomProvider<F> for Exact {
             }
             Err((kind, e)) => {
                 ar.commit(mark, &[]);
+                st.secs = elapsed(&t0);
+                self.failed = Some(st);
                 Err(miss(&format!("Exact pairs: {}", e), sdeg, strat, 0, mult, kind))
             }
         }
@@ -1095,11 +1342,13 @@ impl<F: Field> HomProvider<F> for Exact {
         let t0 = Instant::now();
         let mark = ar.mark();
         let mut st = SearchStats::default();
+        self.failed = None;
         let want = cdiag_degrees(s, p);
         let lam = ar.lam().to_vec();
         let r = (|| -> Result<Vec<MapId>, (MissKind, String)> {
+            closure_precheck(ar, s, lp, p, ep).map_err(|e| (MissKind::Refused, e))?;
             let r0 = eid(ar, &[]).map_err(|e| (MissKind::Exhausted, e))?;
-            let mut sel = Selector::new(identity_coset(&lam), ar.k(), want.len(), 0x5eed_0003);
+            let mut sel = Selector::new(identity_coset(&lam), ar.k(), want.len(), 0x5eed_0003, ep.is_some());
             let mut degs: Vec<i32> = want.clone();
             degs.dedup();
             for d in degs {
@@ -1119,7 +1368,7 @@ impl<F: Field> HomProvider<F> for Exact {
                 }
             }
             let ms = sel.chosen.clone();
-            certify_closure(ar, &lam, &ms, &want, outs, 0x5eed_0004).map_err(|e| (MissKind::Exhausted, e))?;
+            certify_closure(ar, &lam, r0, lp, ep, &ms, &want, outs, 0x5eed_0004).map_err(|e| (MissKind::Exhausted, e))?;
             Ok(ms)
         })();
         match r {
@@ -1130,12 +1379,17 @@ impl<F: Field> HomProvider<F> for Exact {
             }
             Err((kind, e)) => {
                 ar.commit(mark, &[]);
+                st.secs = elapsed(&t0);
+                self.failed = Some(st);
                 Err(miss(&format!("Exact closure: {}", e), 0, Some(s.table(p).fmt()), 0, want.len(), kind))
             }
         }
     }
     fn end0(&mut self, ar: &mut Arena<F>, s: &mut Schur, l: ExprId, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
         self.full(ar, s, l, l, 0, b)
+    }
+    fn failed_stats(&self) -> Option<SearchStats> {
+        self.failed.clone()
     }
 }
 
@@ -1146,10 +1400,13 @@ struct Selector<F: Field> {
     rows: Vec<Vec<F>>,
     chosen: Vec<MapId>,
     n: usize,
+    /// block length: n without e_p; with e_p the flows of L_p at the identity coset (set by the
+    /// first candidate)
+    width: Option<usize>,
 }
 impl<F: Field> Selector<F> {
-    fn new(coset: u64, k: usize, n: usize, seed: u64) -> Self {
-        Selector { coset, pts: points::<F>(k, seed, 1, 0), rows: vec![], chosen: vec![], n }
+    fn new(coset: u64, k: usize, n: usize, seed: u64, with_ep: bool) -> Self {
+        Selector { coset, pts: points::<F>(k, seed, 1, 0), rows: vec![], chosen: vec![], n, width: if with_ep { None } else { Some(n) } }
     }
     /// offer candidates; keep those that raise the rank, up to `need` of them; returns kept count
     fn offer_many(&mut self, ar: &Arena<F>, cands: &[MapId], need: usize) -> usize {
@@ -1159,13 +1416,17 @@ impl<F: Field> Selector<F> {
             if got >= need {
                 break;
             }
+            if self.chosen.len() >= self.n {
+                break;
+            }
             let v = ev.block(m, self.coset).a.clone();
-            if v.len() != self.n {
+            let w = *self.width.get_or_insert(v.len());
+            if v.len() != w || w < self.n {
                 continue;
             }
             let mut rows = self.rows.clone();
             rows.push(v.clone());
-            if crate::dense::rank(&rows, self.n) == rows.len() {
+            if crate::dense::rank(&rows, w) == rows.len() {
                 self.rows.push(v);
                 self.chosen.push(m);
                 got += 1;
@@ -1328,8 +1589,31 @@ struct Ctx {
     b: Budget,
     st: SearchStats,
     stuck: usize,
+    /// stuck branches whose only cause was window admission (subset of `stuck`)
+    stuck_adm: usize,
+    /// tiers or degrees skipped because admission refused their exact window
+    tier_refused: usize,
 }
 impl Ctx {
+    /// the kind of a call whose candidate stream ended: Refused when every stuck branch and every
+    /// skipped tier was caused by admission (and there was at least one), Exhausted otherwise
+    /// (review F5: Exhausted is the completeness signal, admission is not)
+    fn end_kind(&self) -> MissKind {
+        if self.stuck_adm + self.tier_refused > 0 && self.stuck == self.stuck_adm {
+            MissKind::Refused
+        } else {
+            MissKind::Exhausted
+        }
+    }
+    fn end_note(&self) -> String {
+        format!("{} stuck branches, {} by admission, {} tiers refused", self.stuck, self.stuck_adm, self.tier_refused)
+    }
+    fn stuck_by(&mut self, k: MissKind) {
+        self.stuck += 1;
+        if k == MissKind::Refused {
+            self.stuck_adm += 1;
+        }
+    }
     fn check<F: Field>(&mut self, ar: &Arena<F>) -> Result<(), Stop> {
         let by = ar.bytes();
         self.st.peak_arena_bytes = self.st.peak_arena_bytes.max(by.total() as u64);
@@ -1369,6 +1653,13 @@ pub struct Search {
     sc: SchurCache,
     splits: HashMap<(Vec<u8>, Vec<Rung>), Result<Vec<Piece>, String>>,
     comms: HashMap<(Vec<u8>, Vec<Rung>), Option<(TmplId, TmplId)>>,
+    /// `TmplLib::instance` of the library the TmplIds in `splits` / `comms` belong to; the caches
+    /// are cleared when a call comes with another library (review F3)
+    lib_instance: u64,
+    /// the last `choose_window` refused at least one decomposable window by admission
+    last_win_refused: bool,
+    /// counters of the last call if it failed (`failed_stats`)
+    failed: Option<SearchStats>,
     /// one line per decision of the last call (tiers tried, outcomes)
     pub trace: Vec<String>,
     /// exact window calls computed by Search (not cached) and their seconds (cumulative)
@@ -1404,6 +1695,9 @@ impl Search {
             sc: SchurCache::default(),
             splits: HashMap::new(),
             comms: HashMap::new(),
+            lib_instance: 0,
+            last_win_refused: false,
+            failed: None,
             trace: vec![],
             window_calls: 0,
             window_secs: 0.0,
@@ -1411,6 +1705,23 @@ impl Search {
     }
     fn on(&self, k: usize) -> bool {
         self.lo <= k && k <= self.hi
+    }
+    /// bind the TmplId caches to the Arena's template library (cleared on a change)
+    fn bind<F: Field>(&mut self, ar: &Arena<F>) {
+        let id = ar.lib_ref().instance();
+        if id != self.lib_instance {
+            self.splits.clear();
+            self.comms.clear();
+            self.lib_instance = id;
+        }
+    }
+    /// window admission as Search decides it (cache hit, measured shape, caps, bucket) (tests)
+    pub fn window_admitted<F: Field>(&self, ar: &Arena<F>, labels: &[u8], a: &[Rung], b: &[Rung], d: i32) -> bool {
+        self.win_ok(ar, labels, a, b, d)
+    }
+    /// number of cached window decompositions and commutations (tests)
+    pub fn cached_windows(&self) -> (usize, usize) {
+        (self.splits.len(), self.comms.len())
     }
     /// predicted admission of an exact window call (cache hits are always admitted)
     fn win_ok<F: Field>(&self, ar: &Arena<F>, labels: &[u8], a: &[Rung], b: &[Rung], d: i32) -> bool {
@@ -1458,11 +1769,22 @@ impl Search {
             hom_unknowns(labels, a, b, d)
         }
     }
-    fn exact<F: Field>(&mut self, ar: &mut Arena<F>, labels: &[u8], a: &[Rung], b: &[Rung], d: i32, _st: &mut SearchStats) -> Result<Vec<TmplId>, Stop> {
+    /// one exact window call, counted in the call's SearchStats (window_calls / window_secs) and
+    /// in the cumulative window counters
+    fn xcall<F: Field>(&mut self, ar: &mut Arena<F>, labels: &[u8], a: &[Rung], b: &[Rung], d: i32, st: &mut SearchStats) -> Result<Vec<TmplId>, String> {
+        let (mut n, mut t) = (0usize, 0f64);
+        let r = exact_call(ar, labels, a, b, d, (&mut n, &mut t));
+        self.window_calls += n;
+        self.window_secs += t;
+        st.window_calls += n;
+        st.window_secs += t;
+        r
+    }
+    fn exact<F: Field>(&mut self, ar: &mut Arena<F>, labels: &[u8], a: &[Rung], b: &[Rung], d: i32, st: &mut SearchStats) -> Result<Vec<TmplId>, Stop> {
         if !self.win_ok(ar, labels, a, b, d) {
             return Err((MissKind::Refused, format!("window {:?} {:?} -> {:?} degree {} not admitted", labels, a, b, d)));
         }
-        exact_call(ar, labels, a, b, d, (&mut self.window_calls, &mut self.window_secs)).map_err(|e| (MissKind::Refused, e))
+        self.xcall(ar, labels, a, b, d, st).map_err(|e| (MissKind::Refused, e))
     }
 
     // ---------------------------------------------------------- commutation isomorphisms
@@ -1483,7 +1805,7 @@ impl Search {
                 let mut f = vec![];
                 let mut b = vec![];
                 for (x, y, out) in [(rel, &sw[..], &mut f), (&sw[..], rel, &mut b)] {
-                    *out = exact_call(ar, labels, x, y, 0, (&mut self.window_calls, &mut self.window_secs)).map_err(|e| (MissKind::Refused, e))?;
+                    *out = self.xcall(ar, labels, x, y, 0, st).map_err(|e| (MissKind::Refused, e))?;
                 }
                 let v = if f.len() == 1 && b.len() == 1 { Some((f[0], b[0])) } else { None };
                 self.comms.insert(key.clone(), v);
@@ -1803,6 +2125,7 @@ impl Search {
         let lam = ar.lam().to_vec();
         let n = lam.len();
         let mut best: Option<(u128, Vec<Rung>, WinPos, Vec<u8>, Vec<Rung>)> = None;
+        self.last_win_refused = false;
         for zz in commutation_class(z, 64) {
             for p in windows_of(&zz, self.win_w.min(n), self.win_len) {
                 let lv = level_of(&lam, &zz, p.at);
@@ -1831,6 +2154,7 @@ impl Search {
                                 eprintln!("[choose_window] refused {:?} [{}] summand [{}]{{{}}}: iota d {} ({} x {}, unknowns {}), pi d {} (unknowns {})", labels, wstr(&rel), wstr(lw), sdeg, io_d, crate::schur::flows(&labels, lw), crate::schur::flows(&labels, &rel), hom_unknowns(&labels, lw, &rel, io_d), pi_d, hom_unknowns(&labels, &rel, lw, pi_d));
                             }
                             ok = false;
+                            self.last_win_refused = true;
                             break;
                         }
                         cost = cost.max(self.win_cost(ar, &labels, lw, &rel, io_d)).max(self.win_cost(ar, &labels, &rel, lw, pi_d));
@@ -1874,7 +2198,7 @@ impl Search {
                 continue;
             }
             let Some((zz, p, labels, rel)) = self.choose_window(ar, &z) else {
-                ctx.stuck += 1;
+                ctx.stuck_by(if self.last_win_refused { MissKind::Refused } else { MissKind::Exhausted });
                 self.note(format!("tree: no admissible decomposable window in [{}]", wstr(&z)));
                 continue;
             };
@@ -1884,7 +2208,7 @@ impl Search {
                     if k == MissKind::Time || k == MissKind::Memory {
                         return Err((k, e));
                     }
-                    ctx.stuck += 1;
+                    ctx.stuck_by(k);
                     self.note(format!("tree: split of {:?} [{}] failed: {}", labels, wstr(&rel), e));
                     continue;
                 }
@@ -1895,7 +2219,7 @@ impl Search {
                     if k == MissKind::Time || k == MissKind::Memory {
                         return Err((k, e));
                     }
-                    ctx.stuck += 1;
+                    ctx.stuck_by(k);
                     self.note(format!("tree: commutation [{}] -> [{}] failed: {}", wstr(&z), wstr(&zz), e));
                     continue;
                 }
@@ -1929,8 +2253,8 @@ impl Search {
                 let lam = ar.lam().to_vec();
                 let labels = level_of(&lam, w, p.at)[p.first..p.first + p.w].to_vec();
                 let rel = window_word(w, p);
-                let f = exact_call(ar, &labels, &rel, lw, 0, (&mut self.window_calls, &mut self.window_secs)).map_err(|e| (MissKind::Refused, e))?;
-                let g = exact_call(ar, &labels, lw, &rel, 0, (&mut self.window_calls, &mut self.window_secs)).map_err(|e| (MissKind::Refused, e))?;
+                let f = self.xcall(ar, &labels, &rel, lw, 0, st).map_err(|e| (MissKind::Refused, e))?;
+                let g = self.xcall(ar, &labels, lw, &rel, 0, st).map_err(|e| (MissKind::Refused, e))?;
                 if f.len() != 1 || g.len() != 1 {
                     return Err((MissKind::Exhausted, format!("rex move {:?} [{}] -> [{}]: Hom^0 dims {} / {}", labels, wstr(&rel), wstr(lw), f.len(), g.len())));
                 }
@@ -2046,8 +2370,8 @@ impl Search {
         let Some((_, a, b, ws)) = best else {
             return Err((MissKind::Exhausted, format!("leaf [{}] -> type word [{}]: no admissible window", wstr(lw), wstr(qw))));
         };
-        let fwd = exact_call(ar, &ws.labels, &ws.a, &ws.b, 0, (&mut self.window_calls, &mut self.window_secs)).map_err(|e| (MissKind::Refused, e))?;
-        let bwd = exact_call(ar, &ws.labels, &ws.b, &ws.a, 0, (&mut self.window_calls, &mut self.window_secs)).map_err(|e| (MissKind::Refused, e))?;
+        let fwd = self.xcall(ar, &ws.labels, &ws.a, &ws.b, 0, st).map_err(|e| (MissKind::Refused, e))?;
+        let bwd = self.xcall(ar, &ws.labels, &ws.b, &ws.a, 0, st).map_err(|e| (MissKind::Refused, e))?;
         let (ea, eb) = (eid(ar, &a).map_err(|e| (MissKind::Exhausted, e))?, eid(ar, &b).map_err(|e| (MissKind::Exhausted, e))?);
         let pt = points::<F>(ar.k(), 0x5eed_0200, 1, 0).remove(0);
         let pick = |ar: &mut Arena<F>, ts: &[TmplId], s: ExprId, t: ExprId| -> Result<MapId, Stop> {
@@ -2091,7 +2415,7 @@ impl Search {
                     pi.push(ar.add(MapNode::Comp(f, lf.pi), "leaf").map_err(|e| (MissKind::Exhausted, e))?);
                 }
                 Err(e) => {
-                    ctx.stuck += 1;
+                    ctx.stuck_by(e.0);
                     self.note(format!("leaf iso failed: {}", e.1));
                 }
             }
@@ -2131,20 +2455,26 @@ impl Search {
         let lam = ar.lam().to_vec();
         let (wa, wb) = (word(ar, a), word(ar, b));
         let mut best: Option<(u128, Vec<Rung>, Vec<Rung>, WinSplit)> = None;
+        let mut refused = 0usize;
         for x in commutation_class(&wa, 64) {
             for y in commutation_class(&wb, 64) {
-                let ws = win_split(&lam, &x, &y);
-                let cost = hom_unknowns(&ws.labels, &ws.a, &ws.b, d);
+                let mut ws = win_split(&lam, &x, &y);
                 if ws.labels.is_empty() {
-                    continue;
+                    // equal words: the only window of Hom^d(X, X) is the whole ladder
+                    ws = WinSplit { at: 0, suffix: 0, first: 0, labels: lam.clone(), a: x.clone(), b: y.clone(), fa: crate::schur::flows(&lam, &x), fb: crate::schur::flows(&lam, &y) };
                 }
-                if best.as_ref().map_or(true, |z| cost < z.0) && self.win_ok(ar, &ws.labels, &ws.a, &ws.b, d) {
-                    best = Some((cost, x.clone(), y.clone(), ws));
+                let cost = hom_unknowns(&ws.labels, &ws.a, &ws.b, d);
+                if best.as_ref().map_or(true, |z| cost < z.0) {
+                    if self.win_ok(ar, &ws.labels, &ws.a, &ws.b, d) {
+                        best = Some((cost, x.clone(), y.clone(), ws));
+                    } else {
+                        refused += 1;
+                    }
                 }
             }
         }
         let Some((_, x, y, ws)) = best else {
-            return Err((MissKind::Refused, "S6: no admissible window".into()));
+            return Err((if refused > 0 { MissKind::Refused } else { MissKind::Exhausted }, format!("S6: no admissible window ({} refused by admission)", refused)));
         };
         let ts = self.exact(ar, &ws.labels, &ws.a, &ws.b, d, st)?;
         if ts.is_empty() {
@@ -2272,16 +2602,17 @@ impl<F: Field> DenseEch<F> {
 
 impl Search {
     fn pairs_inner<F: Field>(&mut self, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, eq: Option<MapId>, sdeg: i32, mult: usize, ctx: &mut Ctx) -> Result<Pairs<F>, Stop> {
+        pairs_precheck(ar, s, x, q, lq, eq, sdeg, mult).map_err(|e| (MissKind::Refused, e))?;
         let lam = ar.lam().to_vec();
         let (xw, qw) = (word(ar, x), word(ar, lq));
         let c = rep_rank(s, &lam, q);
         let chx = s.ladder_char(&xw);
-        let mq = s.expand(&chx).into_iter().find(|e| e.0 == q).map(|e| e.1).ok_or_else(|| (MissKind::Exhausted, "q is not a summand of X".to_string()))?;
+        let mq = s.expand(&chx).into_iter().find(|e| e.0 == q).map(|e| e.1).ok_or_else(|| (MissKind::Refused, "q is not a summand of X".to_string()))?;
         let (s_lo, s_hi) = (mq.lo, mq.lo + mq.c.len() as i32 - 1);
         let seed = 0x5eed_1000 ^ (sdeg as i64 as u64);
         let finish = |ar: &mut Arena<F>, mut io: Vec<MapId>, mut pi: Vec<MapId>| -> Result<Pairs<F>, String> {
             with_idem(ar, eq, &mut io, &mut pi)?;
-            certify_pairs(ar, &io, &pi, c, mult, seed)
+            certify_pairs(ar, x, lq, sdeg, &io, &pi, c, mult, seed)
         };
         // S0: identity
         if self.on(0) && xw == qw && sdeg == 0 && mult == 1 {
@@ -2383,18 +2714,27 @@ impl Search {
                     ctx.st.tier_hits[6] += 1;
                     return Ok(p);
                 }
-                Err(e) => self.note(format!("S6 failed: {}", e.1)),
+                Err(e) => {
+                    if e.0 == MissKind::Refused {
+                        ctx.tier_refused += 1;
+                    }
+                    self.note(format!("S6 failed: {}", e.1))
+                }
             }
         }
-        Err((MissKind::Exhausted, format!("tiers S{}-S{} exhausted ({} stuck branches)", self.lo, self.hi, ctx.stuck)))
+        let k = ctx.end_kind();
+        Err((k, format!("tiers S{}-S{} {} ({})", self.lo, self.hi, if k == MissKind::Refused { "refused by admission" } else { "exhausted" }, ctx.end_note())))
     }
 
     fn closure_inner<F: Field>(&mut self, ar: &mut Arena<F>, s: &mut Schur, lp: ExprId, p: Tid, ep: Option<MapId>, outs: bool, ctx: &mut Ctx, depth: usize) -> Result<Vec<MapId>, Stop> {
         let mut seeds: Option<Vec<(MapId, MapId, ExprId)>> = None;
         let lam = ar.lam().to_vec();
         let want = cdiag_degrees(s, p);
+        if depth == 0 {
+            closure_precheck(ar, s, lp, p, ep).map_err(|e| (MissKind::Refused, e))?;
+        }
         let r0 = eid(ar, &[]).map_err(|e| (MissKind::Exhausted, e))?;
-        let mut sel: Selector<F> = Selector::new(identity_coset(&lam), ar.k(), want.len(), 0x5eed_2000);
+        let mut sel: Selector<F> = Selector::new(identity_coset(&lam), ar.k(), want.len(), 0x5eed_2000, ep.is_some());
         let mut degs = want.clone();
         degs.dedup();
         let wrap = |ar: &mut Arena<F>, ms: Vec<MapId>| -> Result<Vec<MapId>, Stop> {
@@ -2406,11 +2746,12 @@ impl Search {
         let d0 = degs[0];
         if self.on(0) && word(ar, lp).is_empty() && want == vec![0] {
             let id = ar.add(MapNode::Id(lp), "S0 closure identity").map_err(|e| (MissKind::Exhausted, e))?;
+            let id = wrap(ar, vec![id])?;
             ctx.st.candidates += 1;
-            if sel.offer_many(ar, &[id], 1) == 1 {
+            if sel.offer_many(ar, &id, 1) == 1 {
                 ctx.st.tier_hits[0] += 1;
                 let ms = sel.chosen.clone();
-                certify_closure(ar, &lam, &ms, &want, outs, 0x5eed_2001).map_err(|e| (MissKind::Exhausted, e))?;
+                certify_closure(ar, &lam, r0, lp, ep, &ms, &want, outs, 0x5eed_2001).map_err(|e| (MissKind::Exhausted, e))?;
                 return Ok(ms);
             }
         }
@@ -2432,6 +2773,9 @@ impl Search {
                     for dt in dots {
                         cs.push(ar.add(if outs { MapNode::Comp(g, dt) } else { MapNode::Comp(dt, g) }, "S2 closure").map_err(|e| (MissKind::Exhausted, e))?);
                     }
+                    // a dot need not commute with e_p: re-wrap so the candidate lies in the
+                    // image of e_p again (review F4)
+                    let cs = wrap(ar, cs)?;
                     ctx.st.candidates += cs.len();
                     ctx.st.evaluated += cs.len();
                     got += sel.offer_many(ar, &cs, need - got);
@@ -2455,7 +2799,12 @@ impl Search {
                         ctx.st.evaluated += ms.len();
                         got += sel.offer_many(ar, &ms, need - got);
                     }
-                    Err(e) => self.note(format!("closure degree {}: {}", d, e.1)),
+                    Err(e) => {
+                        if e.0 == MissKind::Refused {
+                            ctx.tier_refused += 1;
+                        }
+                        self.note(format!("closure degree {}: {}", d, e.1))
+                    }
                 }
                 if got >= need {
                     ctx.st.tier_hits[tier] += 1;
@@ -2495,10 +2844,11 @@ impl Search {
                     continue;
                 }
             }
-            return Err((MissKind::Exhausted, format!("closure degree {}: {} of {} generators", d, got, need)));
+            let k = ctx.end_kind();
+            return Err((k, format!("closure degree {}: {} of {} generators ({})", d, got, need, ctx.end_note())));
         }
         let ms = sel.chosen.clone();
-        certify_closure(ar, &lam, &ms, &want, outs, 0x5eed_2001).map_err(|e| (MissKind::Exhausted, e))?;
+        certify_closure(ar, &lam, r0, lp, ep, &ms, &want, outs, 0x5eed_2001).map_err(|e| (MissKind::Exhausted, e))?;
         Ok(ms)
     }
 
@@ -2635,11 +2985,14 @@ impl Search {
         let pts = points::<F>(ar.k(), 0x5eed_3000, plan.npoints, 0);
         let mut ech: DenseEch<F> = DenseEch::new();
         let mut kept: Vec<MapId> = vec![];
+        // every candidate ranked, for the orbit fallback below
+        let offered: std::cell::RefCell<Vec<MapId>> = std::cell::RefCell::new(vec![]);
         let offer = |ar: &Arena<F>, ms: &[MapId], kept: &mut Vec<MapId>, ech: &mut DenseEch<F>, ctx: &mut Ctx| {
             for &m in ms {
                 if kept.len() >= dim {
                     break;
                 }
+                offered.borrow_mut().push(m);
                 ctx.st.evaluated += 1;
                 let row = Eval::stacked(ar, &[m], &pts, &plan.cosets).remove(0);
                 if ech.insert(row) {
@@ -2725,7 +3078,12 @@ impl Search {
                         ctx.st.candidates += cs.len();
                         offer(ar, &cs, &mut kept, &mut ech, ctx);
                     }
-                    Err(e) => self.note(format!("S6 degree {}: {}", dd, e.1)),
+                    Err(e) => {
+                        if e.0 == MissKind::Refused {
+                            ctx.tier_refused += 1;
+                        }
+                        self.note(format!("S6 degree {}: {}", dd, e.1))
+                    }
                 }
                 if kept.len() == dim {
                     ctx.st.tier_hits[6] += 1;
@@ -2734,14 +3092,41 @@ impl Search {
                 ctx.check(ar)?;
             }
         }
-        Err((MissKind::Exhausted, format!("full Hom^{}: rank {} of {}", d, kept.len(), dim)))
+        // the planned detecting set is not faithful in general (hom60 (1,3) degree 6: witness rank
+        // 141 < 145): before reporting Exhausted, re-rank every candidate at the orbit cosets with
+        // the fallback point counts, as certify_full_plan does (review F6)
+        let all = offered.into_inner();
+        let (cos, _, np0) = orbit_fallback(ar, s, src, tgt, &plan);
+        for (k, np) in [np0, 2 * np0].into_iter().enumerate() {
+            ctx.check(ar)?;
+            let pts = points::<F>(ar.k(), 0x5eed_3100 ^ k as u64, np, 0);
+            let mut ech: DenseEch<F> = DenseEch::new();
+            let mut kept2: Vec<MapId> = vec![];
+            for &m in &all {
+                if kept2.len() >= dim {
+                    break;
+                }
+                let row = Eval::stacked(ar, &[m], &pts, &cos).remove(0);
+                if ech.insert(row) {
+                    kept2.push(m);
+                }
+            }
+            self.note(format!("full Hom^{}: orbit re-rank ({} cosets, {} points): {} of {} ({} candidates)", d, cos.len(), np, kept2.len(), dim, all.len()));
+            if kept2.len() == dim {
+                ctx.st.detect = if k == 0 { "orbits-fallback" } else { "orbits-fallback-2x" };
+                ctx.st.points = np;
+                return Ok(kept2);
+            }
+        }
+        let k = ctx.end_kind();
+        Err((k, format!("full Hom^{}: rank {} of {} ({}; orbit re-rank also below)", d, kept.len(), dim, ctx.end_note())))
     }
 }
 
 fn run_call<F: Field, T>(ar: &mut Arena<F>, b: &Budget, f: impl FnOnce(&mut Arena<F>, &mut Ctx) -> Result<T, Stop>, keep_of: impl Fn(&T) -> Vec<MapId>, rebuild: impl Fn(T, Vec<MapId>) -> T) -> Result<(T, SearchStats), (Stop, SearchStats)> {
     let mark = ar.mark();
     let n_expr0 = ar.n_exprs();
-    let mut ctx = Ctx { t0: Instant::now(), b: b.clone(), st: SearchStats::default(), stuck: 0 };
+    let mut ctx = Ctx { t0: Instant::now(), b: b.clone(), st: SearchStats::default(), stuck: 0, stuck_adm: 0, tier_refused: 0 };
     let r = f(ar, &mut ctx);
     ctx.st.indexed_words = ar.n_exprs().saturating_sub(n_expr0);
     ctx.st.secs = elapsed(&ctx.t0);
@@ -2764,15 +3149,23 @@ impl<F: Field> HomProvider<F> for Search {
     }
     fn full(&mut self, ar: &mut Arena<F>, s: &mut Schur, src: ExprId, tgt: ExprId, d: i32, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
         self.trace.clear();
+        self.bind(ar);
+        self.failed = None;
         let r = run_call(ar, b, |ar, ctx| {
             let ms = self.full_inner(ar, s, src, tgt, d, ctx)?;
             certify_full(ar, s, src, tgt, d, &ms, 0x5eed_3001).map_err(|e| (MissKind::Exhausted, e))?;
             Ok(ms)
         }, |v| v.clone(), |_, k| k);
-        r.map_err(|((k, e), st)| miss(&format!("Search full: {} ({} candidates)", e, st.candidates), d, None, 0, 0, k))
+        r.map_err(|((k, e), st)| {
+            let m = miss(&format!("Search full: {} ({} candidates)", e, st.candidates), d, None, 0, 0, k);
+            self.failed = Some(st);
+            m
+        })
     }
     fn pairs(&mut self, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, eq: Option<MapId>, sdeg: i32, mult: usize, b: &Budget) -> Result<(Pairs<F>, SearchStats), Vec<Missing>> {
         self.trace.clear();
+        self.bind(ar);
+        self.failed = None;
         let strat = Some(s.table(q).fmt());
         let r = run_call(
             ar,
@@ -2785,17 +3178,30 @@ impl<F: Field> HomProvider<F> for Search {
             },
             |p, k| Pairs { iotas: k[..p.iotas.len()].to_vec(), pis: k[p.iotas.len()..].to_vec(), form: p.form },
         );
-        r.map_err(|((k, e), st)| miss(&format!("Search pairs: {} ({} candidates)", e, st.candidates), sdeg, strat, 0, mult, k))
+        r.map_err(|((k, e), st)| {
+            let m = miss(&format!("Search pairs: {} ({} candidates)", e, st.candidates), sdeg, strat, 0, mult, k);
+            self.failed = Some(st);
+            m
+        })
     }
     fn closure(&mut self, ar: &mut Arena<F>, s: &mut Schur, lp: ExprId, p: Tid, ep: Option<MapId>, outs: bool, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
         self.trace.clear();
+        self.bind(ar);
+        self.failed = None;
         let strat = Some(s.table(p).fmt());
         let n = cdiag_degrees(s, p).len();
         let r = run_call(ar, b, |ar, ctx| self.closure_inner(ar, s, lp, p, ep, outs, ctx, 0), |v| v.clone(), |_, k| k);
-        r.map_err(|((k, e), st)| miss(&format!("Search closure ({}): {} ({} candidates)", if outs { "outs" } else { "ins" }, e, st.candidates), 0, strat, 0, n, k))
+        r.map_err(|((k, e), st)| {
+            let m = miss(&format!("Search closure ({}): {} ({} candidates)", if outs { "outs" } else { "ins" }, e, st.candidates), 0, strat, 0, n, k);
+            self.failed = Some(st);
+            m
+        })
     }
     fn end0(&mut self, ar: &mut Arena<F>, s: &mut Schur, l: ExprId, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
         self.full(ar, s, l, l, 0, b)
+    }
+    fn failed_stats(&self) -> Option<SearchStats> {
+        self.failed.clone()
     }
 }
 
@@ -2837,6 +3243,9 @@ macro_rules! chain_call {
                     return Ok((v, st2));
                 }
                 Err(ms) => {
+                    if let Some(st) = p.failed_stats() {
+                        acc.absorb(&st);
+                    }
                     for mut m in ms {
                         m.what = format!("[{}] {}", name, m.what);
                         all.push(m);
@@ -2844,7 +3253,7 @@ macro_rules! chain_call {
                 }
             }
         }
-        let _ = &mut acc;
+        let _ = acc;
         Err(all)
     }};
 }
@@ -2864,5 +3273,16 @@ impl<F: Field> HomProvider<F> for Chain<F> {
     }
     fn end0(&mut self, ar: &mut Arena<F>, s: &mut Schur, l: ExprId, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
         chain_call!(self, |p: &mut Box<dyn HomProvider<F>>| p.end0(ar, s, l, b))
+    }
+    fn failed_stats(&self) -> Option<SearchStats> {
+        let mut acc = SearchStats::default();
+        let mut any = false;
+        for p in &self.0 {
+            if let Some(st) = p.failed_stats() {
+                acc.absorb(&st);
+                any = true;
+            }
+        }
+        if any { Some(acc) } else { None }
     }
 }

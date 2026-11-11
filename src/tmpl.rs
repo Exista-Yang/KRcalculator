@@ -166,6 +166,23 @@ pub struct TmplLib<F: Field> {
     rick: HashMap<(u8, u8, bool), (Vec<Window>, Vec<TmplId>)>,
     calls: Vec<Call>,
     stats: LibStats,
+    /// identity of this library (process-unique nonce): template ids are only meaningful within
+    /// the library that issued them; caches of TmplIds outside the library (homprov::Search) are
+    /// bound to it (M4b review F3)
+    instance: u64,
+}
+
+/// process-unique library identities
+static LIB_INSTANCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// does the first line of a cache file equal `header`? (a stale or foreign file is not "cached")
+fn header_ok(path: &Path, header: &str) -> bool {
+    let Ok(f) = std::fs::File::open(path) else { return false };
+    let mut l = String::new();
+    if std::io::BufReader::new(f).read_line(&mut l).is_err() {
+        return false;
+    }
+    l.trim_end_matches(['\n', '\r']) == header
 }
 
 /// admission bound of `hom_basis`: fsize(src) * fsize(tgt)
@@ -283,7 +300,11 @@ impl<F: Field> TmplLib<F> {
         if let Some(d) = &cache_dir {
             let _ = std::fs::create_dir_all(d);
         }
-        TmplLib { cache_dir, tmpls: vec![], aux: vec![], hom: HashMap::new(), rick: HashMap::new(), calls: vec![], stats: LibStats::default() }
+        TmplLib { cache_dir, tmpls: vec![], aux: vec![], hom: HashMap::new(), rick: HashMap::new(), calls: vec![], stats: LibStats::default(), instance: LIB_INSTANCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
+    }
+    /// process-unique identity of this library (TmplIds are valid only here)
+    pub fn instance(&self) -> u64 {
+        self.instance
     }
     pub fn get(&self, t: TmplId) -> &Template<F> {
         &self.tmpls[t as usize]
@@ -402,7 +423,10 @@ impl<F: Field> TmplLib<F> {
     }
     /// is the basis of Hom^deg(src, tgt) already available (in memory or in the disk cache)?
     pub fn has_hom(&self, src: &Window, tgt: &Window, deg: i32) -> bool {
-        self.hom.contains_key(&(src.clone(), tgt.clone(), deg)) || self.hom_cache_path(src, tgt, deg).map(|p| p.exists()).unwrap_or(false)
+        // a file counts only if its header (format version, TMPL_ALG, field, full key) matches:
+        // a stale file would be rejected by `load` and recomputed (M4b review, tests finding 4)
+        self.hom.contains_key(&(src.clone(), tgt.clone(), deg))
+            || self.hom_cache_path(src, tgt, deg).map(|p| header_ok(&p, &cache_header::<F>("hom", &hom_key(src, tgt, deg)))).unwrap_or(false)
     }
     /// exact basis of Hom^deg(src, tgt) (normalized degree), computed once, cached on disk
     pub fn hom_basis(&mut self, src: &Window, tgt: &Window, deg: i32) -> Vec<TmplId> {

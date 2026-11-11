@@ -305,8 +305,8 @@ fn tiers_str(st: &SearchStats) -> String {
 }
 fn stats_json(st: &SearchStats) -> String {
     format!(
-        "{{\"tiers\":{},\"candidates\":{},\"evaluated\":{},\"secs\":{:.3},\"max_flows\":{},\"points\":{},\"visited_words\":{},\"indexed_words\":{},\"peak_index_bytes\":{},\"peak_arena_bytes\":{},\"exact_calls\":{},\"exact_secs\":{:.3},\"detect\":{}}}",
-        jstr(&tiers_str(st)), st.candidates, st.evaluated, st.secs, st.max_flows, st.points, st.visited_words, st.indexed_words, st.peak_index_bytes, st.peak_arena_bytes, st.exact_calls, st.exact_secs, jstr(st.detect)
+        "{{\"tiers\":{},\"candidates\":{},\"evaluated\":{},\"secs\":{:.3},\"max_flows\":{},\"points\":{},\"visited_words\":{},\"indexed_words\":{},\"peak_index_bytes\":{},\"peak_arena_bytes\":{},\"exact_calls\":{},\"exact_secs\":{:.3},\"window_calls\":{},\"window_secs\":{:.3},\"detect\":{}}}",
+        jstr(&tiers_str(st)), st.candidates, st.evaluated, st.secs, st.max_flows, st.points, st.visited_words, st.indexed_words, st.peak_index_bytes, st.peak_arena_bytes, st.exact_calls, st.exact_secs, st.window_calls, st.window_secs, jstr(st.detect)
     )
 }
 fn missing_json(ms: &[Missing]) -> String {
@@ -342,7 +342,7 @@ fn run_one(args: &[String]) {
         let r = prov.pairs(&mut ar, &mut s, x, q, lq, None, sd, mult, &b);
         let line = match r {
             Ok((p, st)) => format!("{{\"q\":{},\"s\":{},\"mult\":{},\"ok\":true,\"got\":{},\"secs\":{:.3},\"stats\":{}}}", jstr(&s.table(q).fmt()), sd, mult, p.iotas.len(), t1.elapsed().as_secs_f64(), stats_json(&st)),
-            Err(ms) => format!("{{\"q\":{},\"s\":{},\"mult\":{},\"ok\":false,\"secs\":{:.3},\"missing\":{}}}", jstr(&s.table(q).fmt()), sd, mult, t1.elapsed().as_secs_f64(), missing_json(&ms)),
+            Err(ms) => format!("{{\"q\":{},\"s\":{},\"mult\":{},\"ok\":false,\"secs\":{:.3},\"missing\":{},\"stats\":{}}}", jstr(&s.table(q).fmt()), sd, mult, t1.elapsed().as_secs_f64(), missing_json(&ms), prov.failed_stats().map(|st| stats_json(&st)).unwrap_or_else(|| "null".into())),
         };
         eprintln!("[g1 one] {} {} {}: {}", lam_str(&lam), idx, s.table(q).fmt(), &line[..line.len().min(300)]);
         lines.push(line);
@@ -376,7 +376,7 @@ fn run_closure(args: &[String]) {
         let n = { let cd = s.c_diag(p); cd.at1() };
         let line = match r {
             Ok((ms, st)) => format!("{{\"side\":\"{}\",\"n\":{},\"ok\":true,\"got\":{},\"secs\":{:.3},\"stats\":{}}}", if outs { "outs" } else { "ins" }, n, ms.len(), t1.elapsed().as_secs_f64(), stats_json(&st)),
-            Err(ms) => format!("{{\"side\":\"{}\",\"n\":{},\"ok\":false,\"secs\":{:.3},\"missing\":{}}}", if outs { "outs" } else { "ins" }, n, t1.elapsed().as_secs_f64(), missing_json(&ms)),
+            Err(ms) => format!("{{\"side\":\"{}\",\"n\":{},\"ok\":false,\"secs\":{:.3},\"missing\":{},\"stats\":{}}}", if outs { "outs" } else { "ins" }, n, t1.elapsed().as_secs_f64(), missing_json(&ms), prov.failed_stats().map(|st| stats_json(&st)).unwrap_or_else(|| "null".into())),
         };
         eprintln!("[g1 closure] {} {}: {}", lam_str(&lam), s.table(p).fmt(), &line[..line.len().min(300)]);
         lines.push(line);
@@ -445,6 +445,10 @@ fn run_gate(args: &[String], which: &str) {
     let mut records: Vec<String> = vec![];
     let (mut n_t, mut n_ok, mut n_pairs, mut n_pairs_ok) = (0usize, 0usize, 0usize, 0usize);
     let max_pairs: Option<usize> = opt(args, "--max-pairs").map(|v| v.parse().unwrap());
+    // run header (review tests finding 7): arguments, commit, budgets; `complete` only for an
+    // unrestricted run (no --only / --max-pairs / --pairs) that finished
+    let restricted: Vec<&str> = ["--only", "--max-pairs", "--pairs"].into_iter().filter(|k| opt(args, k).is_some()).collect();
+    let header = run_header(args, which, wall, rss, seed, &restricted);
     for lam in &lams {
         let mut s = Schur::new(lam);
         let (pairs, ctypes) = g1_targets(&mut s);
@@ -491,23 +495,55 @@ fn run_gate(args: &[String], which: &str) {
             eprintln!("[g1 {}] {} done in {:.1}s (peak {:.0} MB); targets ok {}/{} so far", which, job.join(" "), w, peak, n_ok, n_t);
             records.push(rec);
             if let Some(p) = &json {
-                let _ = write_json(p, which, &records, n_t, n_ok, n_pairs, n_pairs_ok, t_all.elapsed().as_secs_f64(), false);
+                let _ = write_json(p, which, &header, &records, n_t, n_ok, n_pairs, n_pairs_ok, t_all.elapsed().as_secs_f64(), false, restricted.is_empty());
             }
         }
     }
     let total = t_all.elapsed().as_secs_f64();
-    println!("G1({}) targets certified {}/{} ({:.1}%), jobs fully certified {}/{}, wall {:.1}s", which, n_ok, n_t, 100.0 * n_ok as f64 / n_t.max(1) as f64, n_pairs_ok, n_pairs, total);
+    println!(
+        "G1({}) targets certified {}/{} ({:.1}%), jobs fully certified {}/{}, wall {:.1}s{}",
+        which, n_ok, n_t, 100.0 * n_ok as f64 / n_t.max(1) as f64, n_pairs_ok, n_pairs, total,
+        if restricted.is_empty() { String::new() } else { format!(" [RESTRICTED run: {}]", restricted.join(" ")) }
+    );
     if let Some(p) = &json {
-        write_json(p, which, &records, n_t, n_ok, n_pairs, n_pairs_ok, total, true).unwrap();
+        write_json(p, which, &header, &records, n_t, n_ok, n_pairs, n_pairs_ok, total, true, restricted.is_empty()).unwrap();
     }
 }
 
+/// commit of the working tree (with "-dirty" when it has uncommitted changes), or "unknown"
+fn git_commit() -> String {
+    let run = |a: &[&str]| std::process::Command::new("git").args(a).current_dir(env!("CARGO_MANIFEST_DIR")).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    match run(&["rev-parse", "HEAD"]) {
+        Some(h) => {
+            let dirty = run(&["status", "--porcelain", "--untracked-files=no"]).map(|x| !x.is_empty()).unwrap_or(false);
+            if dirty { format!("{}-dirty", h) } else { h }
+        }
+        None => "unknown".into(),
+    }
+}
+
+/// JSON object with the run's arguments, commit, budgets, cost-table stamp and restrictions
+fn run_header(args: &[String], which: &str, wall: f64, rss: f64, seed: u64, restricted: &[&str]) -> String {
+    let b = budget_from(args);
+    let ex = exact_from(args);
+    let costs = match &ex.costs {
+        Some(t) => format!("{{\"path\":{},\"records\":{},\"alg\":{},\"host\":{}}}", jstr(&opt(args, "--costs").unwrap_or_default()), t.len(), jstr(&t.alg), jstr(&t.host)),
+        None => format!("{{\"path\":{},\"loaded\":false}}", jstr(&opt(args, "--costs").unwrap_or_default())),
+    };
+    let argv: Vec<String> = args.iter().map(|a| jstr(a)).collect();
+    format!(
+        "{{\"args\":[{}],\"gate\":{},\"commit\":{},\"host\":{},\"seed\":{},\"watchdog\":{{\"wall_s\":{},\"rss_mb\":{}}},\"budget\":{{\"l_max\":{},\"c_max\":{},\"t_max_s\":{},\"m_max_bytes\":{},\"flows_max\":{},\"index_max_bytes\":{}}},\"exact\":{{\"max_fibre_product\":{},\"max_unknowns\":{},\"max_label\":{},\"max_call_s\":{}}},\"costs\":{},\"restricted\":[{}]}}",
+        argv.join(","), jstr(which), jstr(&git_commit()), jstr(&host_stamp()), seed, wall, rss, b.l_max, b.c_max, b.t_max_s, b.m_max_bytes, b.flows_max, b.index_max_bytes,
+        ex.max_fibre_product, ex.max_unknowns, ex.max_label, ex.max_call_s, costs, restricted.iter().map(|r| jstr(r)).collect::<Vec<_>>().join(",")
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
-fn write_json(path: &str, which: &str, recs: &[String], n_t: usize, n_ok: usize, n_p: usize, n_p_ok: usize, wall: f64, done: bool) -> std::io::Result<()> {
+fn write_json(path: &str, which: &str, header: &str, recs: &[String], n_t: usize, n_ok: usize, n_p: usize, n_p_ok: usize, wall: f64, done: bool, unrestricted: bool) -> std::io::Result<()> {
     let tmp = format!("{}.{}.tmp", path, std::process::id());
     {
         let mut f = std::io::BufWriter::new(std::fs::File::create(&tmp)?);
-        writeln!(f, "{{\"gate\":\"G1({})\",\"complete\":{},\"targets\":{},\"certified\":{},\"jobs\":{},\"jobs_certified\":{},\"wall_s\":{:.1},\"records\":[", which, done, n_t, n_ok, n_p, n_p_ok, wall)?;
+        writeln!(f, "{{\"gate\":\"G1({})\",\"run\":{},\"finished\":{},\"complete\":{},\"targets\":{},\"certified\":{},\"jobs\":{},\"jobs_certified\":{},\"wall_s\":{:.1},\"records\":[", which, header, done, done && unrestricted, n_t, n_ok, n_p, n_p_ok, wall)?;
         for (i, r) in recs.iter().enumerate() {
             writeln!(f, "{}{}", r, if i + 1 < recs.len() { "," } else { "" })?;
         }
