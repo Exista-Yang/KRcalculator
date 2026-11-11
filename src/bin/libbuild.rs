@@ -23,7 +23,8 @@
 //! OUT (resume) and every child resumes from layer A (certified targets are never recomputed).
 //! Retry policy (G1(c)): a Time / Memory / Exhausted outcome is rerun once at `2 × scale`
 //! (watchdog and provider Budget doubled); Time / Memory at 2x stay failures, Exhausted at 2x goes to
-//! the M4c list. A replay runs the same jobs with a provider that refuses every call: everything
+//! the M4c list (a Refused outcome, i.e. admission, is not retried: the budget does not change it).
+//! A replay runs the same jobs with a provider that refuses every call: everything
 //! must load from layer A and pass the same checks.
 use krhom::field::{Field, F31, F32b};
 use krhom::homprov::*;
@@ -499,7 +500,8 @@ fn cmd_run(args: &[String], replay: bool) {
     let wall: f64 = opt(args, "--wall").map(|v| v.parse().unwrap()).unwrap_or(600.0);
     let rss: f64 = opt(args, "--rss").map(|v| v.parse().unwrap()).unwrap_or(2048.0);
     let scale0: f64 = opt(args, "--scale").map(|v| v.parse().unwrap()).unwrap_or(1.0);
-    let retry = !flag(args, "--no-retry") && !replay;
+    // replay retries Time / Memory at 2x too (a replay loads the same maps; Exhausted cannot occur)
+    let retry = !flag(args, "--no-retry");
     let mut s = Schur::new(&lam);
     let (set, _plan) = build_set(args, &mut s, &lam, n);
     let out = opt(args, "--json").unwrap_or_else(|| format!("libbuild_{}_{}_f{}.jsonl", labels_str(&lam).replace(',', ""), set.name, field));
@@ -586,7 +588,7 @@ fn cmd_run(args: &[String], replay: bool) {
             );
             writeln!(fh.lock().unwrap(), "{}", rec).unwrap();
             eprintln!("[libbuild] {} x{} -> {} in {:.1}s (peak {:.0} MB, X {})", job.key(), sc, outcome, w, peak, job.x_flows);
-            let again = retry && sc < 2.0 * scale0 && ["Time", "Memory", "Exhausted"].contains(&outcome.as_str());
+            let again = retry && sc < 2.0 * scale0 && ["Time", "Memory", "Exhausted"].contains(&outcome.as_str()) && !(replay && outcome == "Exhausted");
             attempts.lock().unwrap().push(Attempt { job: job.key(), scale: sc, outcome, rec });
             if again {
                 queue.lock().unwrap().insert(0, (job, 2.0 * sc));
