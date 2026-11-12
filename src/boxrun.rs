@@ -476,8 +476,8 @@ pub fn finish_json<F: PrimeField>(lib: &WLib<F>, job: &BoxJob, out: &FinishOut) 
         }
     }
     format!(
-        "{{\"tool\":\"sbox finish\",\"commit\":\"{}\",\"field\":\"{}\",\"lam\":{:?},\"n_box\":{},\"seed\":{},\"prune_n\":{},\"library_hash\":\"{:x}\",\"engine\":\"{}\",\"check_d2\":{},\"freivalds_k\":{},\"shards\":{:?},\"det_pass\":{{\"points\":{},\"checks\":{}}},\"chi_fatal\":true,\"scaling\":[{}],\"digests\":[{}],\"results\":[\n{}\n]}}\n",
-        build_commit(), F::name(), job.lam, job.o.n_box, job.o.seed, lib.prune_n.map_or("null".into(), |n| n.to_string()), lib.hash, engine_stamp(&job.o.eng), job.o.eng.check_d2, job.o.freivalds_k, out.shards, out.det_pass.0, out.det_pass.1, scal.join(","), dig.join(","), res.join(",\n")
+        "{{\"tool\":\"sbox finish\",\"commit\":\"{}\",\"field\":\"{}\",\"lam\":{:?},\"n_box\":{},\"seed\":{},\"prune_n\":{},\"library_hash\":\"{:x}\",\"engine\":\"{}\",\"check_d2\":{},\"freivalds_k\":{},\"shards\":[{}],\"det_pass\":{{\"points\":{},\"checks\":{}}},\"chi_fatal\":true,\"scaling\":[{}],\"digests\":[{}],\"results\":[\n{}\n]}}\n",
+        build_commit(), F::name(), job.lam, job.o.n_box, job.o.seed, lib.prune_n.map_or("null".into(), |n| n.to_string()), lib.hash, engine_stamp(&job.o.eng), job.o.eng.check_d2, job.o.freivalds_k, out.shards.iter().map(|(k, n)| format!("[{},{}]", k, n)).collect::<Vec<_>>().join(","), out.det_pass.0, out.det_pass.1, scal.join(","), dig.join(","), res.join(",\n")
     )
 }
 

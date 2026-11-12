@@ -1,0 +1,24 @@
+krhom-boxrun v1
+stamp=boxrun-v1
+field=F_2147483647
+prime=2147483647
+lam=3,3
+words=1 1 1 1 1
+stages=1,2,3,4,5
+n_box=6
+seed=101
+prune_n=none
+modes=u,r0
+n_close=3,4,5,6
+freivalds_k=3
+d2_all_points=false
+check_d2=true
+library_hash=cabf041aaa23a517
+engine_stamp=swire-v1+sengine-v2:order=Heap:streaming=true
+box_code_stamp=boxclose-v2
+bind w0 s1: skeleton=201707f312bcd013 trace=d9898d9a21e116a7 record=746068cda392fc4d entries=35
+bind w0 s2: skeleton=fbe5010fcb65cf96 trace=d9898d9a21e116a7 record=33d999a116c221c0 entries=136
+bind w0 s3: skeleton=b1223f2f58ee1a1b trace=d9898d9a21e116a7 record=5d9ade4732d0b0f8 entries=413
+bind w0 s4: skeleton=44b5607cbc97b157 trace=d9898d9a21e116a7 record=1a3cbdad5dd33a43 entries=1001
+bind w0 s5: skeleton=7e41b67765852334 trace=d9898d9a21e116a7 record=d2b116f9692b7f5c entries=2181
+shard=0/2

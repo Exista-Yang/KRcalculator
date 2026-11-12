@@ -80,6 +80,7 @@ fn kill_resume_shards_and_refusals() {
     let fb = box_finish(&lib, &j, &[db.clone()]).unwrap();
     assert_eq!(fa.words.iter().map(|w| w.digests.clone()).collect::<Vec<_>>(), fb.words.iter().map(|w| w.digests.clone()).collect::<Vec<_>>(), "accumulator digests");
     assert_eq!(ja, finish_json(&lib, &j, &fb), "finish JSON byte-identical");
+    assert!(ja.contains("\"shards\":[[0,1]]"), "finish JSON is JSON: {}", &ja[..ja.len().min(400)]);
 
     // (c) two shards = one run; one shard alone is incomplete
     let (d0, d1) = (tmp("s0"), tmp("s1"));
