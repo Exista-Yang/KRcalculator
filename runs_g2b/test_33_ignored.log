@@ -1,0 +1,81 @@
+warning: unused import: `fixed_points`
+  --> src/soergel.rs:12:20
+   |
+12 | use crate::local::{fixed_points, localize_map, FixedPoint};
+   |                    ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `tf`
+    --> src/sengine.rs:1218:13
+     |
+1218 |         let tf = Instant::now();
+     |             ^^ help: if this is intentional, prefix it with an underscore: `_tf`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_build` is never read
+   --> src/swire.rs:411:10
+    |
+411 |     let (mut t_build, mut t_engine) = (0.0f64, 0.0f64);
+    |          ^^^^^^^^^^^ this value is reassigned later and never used
+...
+592 |     t_build = t0s.elapsed().as_secs_f64() - t_engine;
+    |     ------------------------------------------------ `t_build` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: `krhom` (lib) generated 3 warnings (run `cargo fix --lib -p krhom` to apply 2 suggestions)
+   Compiling krhom v0.1.0 (/home/user/KRcalculator)
+warning: unused import: `krhom::hom::closure_graded_dim`
+ --> src/bin/explore.rs:3:5
+  |
+3 | use krhom::hom::closure_graded_dim;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `krhom` (bin "explore") generated 1 warning (run `cargo fix --bin "explore" -p krhom` to apply 1 suggestion)
+warning: unused variable: `cache`
+   --> src/bin/libbuild.rs:507:9
+    |
+507 |     let cache = opt(args, "--cache").expect("--cache");
+    |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_cache`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `rec` is never read
+   --> src/bin/libbuild.rs:473:5
+    |
+469 | struct Attempt {
+    |        ------- field in this struct
+...
+473 |     rec: String,
+    |     ^^^
+    |
+    = note: `Attempt` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `krhom` (bin "libbuild") generated 2 warnings (run `cargo fix --bin "libbuild" -p krhom` to apply 1 suggestion)
+warning: unused import: `Field`
+  --> src/bin/sbox.rs:12:20
+   |
+12 | use krhom::field::{Field, F31, F32b};
+   |                    ^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `krhom` (bin "sbox") generated 1 warning
+    Finished `release` profile [optimized + debuginfo] target(s) in 6m 04s
+     Running tests/swire.rs (target/release/deps/swire-317b10386a0d71d4)
+
+running 1 test
+test sengine_against_xengine_33 has been running for over 60 seconds
+[3, 3] [1, 1] prune None: 15 final objects = xengine; LB per crossing [(4, 4), (15, 13)]; inserted [4, 189]
+[3, 3] [1, 1, 1] prune None: 40 final objects = xengine; LB per crossing [(4, 4), (15, 13), (40, 24)]; inserted [4, 189, 928]
+[3, 3] [1, 1, 1] prune Some(4): 4 final objects = xengine; LB per crossing [(2, 2), (3, 3), (4, 4)]; inserted [2, 5, 8]
+[3, 3] [-1, -1] prune Some(5): 7 final objects = xengine; LB per crossing [(3, 3), (7, 7)]; inserted [3, 29]
+test sengine_against_xengine_33 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 194.56s
+
