@@ -11,7 +11,8 @@ Date 2026-11-12. Branch colored-m6a (merged colored-m5 f2fcb1d first). Machine: 
 | result-preserving speedups | replay point **3.6-3.9×**, record point **5-8×** (σ^4..σ^7); identical closure values (value digests), identical pivot traces, tests pass |
 | G2B σ^6 at N = 6 by box, unreduced + reduced | **PASS** both primes (T(2,6) link unreduced 1568, reduced 252 at N = 6; all 48 closures of stages 2..6 = m2s, Wang, χ, scaling) |
 | G2B σ^8 reduced | **PASS** both primes (T(2,8) reduced 1/10/82/**560** at N' = 3..6; stages 2..8 = m2s) |
-| G2B σ^7 unreduced, σ^9 reduced | see §3 (status at the end of the session) |
+| G2B σ^7 unreduced + reduced | **PASS** (T(2,7) unreduced 1/22/190/**848**, reduced 343 at N = 6; stages 2..7 = m2s, Wang 3 N 3) — both primes |
+| G2B σ^9 reduced | **PASS** both primes (T(2,9) reduced 1/9/81/**729**; all reduced stages 2..9 = m2s) |
 | G2B σ^8, σ^9 unreduced | **not run** (projection §4) |
 | (3,3,3) 185 knots at N = 3, 4 (prune 4), unreduced + reduced, both primes | **185/185 PASS**: N = 4 = uncolored gl_4 of the reversed braid (engine2) **exactly** (no shift), "via duality (expected)"; N = 3 = 1 (t^0 q^0) for every knot, both modes; χ = `decat_chi`; primes identical |
 | pruned vs unpruned (3,3,3) | **not feasible**: prune 5 / 6 types are not in layer A and the provider refuses them (§5) |
@@ -78,7 +79,15 @@ now 3.5 GB). Memory is unchanged by these changes (the per-point peak is the den
 | σ^8 r F31 seed 101 | 20 | 72 s | 108 s | 32 reduced closures of stages 2..8 = m2s (σ^7: 1/7/49/343; σ^8: 1/10/82/**560**); χ 32/32; scaling 43 822 entries |
 | σ^8 r F32b seed 102 | 20 | 70 s | 106 s | same, 0 differences |
 
-STATUS_PLACEHOLDER
+| σ^9 r F31 seed 101 | 20 | 204 s | 286 s | 36 reduced closures of stages 2..9 = m2s (σ^9: 1/9/81/**729**); χ 36/36; scaling 85 856 entries; engine peak 3.28 GB per point, VmHWM 9.0 GB (2 threads) |
+| σ^9 r F32b seed 102 | 20 | 189 s | 268 s | same, 0 differences |
+| σ^7 u+r F31 seed 101 | 400 | 26.7 s (2 threads, contended) | 36 s | 56 closures = m2s (stage 7 unreduced 1/22/190/**848**, = Wang 3 N 3); χ 56/56; scaling 20 726 entries |
+| σ^7 u+r F32b seed 102 | 400 | 28.5 s (3 threads, contended) | 40 s | same, 0 differences (848 = Wang 3 N 3) |
+
+One node sequence per prime (F31 seed 101, F32b seed 102); the second node sequences of M6a-1b
+(seeds 103/104) were not rerun at depth (σ^5..σ^7 reduced already passed them in M6a-1b). Not run:
+σ^8 and σ^9 unreduced (§4). Every closure of every run equals the m2s JSON of its prime as a full
+polynomial (`g2b_compare.py`: 0 differences).
 
 ## 4. Projection for the rest of G2B
 
