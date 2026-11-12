@@ -1333,7 +1333,9 @@ pub fn scaling_check_frozen<F: PrimeField>(lib: &WLib<F>, word: &[i32], o: &BoxO
         let a = scan_point(lib, word, box_x(&nodes, &mu), id, Mode::Replay(rec.ps.frozen.clone()), &ropts).map_err(|e| format!("scaling scan at z{:?}: {}", mu, e))?;
         let b = scan_point(lib, word, box_x(&sn, &mu), id, Mode::Replay(rec.ps.frozen.clone()), &ropts).map_err(|e| format!("scaling scan at λz{:?}: {}", mu, e))?;
         for ((sa, sb), sr) in a.stages.iter().zip(b.stages.iter()).zip(rec.stages.iter()) {
-            if sa.weights != sr.weights || sb.weights != sr.weights || sa.kinds != sr.kinds {
+            // structure from the scans; declared weights from the record scan (whose bookkeeping
+            // is what the law certifies)
+            if sa.kinds != sr.kinds || sb.kinds != sr.kinds || sa.edges != sr.edges || sa.vals.len() != sr.weights.len() {
                 return Err(format!("scaling check: stage {} skeleton differs from the record point", sa.stage));
             }
             let r = check_scaling_all(&sa.vals, &sb.vals, &sr.weights, lambda).map_err(|e| format!("stage {} point {:?}: {}", sa.stage, mu, e))?;

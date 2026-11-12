@@ -5,7 +5,8 @@
 //!   default, (3,3) `#[ignore]`.
 //! * (1,1,1) final object counts against engine2.
 //! * The one-word box loop against xengine's exact closure: (2,2) σ^3 (stages 2, 3) and (3,2) σ^2,
-//!   N' = 3..6, unreduced and reduced; the scaling check (D14) and its negative test.
+//!   N' = 3..6, unreduced and reduced; the scaling check (D14). Its negative test on the wired
+//!   path is `scaling_check_catches_a_misdeclared_weight` in tests/boxrun.rs.
 use krhom::boxclose::*;
 use krhom::crossing::Gen;
 use krhom::field::{Field, F31, F32b};
@@ -87,8 +88,13 @@ fn objects_111_against_engine2() {
 fn box_against_exact<F: PrimeField>(lam: &[u8], word: &[i32], stages: &[usize], seed: u64) {
     let lib = wlib::<F>(lam, None, &[word.to_vec()], true);
     let n_box = 6;
-    let o = BoxOpts { n_box, seed, n_close: vec![3, 4, 5, 6], modes: vec![None, Some(0)], stages: stages.to_vec(), eng: EngOpts { check_d2: true, ..Default::default() }, d2_all_points: false, freivalds_k: 3 };
+    let o = BoxOpts::new(n_box, seed, vec![3, 4, 5, 6], vec![None, Some(0)], stages.to_vec(), EngOpts { check_d2: true, ..Default::default() });
     let out = box_word(&lib, word, &o).unwrap();
+    // the D14 scaling check, χ = decat_chi and the determinant pass ran inside box_word
+    let sc = out.scaling.as_ref().expect("box_word runs the scaling check by default");
+    assert!(sc.report.checked > 0);
+    assert_eq!(out.chi_checked, out.stages.iter().map(|s| s.closed.len()).sum::<usize>());
+    assert!(out.det_pass.1 > 0);
     let l: Vec<usize> = lam.iter().map(|&x| x as usize).collect();
     let xs = xscan::<F>(&l, &gens(word), &XOpts { close_stages: true, ..Default::default() }).unwrap();
     for sr in &out.stages {

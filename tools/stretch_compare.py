@@ -10,6 +10,15 @@ ref = json.load(open('docs/colored_design/gl6/m2s/sigma9_33_F31.json'))
 R = {(r['stage'], r['reduced'], r['N']): T(r['P']) for r in ref['results']}
 bad = 0
 for w, lst in sorted(runs.items()):
+    # every record must carry chi_ok = true and a passed D14 scaling check (sengine review F1, F2)
+    for f, d in lst:
+        nchi = sum(1 for r in d['results'] if r.get('chi_ok') is not True)
+        sc = d.get('scaling')
+        scl = sc if isinstance(sc, list) else [sc]
+        sc_ok = bool(scl) and all(isinstance(x, dict) and x.get('pass') is True for x in scl)
+        if nchi or not sc_ok:
+            bad += 1
+            print(w, f, 'CERTIFICATION FAIL: %d results without chi_ok, scaling %s' % (nchi, sc))
     base = {(r['stage'], r['reduced'], r['N']): T(r['P']) for r in lst[0][1]['results']}
     same = all({(r['stage'], r['reduced'], r['N']): T(r['P']) for r in d['results']} == base for _, d in lst)
     bad += not same
