@@ -773,3 +773,32 @@ fn m5c_layer_a_route_stamp() {
     let sd = d.stats();
     assert_eq!((sd.layer_a_loaded, sd.layer_a_rejected), (0, sa.layer_a_saved));
 }
+
+/// M5c: a leaf isomorphism whose only windows are refused by admission is reported as an
+/// engineering (Refused) failure, not as Exhausted (level-5 pair 322 of (3,3,3): its leaf
+/// [E0 E1(2) E0 F1 F0(2) F1] needs the (4,4,1) window iso with 5.4 M unknowns; M5b counted the
+/// pair as Exhausted at 2x and sent it to the M4c list)
+#[test]
+fn m5c_leaf_iso_refusal_is_engineering() {
+    let lam = [3u8, 3, 3];
+    let mut s = Schur::new(&lam);
+    let plan = pruned_plan(&mut s, Some(5));
+    let pp = &plan.pairs[322];
+    let (p, r) = (s.table(pp.p).fmt(), pp.rung);
+    assert_eq!((p.as_str(), krhom::smapio::rung_str(&r).as_str()), ("1,2,0/1,1,1/1,1,1", "F1.1"));
+    // the M5b provider (cost table v3; the table is stamped for the M5b host class)
+    unsafe { std::env::set_var("KRHOM_COSTS_ANY_HOST", "1") };
+    let costs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/homprov/costs_333.txt");
+    let (prov, stamp) = provider_for_stamped::<F>(&lam, Some(&costs), 1.0);
+    assert!(stamp.contains("273recs"), "{}", stamp);
+    let mut sd = SIndec::<F>::with_stamp(&lam, prov, stamp, SIndecOpts { prune_n: Some(5), ..Default::default() });
+    let pt = tid(&mut sd.schur, &p);
+    match sd.dec_rung(pt, r) {
+        Err(DecErr::Provider { engineering, text }) => {
+            assert!(engineering, "leaf iso admission refusal reported as exhausted: {}", text);
+            assert!(text.contains("Refused"), "{}", text);
+        }
+        Err(e) => panic!("unexpected error {}", e),
+        Ok(_) => panic!("pair 322 decomposed without a cost table"),
+    }
+}

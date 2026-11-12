@@ -2382,16 +2382,32 @@ impl Search {
         }
         // best commutation-equivalent pair with an admissible window
         let mut best: Option<(u128, Vec<Rung>, Vec<Rung>, WinSplit)> = None;
+        // cheapest window refused by admission (M5c: reported as Refused, and traced for
+        // `libbuild calib --windows`, instead of Exhausted)
+        let mut refused: Option<(u128, WinSplit)> = None;
         for a in commutation_class(lw, 64) {
             for b in commutation_class(qw, 64) {
                 let ws = win_split(&lam, &a, &b);
                 let cost = ws.fa * ws.fb;
-                if best.as_ref().map_or(true, |x| cost < x.0) && self.iso_ok(ar, &ws.labels, &ws.a, &ws.b) && self.iso_ok(ar, &ws.labels, &ws.b, &ws.a) {
-                    best = Some((cost, a.clone(), b.clone(), ws));
+                if best.as_ref().map_or(true, |x| cost < x.0) {
+                    if self.iso_ok(ar, &ws.labels, &ws.a, &ws.b) && self.iso_ok(ar, &ws.labels, &ws.b, &ws.a) {
+                        best = Some((cost, a.clone(), b.clone(), ws));
+                    } else {
+                        let u = hom_unknowns(&ws.labels, &ws.a, &ws.b, 0).max(hom_unknowns(&ws.labels, &ws.b, &ws.a, 0));
+                        if refused.as_ref().map_or(true, |r| u < r.0) {
+                            refused = Some((u, ws));
+                        }
+                    }
                 }
             }
         }
         let Some((_, a, b, ws)) = best else {
+            if let Some((u, ws)) = refused {
+                if std::env::var("KRHOM_TRACE").is_ok() {
+                    eprintln!("[leaf_iso] refused {:?} [{}] <-> [{}] degree 0 ({} x {}, unknowns {})", ws.labels, wstr(&ws.a), wstr(&ws.b), ws.fa, ws.fb, u);
+                }
+                return Err((MissKind::Refused, format!("leaf [{}] -> type word [{}]: no admissible window (cheapest refused: {:?} [{}] <-> [{}], {} unknowns)", wstr(lw), wstr(qw), ws.labels, wstr(&ws.a), wstr(&ws.b), u)));
+            }
             return Err((MissKind::Exhausted, format!("leaf [{}] -> type word [{}]: no admissible window", wstr(lw), wstr(qw))));
         };
         let fwd = self.xcall(ar, &ws.labels, &ws.a, &ws.b, 0, st).map_err(|e| (MissKind::Refused, e))?;

@@ -204,6 +204,7 @@ pub fn hom_space<F: Field>(b: &SBim<F>, bp: &SBim<F>, d: i32, mc: &mut MonoCache
     assert_eq!(b.bot_labels, bp.bot_labels, "hom_space: bottom labels differ");
     let f = b.fsize();
     let fp = bp.fsize();
+    let t_all = std::time::Instant::now();
     // unknowns
     let mut unk: Vec<(u32, u32, Mono)> = vec![]; // (row beta', col beta, mono)
     let mut uidx: HashMap<(u32, u32, Mono), u32> = HashMap::new();
@@ -294,7 +295,12 @@ pub fn hom_space<F: Field>(b: &SBim<F>, bp: &SBim<F>, d: i32, mc: &mut MonoCache
     let _ = by_entry;
     // equations in a deterministic order (the kernel basis does not depend on it)
     all_rows.sort_unstable_by(|x, y| x.len().cmp(&y.len()).then_with(|| x.iter().map(|e| e.0).cmp(y.iter().map(|e| e.0))));
+    let t_eq = t_all.elapsed().as_secs_f64();
     let ker = crate::linsys::kernel_lazy(unk.len(), &all_rows);
+    if std::env::var("KRHOM_HS_TIMING").is_ok() {
+        let nnz: usize = all_rows.iter().map(|r| r.len()).sum();
+        eprintln!("[hom_space] {} x {} unknowns {} rows {} nnz {} ops {}: equations {:.2}s, kernel {:.2}s, dim {}", fp, f, unk.len(), all_rows.len(), nnz, tp_t.len(), t_eq, t_all.elapsed().as_secs_f64() - t_eq, ker.len());
+    }
     ker.into_iter()
         .map(|v| {
             let mut cols: Vec<HashMap<u32, Vec<(Mono, F)>>> = vec![HashMap::new(); f];
