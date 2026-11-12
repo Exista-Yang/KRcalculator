@@ -112,4 +112,17 @@ R=data-gl6/m5b   # worktree of origin/data-gl6
 libbuild cover --lam 3,3,3 --n 5 --knots tools/ntrunc_t1/data/knots3_all.txt \
     --runs $R/f31/runs/run_n5.jsonl,$R/f32b/runs/run_n5.jsonl [--max-cross 8] [--names 4_1,5_2] [--list] [--md OUT]
 ```
-(0.4 s per N for all 185 knots.) Section "After M5c" of M5c_report.md gives the table after this session's fixes.
+(0.4 s per N for all 185 knots.)
+
+## After M5c
+
+With the M5c run files of both primes (level 5: 172/177; level 6: 330/377 F31, 329/377 F32b; a job counts if
+certified for both primes):
+
+| N | fully covered (UB / LB) | blocking failures per knot (LB) | failures needed by every knot (LB) |
+|---|---|---|---|
+| 5 | 0 / 0 | 5 | 5 of 5: pairs 313, 322, 326, 410, closure 1,1,1/1,1,1/1,1,1 |
+| 6 | 0 / 0 | 38-48 | 38 of 48 |
+
+4_1 at N = 6 now has 243 of its 283 jobs certified (M5b: 224). Still no knot is computable; N = 5 for every 3-strand
+knot is exactly the 5 jobs above away.
