@@ -28,6 +28,7 @@ pub mod engine2;
 pub mod tower;
 pub mod schur;
 pub mod cclose;
+pub mod boxclose;
 pub mod xengine;
 pub mod coset;
 pub mod sexpr;
