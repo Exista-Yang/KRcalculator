@@ -453,3 +453,20 @@ fn braid_pieces_large() {
         println!("CERT braid {:?}: A {} flows, M {} flows, M->M' Assoc: {:?}", (x, y, z), fa, FlowIndex::build(&me).nflows(), r.map(|c| c.secs));
     }
 }
+
+/// The two switchback pieces of the (3,3,3) braid (400 × 84 flows) through `certify_added`.
+#[test]
+#[ignore]
+fn braid_pieces_333() {
+    let bw = braid_words(3, 3, 3).unwrap();
+    let mut lib: TmplLib<F> = TmplLib::new(None);
+    let (_, la, long_a, short_a) = bw.win_a.clone();
+    let (_, lb, long_b, short_b) = bw.win_b.clone();
+    let psi = ClosedForm::new("psi_A", CfKind::Rex, Window::new(&la, &long_a), Window::new(&la, &short_a)).unwrap();
+    let phi = ClosedForm::new("phi_B", CfKind::Pull, Window::new(&lb, &short_b), Window::new(&lb, &long_b)).unwrap();
+    for cf in [psi, phi] {
+        let t0 = Instant::now();
+        let b = build(&mut lib, &cf, 710).unwrap_or_else(|e| panic!("{}: {}", cf.name, e));
+        println!("CERT braid333 {} flows {:?} interp {:.1}s cert {:.1}s (monos {}) total {:.1}s", cf.name, b.flows, b.interp_secs, b.cert.secs, b.cert.max_monos, t0.elapsed().as_secs_f64());
+    }
+}
