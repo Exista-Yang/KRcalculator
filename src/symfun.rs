@@ -189,7 +189,8 @@ impl GrTable {
         GrTable { r, b, basis, wt, e_mul, f_mul }
     }
 
-    /// Cached access.
+    /// Cached access. Tables with b ≥ `persist_min_b()` are also persisted on disk
+    /// (see [`GrTable::load_or_compute`]); the in-process cache is checked first.
     pub fn get(r: usize, b: usize) -> &'static GrTable {
         static CACHE: OnceLock<Mutex<HashMap<(usize, usize), &'static GrTable>>> = OnceLock::new();
         let m = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
@@ -197,10 +198,276 @@ impl GrTable {
         if let Some(t) = g.get(&(r, b)) {
             return t;
         }
-        let t: &'static GrTable = Box::leak(Box::new(GrTable::compute(r, b)));
+        let t: &'static GrTable = Box::leak(Box::new(GrTable::load_or_compute(r, b)));
         g.insert((r, b), t);
         t
     }
+
+    // -----------------------------------------------------------------------------------------
+    // disk persistence (M4c B2 engineering decision): the GrTable(r, 9) builds take 40-75 min.
+    //
+    // File `<dir>/gr_<r>_<b>.bin`, little endian:
+    //   magic "KRGRTBL\0" | u32 format version | u32 r | u32 b | u64 payload length |
+    //   u64 FNV-1a hash of the payload | payload.
+    // The payload is the full table (basis, weights, e_mul, f_mul). `load` verifies the magic,
+    // version, (r, b), length, hash, and that the basis/weights equal the recomputed fibre basis
+    // (cheap); on any mismatch it returns None and the table is recomputed (and rewritten).
+    // Directory: $KRHOM_GRCACHE, default <crate>/target/grcache; KRHOM_GRCACHE=off disables.
+    // Persisted only for b ≥ $KRHOM_GRCACHE_MIN_B (default 7): smaller tables cost seconds.
+
+    /// Directory of the on-disk cache, None if disabled.
+    pub fn cache_dir() -> Option<std::path::PathBuf> {
+        match std::env::var("KRHOM_GRCACHE") {
+            Ok(v) if v == "off" || v == "0" => None,
+            Ok(v) if !v.is_empty() => Some(std::path::PathBuf::from(v)),
+            _ => Some(std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/target/grcache"))),
+        }
+    }
+
+    fn persist_min_b() -> usize {
+        std::env::var("KRHOM_GRCACHE_MIN_B").ok().and_then(|v| v.parse().ok()).unwrap_or(7)
+    }
+
+    pub fn cache_path(dir: &std::path::Path, r: usize, b: usize) -> std::path::PathBuf {
+        dir.join(format!("gr_{}_{}.bin", r, b))
+    }
+
+    /// Load from disk (verified), else compute and persist.
+    pub fn load_or_compute(r: usize, b: usize) -> GrTable {
+        let dir = if b >= Self::persist_min_b() { Self::cache_dir() } else { None };
+        if let Some(d) = &dir {
+            let p = Self::cache_path(d, r, b);
+            if let Some(t) = Self::load(&p, r, b) {
+                return t;
+            }
+        }
+        let t = GrTable::compute(r, b);
+        if let Some(d) = &dir {
+            let _ = t.save(d); // best effort: a failed write only costs a recompute next time
+        }
+        t
+    }
+
+    /// Serialize the table payload (deterministic).
+    pub fn payload(&self) -> Vec<u8> {
+        let mut o = Vec::new();
+        fn u32w(o: &mut Vec<u8>, x: u32) {
+            o.extend_from_slice(&x.to_le_bytes());
+        }
+        fn mono(o: &mut Vec<u8>, m: &[u16]) {
+            u32w(o, m.len() as u32);
+            for &x in m {
+                o.extend_from_slice(&x.to_le_bytes());
+            }
+        }
+        fn tab(o: &mut Vec<u8>, t: &[Vec<Vec<(usize, CPoly)>>]) {
+            u32w(o, t.len() as u32);
+            for rows in t {
+                u32w(o, rows.len() as u32);
+                for row in rows {
+                    u32w(o, row.len() as u32);
+                    for (bi, cp) in row {
+                        u32w(o, *bi as u32);
+                        u32w(o, cp.len() as u32);
+                        for (g, c) in cp {
+                            mono(o, g);
+                            o.extend_from_slice(&c.to_le_bytes());
+                        }
+                    }
+                }
+            }
+        }
+        u32w(&mut o, self.r as u32);
+        u32w(&mut o, self.b as u32);
+        u32w(&mut o, self.basis.len() as u32);
+        for m in &self.basis {
+            mono(&mut o, m);
+        }
+        for &w in &self.wt {
+            u32w(&mut o, w);
+        }
+        tab(&mut o, &self.e_mul);
+        tab(&mut o, &self.f_mul);
+        o
+    }
+
+    fn from_payload(p: &[u8]) -> Option<GrTable> {
+        struct Rd<'a> {
+            p: &'a [u8],
+            i: usize,
+        }
+        impl<'a> Rd<'a> {
+            fn take(&mut self, n: usize) -> Option<&'a [u8]> {
+                let s = self.p.get(self.i..self.i.checked_add(n)?)?;
+                self.i += n;
+                Some(s)
+            }
+            fn u32(&mut self) -> Option<u32> {
+                Some(u32::from_le_bytes(self.take(4)?.try_into().ok()?))
+            }
+            fn i64(&mut self) -> Option<i64> {
+                Some(i64::from_le_bytes(self.take(8)?.try_into().ok()?))
+            }
+            fn mono(&mut self) -> Option<Mono> {
+                let n = self.u32()? as usize;
+                if n > 64 {
+                    return None;
+                }
+                let mut m = Vec::with_capacity(n);
+                for _ in 0..n {
+                    m.push(u16::from_le_bytes(self.take(2)?.try_into().ok()?));
+                }
+                Some(m)
+            }
+            fn tab(&mut self, nb: usize) -> Option<Vec<Vec<Vec<(usize, CPoly)>>>> {
+                let nj = self.u32()? as usize;
+                let mut t = Vec::with_capacity(nj.min(64));
+                for _ in 0..nj {
+                    let na = self.u32()? as usize;
+                    if na != nb {
+                        return None;
+                    }
+                    let mut rows = Vec::with_capacity(na);
+                    for _ in 0..na {
+                        let nr = self.u32()? as usize;
+                        let mut row = Vec::with_capacity(nr.min(1 << 16));
+                        for _ in 0..nr {
+                            let bi = self.u32()? as usize;
+                            if bi >= nb {
+                                return None;
+                            }
+                            let nc = self.u32()? as usize;
+                            let mut cp = Vec::with_capacity(nc.min(1 << 16));
+                            for _ in 0..nc {
+                                let g = self.mono()?;
+                                let c = self.i64()?;
+                                cp.push((g, c));
+                            }
+                            row.push((bi, cp));
+                        }
+                        rows.push(row);
+                    }
+                    t.push(rows);
+                }
+                Some(t)
+            }
+        }
+        let mut rd = Rd { p, i: 0 };
+        let r = rd.u32()? as usize;
+        let b = rd.u32()? as usize;
+        let nb = rd.u32()? as usize;
+        if nb > 1 << 24 {
+            return None;
+        }
+        let mut basis = Vec::with_capacity(nb);
+        for _ in 0..nb {
+            basis.push(rd.mono()?);
+        }
+        let mut wt = Vec::with_capacity(nb);
+        for _ in 0..nb {
+            wt.push(rd.u32()?);
+        }
+        let e_mul = rd.tab(nb)?;
+        let f_mul = rd.tab(nb)?;
+        if rd.i != p.len() || e_mul.len() != r || f_mul.len() != b.checked_sub(r)? {
+            return None;
+        }
+        Some(GrTable { r, b, basis, wt, e_mul, f_mul })
+    }
+
+    /// Write `<dir>/gr_<r>_<b>.bin` atomically (temp file + rename).
+    pub fn save(&self, dir: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+        std::fs::create_dir_all(dir)?;
+        let pl = self.payload();
+        let mut o = Vec::with_capacity(pl.len() + 40);
+        o.extend_from_slice(GR_MAGIC);
+        o.extend_from_slice(&GR_FORMAT.to_le_bytes());
+        o.extend_from_slice(&(self.r as u32).to_le_bytes());
+        o.extend_from_slice(&(self.b as u32).to_le_bytes());
+        o.extend_from_slice(&(pl.len() as u64).to_le_bytes());
+        o.extend_from_slice(&fnv1a64(&pl).to_le_bytes());
+        o.extend_from_slice(&pl);
+        let path = Self::cache_path(dir, self.r, self.b);
+        let tmp = dir.join(format!("gr_{}_{}.bin.tmp{}", self.r, self.b, std::process::id()));
+        std::fs::write(&tmp, &o)?;
+        std::fs::rename(&tmp, &path)?;
+        Ok(path)
+    }
+
+    /// Read and verify a persisted table; None on any mismatch (header, hash, basis).
+    pub fn load(path: &std::path::Path, r: usize, b: usize) -> Option<GrTable> {
+        let d = std::fs::read(path).ok()?;
+        if d.len() < 36 || &d[0..8] != GR_MAGIC {
+            return None;
+        }
+        let u32at = |i: usize| u32::from_le_bytes(d[i..i + 4].try_into().unwrap());
+        let u64at = |i: usize| u64::from_le_bytes(d[i..i + 8].try_into().unwrap());
+        if u32at(8) != GR_FORMAT || u32at(12) as usize != r || u32at(16) as usize != b {
+            return None;
+        }
+        let len = u64at(20) as usize;
+        let h = u64at(28);
+        let pl = &d[36..];
+        if pl.len() != len || fnv1a64(pl) != h {
+            return None;
+        }
+        let t = GrTable::from_payload(pl)?;
+        if t.r != r || t.b != b {
+            return None;
+        }
+        // the fibre basis and weights are cheap to recompute: they must agree
+        let (basis, wt) = fibre_basis(r, b);
+        if t.basis != basis || t.wt != wt {
+            return None;
+        }
+        Some(t)
+    }
+}
+
+const GR_MAGIC: &[u8; 8] = b"KRGRTBL\0";
+/// Bump when `compute` or the payload layout changes.
+const GR_FORMAT: u32 = 1;
+
+/// FNV-1a 64-bit hash.
+pub fn fnv1a64(d: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for &x in d {
+        h ^= x as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}
+
+/// The fibre basis {e^α : |α| ≤ b − r} sorted by (weight, α), and the weights (as `compute`).
+pub fn fibre_basis(r: usize, b: usize) -> (Vec<Mono>, Vec<u32>) {
+    let s = b - r;
+    let mut basis: Vec<Mono> = Vec::new();
+    fn rec(i: usize, left: usize, cur: &mut Vec<u16>, out: &mut Vec<Mono>) {
+        if i == cur.len() {
+            if left == 0 {
+                out.push(cur.clone());
+            }
+            return;
+        }
+        for k in 0..=left {
+            cur[i] = k as u16;
+            rec(i + 1, left - k, cur, out);
+        }
+        cur[i] = 0;
+    }
+    for tot in 0..=s {
+        if r == 0 {
+            if tot == 0 {
+                basis.push(vec![]);
+            }
+        } else {
+            let mut cur = vec![0u16; r];
+            rec(0, tot, &mut cur, &mut basis);
+        }
+    }
+    basis.sort_by_key(|m| (weight(m), m.clone()));
+    let wt = basis.iter().map(|m| weight(m)).collect();
+    (basis, wt)
 }
 
 
@@ -258,6 +525,28 @@ mod tests {
                 assert_eq!(t.fsize(), binom(b, r));
             }
         }
+    }
+    #[test]
+    fn persist_roundtrip_and_corruption() {
+        let dir = std::env::temp_dir().join(format!("krhom_grcache_test_{}", std::process::id()));
+        for (r, b) in [(1usize, 2usize), (2, 4), (3, 5), (0, 3), (4, 4)] {
+            let t = GrTable::compute(r, b);
+            let p = t.save(&dir).unwrap();
+            let u = GrTable::load(&p, r, b).expect("load");
+            assert_eq!(u.payload(), t.payload());
+            assert_eq!((u.basis.clone(), u.wt.clone()), fibre_basis(r, b));
+            assert!(GrTable::load(&p, r + 1, b).is_none(), "wrong (r, b) accepted");
+            // flip one payload byte: the hash must reject it
+            let mut d = std::fs::read(&p).unwrap();
+            let k = d.len() - 3;
+            d[k] ^= 0x55;
+            std::fs::write(&p, &d).unwrap();
+            assert!(GrTable::load(&p, r, b).is_none(), "corrupted file accepted");
+            // truncated
+            std::fs::write(&p, &d[..d.len() / 2]).unwrap();
+            assert!(GrTable::load(&p, r, b).is_none());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
     #[test]
     fn projective_line() {
