@@ -164,5 +164,12 @@ finish.json and finish_single.json.
 - e863d6b libbuild governing-header resume, names, counts, replay-only import, binary commit; xscan provenance
 - 7c638e0 tests (driver, binding, scaling negative, χ, pivot values); compare tools
 - 4dbf8ba libbuild and xscan tests
-- (demo commit) σ^5 sharded / killed demonstration; finish JSON fix
-- (final commit) this report and the full-suite result
+- 9b35adb σ^5 sharded / killed demonstration; finish JSON fix
+- 01e304b, final: this report
+
+**Final full suite** (on 9b35adb; the later commits change only this report): `KRHOM_THREADS=4 cargo test --release`
+exited 0 with 0 failures. New or changed counts against §1:
+- tests/boxrun.rs: 5 passed (new);
+- tests/libbuild.rs: 3 passed (was 2);
+- tests/sengine.rs: 12 passed (was 11);
+- every other binary: as in §1.
