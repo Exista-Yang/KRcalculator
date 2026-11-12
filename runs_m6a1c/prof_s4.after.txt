@@ -1,0 +1,38 @@
+library: 4 types, build 24.5s, hash df1b99df8ed29905
+[sprof] stage 0: 0 pivots, 0 updates, 0.000e0 mult-adds, 0.00s in apply_pivot, 0.00s stage; rounds 0.00s, push loop 0.00s, touched 0, edges 3
+[sprof] stage 1: 87 pivots, 990 updates, 2.500e4 mult-adds, 0.00s in apply_pivot, 0.09s stage; rounds 0.00s, push loop 0.00s, touched 2103, edges 32
+[sprof] stage 2: 444 pivots, 39975 updates, 8.796e5 mult-adds, 0.02s in apply_pivot, 0.13s stage; rounds 0.04s, push loop 0.01s, touched 32634, edges 149
+[sprof] stage 3: 1257 pivots, 261124 updates, 5.606e6 mult-adds, 0.16s in apply_pivot, 0.66s stage; rounds 0.28s, push loop 0.06s, touched 172249, edges 465
+[dcid] visits 14270 KI-fma 7.109e6 πKI-fma(bound) 1.633e8 Σkr 0 Σnzr 227241 T-est 0.000e0 pairs 2938934 nnzf 0
+record: total 0.892s | dec+obj 0.003 | dC⊗id 0.469 | rickard 0.064 | extract 0.001 | k0 0.001 | pivots 0.184 (302089 updates, 6.511e6 mult-adds) | pattern hash 0.013 | rest 0.157 | engine peak 48.6 MB, eval memo 11.8 MB
+   memory peak 48.6 MB at stage 3 insertion: 2017 objects, 123668 components, complex 48.6 MB (peak complex alone 36.4 MB), previous complex 0.1 MB
+   stage 1: inserted 4 objects 4 comps 3 pivots 0 entries 60 peak 0.0 MB cum 0.000s
+   stage 2: inserted 189 objects 15 comps 32 pivots 87 entries 868 peak 12.3 MB cum 0.090s
+   stage 3: inserted 928 objects 40 comps 149 pivots 444 entries 3807 peak 19.0 MB cum 0.216s
+   stage 4: inserted 2599 objects 85 comps 465 pivots 1257 entries 11244 peak 48.6 MB cum 0.876s
+   record trace digest 85425fb5a5bfe522
+[sprof] stage 0: 0 pivots, 0 updates, 0.000e0 mult-adds, 0.00s in apply_pivot, 0.00s stage; rounds 0.00s, push loop 0.00s, touched 0, edges 3
+[sprof] stage 1: 87 pivots, 990 updates, 2.500e4 mult-adds, 0.00s in apply_pivot, 0.06s stage; rounds 0.00s, push loop 0.00s, touched 0, edges 32
+[sprof] stage 2: 444 pivots, 39975 updates, 8.796e5 mult-adds, 0.02s in apply_pivot, 0.10s stage; rounds 0.02s, push loop 0.00s, touched 0, edges 149
+[sprof] stage 3: 1257 pivots, 261124 updates, 5.606e6 mult-adds, 0.14s in apply_pivot, 0.48s stage; rounds 0.14s, push loop 0.00s, touched 0, edges 465
+[dcid] visits 14270 KI-fma 7.109e6 πKI-fma(bound) 1.633e8 Σkr 0 Σnzr 227241 T-est 0.000e0 pairs 2938934 nnzf 0
+replay point 133: total 0.659s | dec+obj 0.002 | dC⊗id 0.415 | rickard 0.049 | extract 0.001 | k0 0.000 | pivots 0.159 (302089 updates, 6.511e6 mult-adds) | pattern hash 0.013 | rest 0.020 | engine peak 48.6 MB, eval memo 11.8 MB
+   memory peak 48.6 MB at stage 3 insertion: 2017 objects, 123668 components, complex 48.6 MB (peak complex alone 36.4 MB), previous complex 0.1 MB
+   stage 1: inserted 4 objects 4 comps 3 pivots 0 entries 60 peak 0.0 MB cum 0.001s
+   stage 2: inserted 189 objects 15 comps 32 pivots 87 entries 868 peak 12.3 MB cum 0.065s
+   stage 3: inserted 928 objects 40 comps 149 pivots 444 entries 3807 peak 19.0 MB cum 0.166s
+   stage 4: inserted 2599 objects 85 comps 465 pivots 1257 entries 11244 peak 48.6 MB cum 0.645s
+   values digest 1752d4e9a7fd1ca4
+[sprof] stage 0: 0 pivots, 0 updates, 0.000e0 mult-adds, 0.00s in apply_pivot, 0.00s stage; rounds 0.00s, push loop 0.00s, touched 0, edges 3
+[sprof] stage 1: 87 pivots, 990 updates, 2.500e4 mult-adds, 0.00s in apply_pivot, 0.07s stage; rounds 0.00s, push loop 0.00s, touched 0, edges 32
+[sprof] stage 2: 444 pivots, 39975 updates, 8.796e5 mult-adds, 0.02s in apply_pivot, 0.10s stage; rounds 0.02s, push loop 0.00s, touched 0, edges 149
+[sprof] stage 3: 1257 pivots, 261124 updates, 5.606e6 mult-adds, 0.17s in apply_pivot, 0.56s stage; rounds 0.18s, push loop 0.00s, touched 0, edges 465
+[dcid] visits 14270 KI-fma 7.109e6 πKI-fma(bound) 1.633e8 Σkr 0 Σnzr 227241 T-est 0.000e0 pairs 2938934 nnzf 0
+replay point 266: total 0.753s | dec+obj 0.002 | dC⊗id 0.455 | rickard 0.060 | extract 0.001 | k0 0.000 | pivots 0.194 (302089 updates, 6.511e6 mult-adds) | pattern hash 0.014 | rest 0.028 | engine peak 48.6 MB, eval memo 11.8 MB
+   memory peak 48.6 MB at stage 3 insertion: 2017 objects, 123668 components, complex 48.6 MB (peak complex alone 36.4 MB), previous complex 0.1 MB
+   stage 1: inserted 4 objects 4 comps 3 pivots 0 entries 60 peak 0.0 MB cum 0.001s
+   stage 2: inserted 189 objects 15 comps 32 pivots 87 entries 868 peak 12.3 MB cum 0.067s
+   stage 3: inserted 928 objects 40 comps 149 pivots 444 entries 3807 peak 19.0 MB cum 0.169s
+   stage 4: inserted 2599 objects 85 comps 465 pivots 1257 entries 11244 peak 48.6 MB cum 0.734s
+   values digest 0f2d22cab5e5fbb2
+mean replay 0.706s; VmHWM 66 MB
