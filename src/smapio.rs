@@ -287,6 +287,17 @@ pub fn export<F: Field>(ar: &Arena<F>, roots: &[MapId]) -> Result<String, String
     }
     let rs: Vec<String> = roots.iter().map(|r| nidx[r].to_string()).collect();
     out.push_str(&format!("roots {} {}\n", roots.len(), rs.join(" ")));
+    // M4c B2: Assoc nodes whose constant comes from the theorem-level certificate (marker; the
+    // importer re-runs the theorem check on exactly these nodes)
+    for &m in &order {
+        if let MapNode::Elem { kind: ElemKind::Assoc, .. } = ar.node(m) {
+            if let Some((ws, wt)) = ar.elem_windows(m) {
+                if crate::leafgen::thm_assoc_registered(ws, wt) {
+                    out.push_str(&format!("thm-assoc {}\n", nidx[&m]));
+                }
+            }
+        }
+    }
     out.push_str("end\n");
     Ok(out)
 }
@@ -425,8 +436,26 @@ pub fn import<F: Field>(ar: &mut Arena<F>, text: &str) -> Result<Vec<MapId>, Str
     for x in &f[2..] {
         out.push(x.parse::<usize>().ok().and_then(|i| nodes.get(i).copied()).ok_or_else(|| format!("smapio: bad root {:?}", x))?);
     }
-    if next()? != "end" {
-        return Err("smapio: missing end line".into());
+    // optional `thm-assoc <node>` records (M4c B2): re-certify by the theorem-level check
+    loop {
+        let l = next()?;
+        if l == "end" {
+            break;
+        }
+        let f: Vec<&str> = l.split_whitespace().collect();
+        if f.len() != 2 || f[0] != "thm-assoc" {
+            return Err("smapio: missing end line".into());
+        }
+        let k: usize = f[1].parse().map_err(|_| format!("smapio: bad thm-assoc line {:?}", l))?;
+        let m = *nodes.get(k).ok_or_else(|| format!("smapio: bad thm-assoc node {:?}", l))?;
+        if !matches!(ar.node(m), MapNode::Elem { kind: ElemKind::Assoc, .. }) {
+            return Err(format!("smapio: thm-assoc record on a node that is not an Assoc ({:?})", l));
+        }
+        let (ws, wt) = {
+            let (a, b) = ar.elem_windows(m).ok_or_else(|| format!("smapio: thm-assoc node without window ({:?})", l))?;
+            (a.clone(), b.clone())
+        };
+        crate::leafgen::certify_assoc_theorem(ar, &ws, &wt).map_err(|e| format!("smapio: thm-assoc re-check failed: {}", e))?;
     }
     Ok(out)
 }
