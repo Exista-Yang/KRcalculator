@@ -425,3 +425,29 @@ fn certify_all_to_333() {
     }
     println!("CERT done in {:.1} s", t0.elapsed().as_secs_f64());
 }
+
+/// The switchback pieces of the braid route at large cells, certified through `certify_added`;
+/// the middle up-up/down-down step M → M' is reported (Assoc validator: refused above 500 flows).
+#[test]
+#[ignore]
+fn braid_pieces_large() {
+    for &(x, y, z) in &[(3u8, 1u8, 3u8), (2, 3, 2), (3, 2, 3), (3, 3, 3)] {
+        let bw = braid_words(x, y, z).unwrap();
+        let lam = vec![x, y, z];
+        let mut lib: TmplLib<F> = TmplLib::new(None);
+        let (_, la, long_a, short_a) = bw.win_a.clone();
+        let (_, lb, long_b, short_b) = bw.win_b.clone();
+        let psi = ClosedForm::new("psi_A", CfKind::Rex, Window::new(&la, &long_a), Window::new(&la, &short_a)).unwrap();
+        let phi = ClosedForm::new("phi_B", CfKind::Pull, Window::new(&lb, &short_b), Window::new(&lb, &long_b)).unwrap();
+        for cf in [psi, phi] {
+            let t0 = Instant::now();
+            let b = build(&mut lib, &cf, 700).unwrap_or_else(|e| panic!("{:?} {}: {}", (x, y, z), cf.name, e));
+            println!("CERT braid {:?} {} flows {:?} interp {:.1}s cert {:.1}s (monos {}) total {:.1}s", (x, y, z), cf.name, b.flows, b.interp_secs, b.cert.secs, b.cert.max_monos, t0.elapsed().as_secs_f64());
+        }
+        let (me, mpe) = (Expr::new(&lam, &bw.m).unwrap(), Expr::new(&lam, &bw.mp).unwrap());
+        let mut ar: Arena<F> = Arena::new(&lam, TmplLib::new(None));
+        let fa = FlowIndex::build(&Expr::new(&lam, &bw.a).unwrap()).nflows();
+        let r = validate_assoc(&mut ar, &me, &mpe, 1);
+        println!("CERT braid {:?}: A {} flows, M {} flows, M->M' Assoc: {:?}", (x, y, z), fa, FlowIndex::build(&me).nflows(), r.map(|c| c.secs));
+    }
+}
