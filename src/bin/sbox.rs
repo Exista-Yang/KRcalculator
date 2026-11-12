@@ -60,7 +60,7 @@ fn run<F: PrimeField>(a: &[String]) {
         }
     }
     let stages: Vec<usize> = opt(a, "--stages").map(|s| list(&s)).unwrap_or(closable);
-    let eng = EngOpts { check_d2: prune.is_none() && !flag(a, "--no-d2"), mem_point_bytes: opt(a, "--mem-mb").map_or(2048, |s| s.parse::<u64>().unwrap()) << 20, ..Default::default() };
+    let eng = EngOpts { check_d2: prune.is_none() && !flag(a, "--no-d2"), order: if flag(a, "--lazy-markowitz") { krhom::sengine::PivotOrder::Lazy } else { krhom::sengine::PivotOrder::Heap }, mem_point_bytes: opt(a, "--mem-mb").map_or(2048, |s| s.parse::<u64>().unwrap()) << 20, ..Default::default() };
     if flag(a, "--record-only") {
         let k: usize = lam.iter().map(|&x| x as usize).sum();
         let mut so = ScanOpts { eng: eng.clone(), close_stages: stages.clone(), k0_check: !flag(a, "--no-k0") };

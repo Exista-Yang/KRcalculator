@@ -608,6 +608,10 @@ pub enum PivotOrder {
     Heap,
     /// full rescan per pivot (xengine's order; reference for tests)
     Rescan,
+    /// lazy-update Markowitz (production for dense candidate graphs): a popped pair whose cost
+    /// grew is re-pushed at its current cost; only fill-in candidates are pushed after a pivot.
+    /// Deterministic (structure only), so the frozen trace is as well defined as with `Heap`.
+    Lazy,
 }
 
 #[derive(Clone, Debug)]
@@ -977,7 +981,7 @@ impl<F: Field> PEngine<F> {
         }
         self.eliminate_round(true)?;
         if std::env::var("KRHOM_SPROF").is_ok() {
-            eprintln!("[sprof] stage {}: {} pivots, {} updates, {:.3e} mult-adds, {:.2}s in apply_pivot, {:.2}s stage; rounds {:.2}s, heap fill {:.2}s, edges {}", self.stage, self.stage_pivots.len(), self.prof.0, self.prof.1 as f64, self.prof.2, self.t_stage.elapsed().as_secs_f64(), self.prof2.0, self.prof2.2, self.cx.components());
+            eprintln!("[sprof] stage {}: {} pivots, {} updates, {:.3e} mult-adds, {:.2}s in apply_pivot, {:.2}s stage; rounds {:.2}s, push loop {:.2}s, touched {}, edges {}", self.stage, self.stage_pivots.len(), self.prof.0, self.prof.1 as f64, self.prof.2, self.t_stage.elapsed().as_secs_f64(), self.prof2.0, self.prof2.2, self.prof2.1, self.cx.components());
             self.prof2 = (0.0, 0, 0.0);
             self.prof = (0, 0, 0.0);
         }
@@ -1110,6 +1114,7 @@ impl<F: Field> PEngine<F> {
             Mode::Record => match self.opts.order {
                 PivotOrder::Heap => self.markowitz_heap(all)?,
                 PivotOrder::Rescan => self.markowitz_rescan(all)?,
+                PivotOrder::Lazy => self.markowitz_lazy(all)?,
             },
             Mode::Replay(fz) => {
                 let Some(r) = fz.rounds.get(round_no) else {
@@ -1141,6 +1146,44 @@ impl<F: Field> PEngine<F> {
         self.rec.rounds.push(Round { stage: self.stage, pivots, pattern });
         self.round_i += 1;
         Ok(())
+    }
+
+    fn markowitz_lazy(&mut self, all: bool) -> Result<Vec<(usize, usize)>, SErr> {
+        let mut heap: BinaryHeap<Reverse<(u64, usize, usize)>> = BinaryHeap::new();
+        for (&a, outs) in &self.cx.out {
+            for &b in outs.keys() {
+                if self.is_candidate(a, b, all) {
+                    heap.push(Reverse((self.cost(a, b), a, b)));
+                }
+            }
+        }
+        self.track_new = true;
+        let mut done = vec![];
+        while let Some(Reverse((c, a, b))) = heap.pop() {
+            if !self.alive(a) || !self.alive(b) || self.cx.get(a, b).is_none() {
+                continue;
+            }
+            let cur = self.cost(a, b);
+            if cur > c {
+                heap.push(Reverse((cur, a, b)));
+                continue;
+            }
+            self.new_edges.clear();
+            if let Err(e) = self.apply_pivot(a, b) {
+                self.track_new = false;
+                return Err(e);
+            }
+            done.push((a, b));
+            let ne = std::mem::take(&mut self.new_edges);
+            for &(x, y) in &ne {
+                if self.alive(x) && self.alive(y) && self.cx.get(x, y).is_some() && self.is_candidate(x, y, all) {
+                    heap.push(Reverse((self.cost(x, y), x, y)));
+                }
+            }
+            self.new_edges = ne;
+        }
+        self.track_new = false;
+        Ok(done)
     }
 
     /// Reference order: rescan every candidate per pivot, minimum of (cost, a, b).
@@ -1200,6 +1243,8 @@ impl<F: Field> PEngine<F> {
             }
         }
         self.track_new = true;
+        let mut npush = 0u64;
+        let tpre = Instant::now();
         let mut done = vec![];
         while let Some(Reverse((_, a, b, va, vb))) = heap.pop() {
             if !self.alive(a) || !self.alive(b) {
@@ -1226,6 +1271,7 @@ impl<F: Field> PEngine<F> {
                     c_in[y].push(x);
                 }
             }
+            let tpush = Instant::now();
             for &t in &touched {
                 *ver.entry(t).or_insert(0) += 1;
             }
@@ -1235,6 +1281,7 @@ impl<F: Field> PEngine<F> {
                 c_in[t].retain(|x| self.cx.inn[&t].contains(x));
                 for &y in &c_out[t] {
                     if self.is_candidate(t, y, all) {
+                        npush += 1;
                         heap.push(Reverse((self.cost(t, y), t, y, vt, ver.get(&y).copied().unwrap_or(0))));
                     }
                 }
@@ -1244,8 +1291,13 @@ impl<F: Field> PEngine<F> {
                     }
                 }
             }
+            self.prof2.2 += tpush.elapsed().as_secs_f64();
+            self.prof2.1 += touched.len() as u64;
         }
         self.track_new = false;
+        if std::env::var("KRHOM_SPROF2").is_ok() {
+            eprintln!("[sprof2] round: {} pivots, {} pushes (out side), heap loop {:.2}s, heap len at end {}", done.len(), npush, tpre.elapsed().as_secs_f64(), heap.len());
+        }
         Ok(done)
     }
 

@@ -487,13 +487,29 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
                             if !any {
                                 continue;
                             }
+                            let nzr: Vec<usize> = (0..kr).filter(|&r| ki[r * m_s..(r + 1) * m_s].iter().any(|v| !v.is_zero())).collect();
                             for (it, tu) in db.summands.iter().enumerate() {
                                 let pb_ = ev.block(tu.pi, cc);
                                 if pb_.rows == 0 {
                                     continue;
                                 }
-                                let mut m = vec![F::zero(); pb_.rows as usize * m_s];
-                                gemm_acc(&mut m, &pb_.a, &ki, pb_.rows as usize, kr, m_s, one.clone());
+                                let mt = pb_.rows as usize;
+                                let mut m = vec![F::zero(); mt * m_s];
+                                // m = π · KI over the nonzero rows of KI only
+                                for &r in &nzr {
+                                    let kir = &ki[r * m_s..(r + 1) * m_s];
+                                    for i in 0..mt {
+                                        let pv = &pb_.a[i * kr + r];
+                                        if pv.is_zero() {
+                                            continue;
+                                        }
+                                        for (d, x) in m[i * m_s..(i + 1) * m_s].iter_mut().zip(kir) {
+                                            if !x.is_zero() {
+                                                d.fma(pv, x);
+                                            }
+                                        }
+                                    }
+                                }
                                 if m.iter().any(|v| !v.is_zero()) {
                                     per[ia][it].insert(cc, (pb_.rows as usize, m_s, m));
                                 }
