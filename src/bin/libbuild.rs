@@ -5,6 +5,7 @@
 //! libbuild run    --lam 3,3,3 --n N [set flags] --field 31|32b --cache DIR [--costs PATH] [--jobs 4]
 //!                 [--wall 600] [--rss 2048] [--scale 1] [--json OUT] [--redo] [--max-jobs K] [--no-retry]
 //!                 [--stamp-route]  (accept layer-A files of another cost table: `SIndecOpts::layer_a_route_stamp`)
+//!                 [--provider leaves]  (M4c: the Leaves backend alone, closure jobs only; own stamp)
 //! libbuild replay --lam ... --n N [set flags] --field F --cache DIR [--costs PATH] [--jobs 4] [--json OUT]
 //! libbuild calib  --lam 3,3,3 --n N --field 31 --cache DIR [--base PATH] --out PATH [--per-class 12]
 //!                 [--limit 120] [--budget 1800] [--rss 4096]
@@ -314,6 +315,13 @@ fn err_kind(e: &DecErr) -> &'static str {
 
 fn provider_and_stamp<F: Field>(lam: &[u8], args: &[String]) -> (Box<dyn HomProvider<F>>, String) {
     let costs = opt(args, "--costs").map(PathBuf::from);
+    // M4c A2: `--provider leaves` = the Leaves backend alone (closure only; acceptance runs)
+    if opt(args, "--provider").as_deref() == Some("leaves") {
+        let mut lv = krhom::leaves::Leaves::new();
+        lv.costs = costs.as_ref().and_then(|p| CostTable::load(p).ok());
+        let stamp = format!("homprov[{}] maxl={} {}", COST_ALG, lam.iter().copied().max().unwrap_or(0), krhom::leaves::LEAVES_STAMP);
+        return (Box::new(lv), stamp);
+    }
     provider_for_stamped::<F>(lam, costs.as_deref(), 1.0)
 }
 
@@ -558,7 +566,7 @@ fn cmd_run(args: &[String], replay: bool) {
     let attempts: Arc<Mutex<Vec<Attempt>>> = Arc::new(Mutex::new(vec![]));
     let t_all = Instant::now();
     let mut base: Vec<String> = vec!["one".into()];
-    for k in ["--lam", "--n", "--field", "--cache", "--costs", "--corner", "--sample", "--count", "--seed"] {
+    for k in ["--lam", "--n", "--field", "--cache", "--costs", "--corner", "--sample", "--count", "--seed", "--provider"] {
         if let Some(v) = opt(args, k) {
             base.push(k.into());
             base.push(v);

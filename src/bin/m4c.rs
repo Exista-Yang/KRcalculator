@@ -395,6 +395,158 @@ fn stage0<F: Field>(args: &[String]) {
     println!("STAGE0 field={} replay={} certified {}/{}", F::name(), replay, ok, tried);
 }
 
+/// `m4c leaves`: closure generators through the Leaves backend alone (A2/A3).
+/// --types fails (the 13 closure jobs) | all (every type of (λ, λ)) | product | T1;T2;...
+/// --direct: the provider on a fresh arena (step records and costs printed per type);
+/// otherwise a SIndec with layer A in --cache (stamp: Leaves alone), `--replay` = refuse all.
+fn leaves_cmd<F: Field>(args: &[String]) {
+    use krhom::leaves::*;
+    let lam = parse_lam(&opt(args, "--lam").unwrap_or("3,3,3".into()));
+    let costs = opt(args, "--costs").map(PathBuf::from);
+    let replay = flag(args, "--replay");
+    let direct = flag(args, "--direct");
+    let types = opt(args, "--types").unwrap_or("fails".into());
+    let mut s0 = Schur::new(&lam);
+    let list: Vec<String> = match types.as_str() {
+        "fails" => CLOSURE_FAILS.iter().filter(|x| x.1 != "1,1,1/1,1,1/1,1,1" || x.0 == 6).map(|x| x.1.to_string()).collect(),
+        "all" | "product" => {
+            let order = s0.canonical_basis(&lam).order.clone();
+            let mut v = vec![];
+            for p in order {
+                let w = canonical_ladder(&mut s0, p);
+                if types == "product" && krhom::leaves::product_factorization(&mut s0, &w, p, 64).is_none() {
+                    continue;
+                }
+                v.push(s0.table(p).fmt());
+            }
+            v
+        }
+        l => l.split(';').map(|x| x.to_string()).collect(),
+    };
+    let mut lv = Leaves::new();
+    lv.costs = costs.as_ref().and_then(|p| CostTable::load(p).ok());
+    if let Some(b) = opt(args, "--budget") {
+        lv.budget = b.parse().unwrap();
+    }
+    if flag(args, "--no-window") {
+        lv.use_window = false;
+    }
+    let (mut ok, mut tried) = (0, 0);
+    let t_all = Instant::now();
+    if direct {
+        let cache = opt(args, "--cache").map(PathBuf::from);
+        let mut ar = Arena::<F>::new(&lam, krhom::tmpl::TmplLib::new(cache.map(|c| c.join("tmpl"))));
+        let b = Budget::default();
+        for ts in &list {
+            let p = s0.intern(Table::parse(ts));
+            let w = canonical_ladder(&mut s0, p);
+            let lp = ar.expr(krhom::sexpr::Expr::new(&lam, &w).unwrap());
+            for outs in [false, true] {
+                tried += 1;
+                let t0 = Instant::now();
+                let r = HomProvider::closure(&mut lv, &mut ar, &mut s0, lp, p, None, outs, &b);
+                let st = &lv.last;
+                let mut kinds: BTreeMap<String, usize> = BTreeMap::new();
+                for r in &st.steps {
+                    *kinds.entry(format!("{:?}", r.kind)).or_default() += 1;
+                }
+                let worst = st.steps.iter().max_by(|a, b| a.secs.partial_cmp(&b.secs).unwrap());
+                match r {
+                    Ok((ms, _)) => {
+                        ok += 1;
+                        println!(
+                            "LEAVES {} {} OK n={} wall {:.2}s steps {:?} exact computed {} ({:.2}s) max unknowns {} max W flows {} leaves built {} worst step {}",
+                            ts,
+                            if outs { "outs" } else { "ins" },
+                            ms.len(),
+                            t0.elapsed().as_secs_f64(),
+                            kinds,
+                            st.exact_calls,
+                            st.exact_secs,
+                            sep(st.max_unknowns),
+                            st.max_word_flows,
+                            st.maps_built,
+                            worst.map_or("-".into(), |r| format!("l{} {}->{} {:?} {:?} {}u {:.2}s", r.level, s0.table(r.from).fmt(), s0.table(r.to).fmt(), r.kind, r.degs, r.unknowns, r.secs))
+                        );
+                    }
+                    Err(e) => println!("LEAVES {} {} FAILED ({:.2}s): {:?} {}", ts, if outs { "outs" } else { "ins" }, t0.elapsed().as_secs_f64(), e[0].kind, e[0].what),
+                }
+            }
+        }
+        let _ = ar.lib_ref().save();
+        let by = ar.bytes();
+        println!("LEAVES direct field={} certified {}/{} sides, wall {:.1}s, arena bytes {}", F::name(), ok, tried, t_all.elapsed().as_secs_f64(), by.total());
+        return;
+    }
+    let n: u8 = opt(args, "--n").map(|v| v.parse().unwrap()).unwrap_or(6);
+    let cache = PathBuf::from(opt(args, "--cache").expect("--cache"));
+    std::fs::create_dir_all(cache.join("layer_a")).unwrap();
+    let stamp = format!("homprov[{}] maxl={} {}", COST_ALG, lam.iter().max().unwrap(), LEAVES_STAMP);
+    let prov: Box<dyn HomProvider<F>> = if replay { Box::new(NoProvider) } else { Box::new(lv) };
+    let opts = SIndecOpts { cache_dir: Some(cache.clone()), prune_n: Some(n), ..SIndecOpts::default() };
+    let mut sd: SIndec<F> = SIndec::with_stamp(&lam, prov, stamp, opts);
+    for ts in &list {
+        let p = sd.schur.intern(Table::parse(ts));
+        tried += 1;
+        let t0 = Instant::now();
+        match sd.closure_gens(p) {
+            Ok(g) => {
+                ok += 1;
+                let st = sd.stats();
+                let mut din: Vec<i32> = g.ins.iter().map(|&m| sd.ar.info(m).deg).collect();
+                din.sort_unstable();
+                println!("closure {} OK: ins {} outs {} degrees {:?} ({:.2} s; layer A loaded {} saved {} rejected {})", ts, g.ins.len(), g.outs.len(), din, t0.elapsed().as_secs_f64(), st.layer_a_loaded, st.layer_a_saved, st.layer_a_rejected);
+            }
+            Err(e) => println!("closure {} FAILED ({:.2} s): {}", ts, t0.elapsed().as_secs_f64(), e),
+        }
+    }
+    let _ = sd.ar.lib_ref().save();
+    println!("LEAVES sindec field={} replay={} certified {}/{} types, wall {:.1}s, arena bytes {}", F::name(), replay, ok, tried, t_all.elapsed().as_secs_f64(), sd.ar.bytes().total());
+}
+
+/// peak resident set of this process (VmHWM, MB)
+fn peak_rss_mb() -> f64 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|t| t.lines().find(|l| l.starts_with("VmHWM:")).and_then(|l| l.split_whitespace().nth(1)).and_then(|v| v.parse::<f64>().ok()))
+        .map_or(0.0, |kb| kb / 1024.0)
+}
+
+/// `m4c measure --base IN --out OUT [--cache DIR] CALL...` with CALL = "labels;src;tgt;deg"
+/// (words as E0.2,E1.3; "-" = empty): one exact `hom_space` call each, in this process, recorded
+/// as an uncensored exact-shape cost record (wall seconds, peak RSS) in OUT (a copy of IN plus the
+/// new records). Run it under `timeout` / `ulimit -v`: a killed call writes nothing (and so stays
+/// unadmitted above the 10⁵ budget).
+fn measure_cmd(args: &[String]) {
+    let base = opt(args, "--base").expect("--base");
+    let out = opt(args, "--out").expect("--out");
+    let cache = opt(args, "--cache").map(PathBuf::from);
+    let mut table = CostTable::load(std::path::Path::new(&out)).or_else(|_| CostTable::load(std::path::Path::new(&base))).expect("cost table");
+    let calls: Vec<&String> = args.iter().filter(|a| a.matches(';').count() == 3).collect();
+    let mut lib: krhom::tmpl::TmplLib<F31> = krhom::tmpl::TmplLib::new(cache);
+    for c in calls {
+        let f: Vec<&str> = c.split(';').collect();
+        let lab = parse_lam(f[0]);
+        let pw = |x: &str| -> Vec<Rung> { if x == "-" { vec![] } else { krhom::smapio::parse_rungs(x).unwrap() } };
+        let (a, b) = (pw(f[1]), pw(f[2]));
+        let d: i32 = f[3].parse().unwrap();
+        let (fs, ft, unk) = (flows(&lab, &a), flows(&lab, &b), hom_unknowns(&lab, &a, &b, d));
+        let t0 = Instant::now();
+        let before = lib.stats().computed;
+        let ids = lib.try_hom_basis_cap(&krhom::tmpl::Window::new(&lab, &a), &krhom::tmpl::Window::new(&lab, &b), d, u128::MAX).unwrap();
+        let secs = t0.elapsed().as_secs_f64();
+        if lib.stats().computed == before {
+            println!("MEASURE {} : loaded from cache, not a measurement", c);
+            continue;
+        }
+        let rss = peak_rss_mb();
+        table.record(CostRec { labels: lab.clone(), fs, ft, unknowns: unk, deg: d, secs, rss_mb: rss, censored: false });
+        table.save(std::path::Path::new(&out)).unwrap();
+        println!("MEASURE {} : fibres {}x{} unknowns {} dim {} {:.2}s peak RSS {:.0} MB", c, fs, ft, unk, ids.len(), secs, rss);
+    }
+    let _ = lib.save();
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(|s| s.as_str()) {
@@ -402,6 +554,12 @@ fn main() {
         Some("stage0") => match opt(&args, "--field").as_deref() {
             Some("31") | None => stage0::<F31>(&args),
             Some("32b") => stage0::<F32b>(&args),
+            Some(f) => panic!("unknown field {}", f),
+        },
+        Some("measure") => measure_cmd(&args),
+        Some("leaves") => match opt(&args, "--field").as_deref() {
+            Some("31") | None => leaves_cmd::<F31>(&args),
+            Some("32b") => leaves_cmd::<F32b>(&args),
             Some(f) => panic!("unknown field {}", f),
         },
         _ => eprintln!("usage: m4c census [--lam 3,3,3] [--budget N] [--out FILE] | m4c stage0 --field 31|32b --cache DIR [--costs PATH] [--replay] [--types product|all]"),
