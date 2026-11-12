@@ -727,3 +727,78 @@ fn gate_plan_333() {
         eprintln!("[gate] idem_needed(3,3,3; N = {}) = {:?}", n, v.iter().map(|c| c.table.clone()).collect::<Vec<_>>());
     }
 }
+
+/// M5c route stamp (M5b open problem 4): a layer-A file written under another cost table is
+/// rejected by default and accepted with `layer_a_route_stamp` (no provider call, maps
+/// re-certified on load); a file of another route (chain token) is rejected in both modes.
+#[test]
+fn m5c_layer_a_route_stamp() {
+    assert_eq!(route_header("v2 prov=homprov[hs-kl1] maxl=3 costs=hs-kl1:273recs:b8c4807fa14298b4 slowdown=1 chain=X key=k"), "v2 prov=homprov[hs-kl1] maxl=3 costs=hs-kl1 slowdown=1 chain=X key=k");
+    assert_eq!(route_header("a costs=none b"), "a costs=none b");
+    let lam = [3u8, 2];
+    let dir = cache_dir("m5c_route");
+    let mut a = builder(&lam, None, Some(dir.clone()));
+    build_terms(&mut a);
+    let sa = a.stats();
+    assert!(sa.layer_a_saved > 0 && sa.provider_calls > 0);
+    let la = dir.join("layer_a");
+    let rewrite = |from: &str, to: &str| {
+        for f in std::fs::read_dir(&la).unwrap() {
+            let p = f.unwrap().path();
+            let t = std::fs::read_to_string(&p).unwrap();
+            let (h, body) = t.split_once('\n').unwrap();
+            let h2: Vec<String> = h.split(' ').map(|w| if w.starts_with(from) { to.to_string() } else { w.to_string() }).collect();
+            std::fs::write(&p, format!("{}\n{}", h2.join(" "), body)).unwrap();
+        }
+    };
+    // another cost table (records and hash)
+    rewrite("costs=", "costs=hs-kl1:999recs:00000000deadbeef");
+    let mut b = builder(&lam, None, Some(dir.clone()));
+    build_terms(&mut b);
+    let sb = b.stats();
+    assert_eq!((sb.layer_a_loaded, sb.layer_a_rejected), (0, sa.layer_a_saved), "default: exact stamp only");
+    // b recomputed and rewrote every file with the current stamp; make them foreign again
+    rewrite("costs=", "costs=hs-kl1:999recs:00000000deadbeef");
+    let (prov, stamp) = provider_for_stamped::<F>(&lam, Some(&costs()), 1.0);
+    let mut c = SIndec::<F>::with_stamp(&lam, prov, stamp, SIndecOpts { cache_dir: Some(dir.clone()), layer_a_route_stamp: true, ..Default::default() });
+    build_terms(&mut c);
+    let sc = c.stats();
+    assert_eq!(sc.provider_calls, 0, "route stamp: layer A used");
+    assert_eq!((sc.layer_a_loaded, sc.layer_a_route, sc.layer_a_rejected), (sa.layer_a_saved, sa.layer_a_saved, 0));
+    // another route (chain) is rejected even with the route stamp
+    rewrite("chain=", "chain=OTHER");
+    let (prov, stamp) = provider_for_stamped::<F>(&lam, Some(&costs()), 1.0);
+    let mut d = SIndec::<F>::with_stamp(&lam, prov, stamp, SIndecOpts { cache_dir: Some(dir.clone()), layer_a_route_stamp: true, ..Default::default() });
+    build_terms(&mut d);
+    let sd = d.stats();
+    assert_eq!((sd.layer_a_loaded, sd.layer_a_rejected), (0, sa.layer_a_saved));
+}
+
+/// M5c: a leaf isomorphism whose only windows are refused by admission is reported as an
+/// engineering (Refused) failure, not as Exhausted (level-5 pair 322 of (3,3,3): its leaf
+/// [E0 E1(2) E0 F1 F0(2) F1] needs the (4,4,1) window iso with 5.4 M unknowns; M5b counted the
+/// pair as Exhausted at 2x and sent it to the M4c list)
+#[test]
+fn m5c_leaf_iso_refusal_is_engineering() {
+    let lam = [3u8, 3, 3];
+    let mut s = Schur::new(&lam);
+    let plan = pruned_plan(&mut s, Some(5));
+    let pp = &plan.pairs[322];
+    let (p, r) = (s.table(pp.p).fmt(), pp.rung);
+    assert_eq!((p.as_str(), krhom::smapio::rung_str(&r).as_str()), ("1,2,0/1,1,1/1,1,1", "F1.1"));
+    // the M5b provider (cost table v3; the table is stamped for the M5b host class)
+    unsafe { std::env::set_var("KRHOM_COSTS_ANY_HOST", "1") };
+    let costs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/homprov/costs_333.txt");
+    let (prov, stamp) = provider_for_stamped::<F>(&lam, Some(&costs), 1.0);
+    assert!(stamp.contains("273recs"), "{}", stamp);
+    let mut sd = SIndec::<F>::with_stamp(&lam, prov, stamp, SIndecOpts { prune_n: Some(5), ..Default::default() });
+    let pt = tid(&mut sd.schur, &p);
+    match sd.dec_rung(pt, r) {
+        Err(DecErr::Provider { engineering, text }) => {
+            assert!(engineering, "leaf iso admission refusal reported as exhausted: {}", text);
+            assert!(text.contains("Refused"), "{}", text);
+        }
+        Err(e) => panic!("unexpected error {}", e),
+        Ok(_) => panic!("pair 322 decomposed without a cost table"),
+    }
+}
