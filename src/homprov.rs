@@ -1033,12 +1033,20 @@ pub fn host_stamp() -> String {
     format!("{}cpu-{}", n, model)
 }
 
-/// measured hom_space / rlambda_bases costs keyed by (sorted labels, fibre product rounded up to a
-/// power of 2, degree) -> max seconds observed; built and saved (text) in M4b
+/// Kind of an exact call for the cost buckets (M5c): 0 = one-sided (one end is the empty word,
+/// fibre 1: the whole-ladder closure calls Hom(R, L_p), Hom(L_p, R)), 1 = two-sided (pair and
+/// window calls). Their costs at equal fibre product differ by orders of magnitude, so one
+/// censored closure call must not close the bucket of pair calls (M5b open problem 3).
+pub fn call_kind(fs: u128, ft: u128) -> u8 {
+    if fs <= 1 || ft <= 1 { 0 } else { 1 }
+}
+
+/// measured hom_space / rlambda_bases costs keyed by (sorted labels, call kind, fibre product
+/// rounded up to a power of 2, degree) -> max seconds observed; built and saved (text) in M4b
 #[derive(Clone, Debug)]
 pub struct CostTable {
     pub recs: Vec<CostRec>,
-    map: BTreeMap<(Vec<u8>, u32, i32), f64>,
+    map: BTreeMap<(Vec<u8>, u8, u32, i32), f64>,
     /// solver generation and machine class of the measurements (header stamp)
     pub alg: String,
     pub host: String,
@@ -1061,13 +1069,13 @@ impl CostTable {
     pub fn new() -> CostTable {
         CostTable::default()
     }
-    fn key(labels: &[u8], fp: u128, deg: i32) -> (Vec<u8>, u32, i32) {
+    fn key(labels: &[u8], kind: u8, fp: u128, deg: i32) -> (Vec<u8>, u8, u32, i32) {
         let mut l = labels.to_vec();
         l.sort_unstable();
-        (l, bucket(fp), deg)
+        (l, kind, bucket(fp), deg)
     }
     pub fn record(&mut self, r: CostRec) {
-        let k = CostTable::key(&r.labels, r.fs * r.ft, r.deg);
+        let k = CostTable::key(&r.labels, call_kind(r.fs, r.ft), r.fs * r.ft, r.deg);
         let e = self.map.entry(k).or_insert(0.0);
         // a censored record is only a lower bound (killed at its limit): the bucket prediction
         // becomes +infinity, so it can never admit a call (review tests finding 3: a bucket
@@ -1110,8 +1118,22 @@ impl CostTable {
             (None, None) => None,
         }
     }
+    /// bucket maximum over both call kinds (the pre-M5c key; kept for reports and tests)
     pub fn predict(&self, labels: &[u8], fibre_product: u64, deg: i32) -> Option<f64> {
-        self.map.get(&CostTable::key(labels, fibre_product as u128, deg)).cloned()
+        let a = self.map.get(&CostTable::key(labels, 0, fibre_product as u128, deg)).cloned();
+        let b = self.map.get(&CostTable::key(labels, 1, fibre_product as u128, deg)).cloned();
+        match (a, b) {
+            (Some(x), Some(y)) => Some(x.max(y)),
+            (x, y) => x.or(y),
+        }
+    }
+    /// bucket maximum of the calls of the same kind (`call_kind(fs, ft)`) as a call fs x ft
+    pub fn predict_kind(&self, labels: &[u8], fs: u128, ft: u128, deg: i32) -> Option<f64> {
+        self.map.get(&CostTable::key(labels, call_kind(fs, ft), fs.saturating_mul(ft), deg)).cloned()
+    }
+    /// prediction for one call: the exact-shape record if there is one, else the bucket of its kind
+    pub fn predict_call(&self, labels: &[u8], fs: u128, ft: u128, unknowns: u128, deg: i32) -> Option<f64> {
+        self.predict_exact(labels, fs, ft, unknowns, deg).or_else(|| self.predict_kind(labels, fs, ft, deg))
     }
     pub fn save(&self, path: &std::path::Path) -> std::io::Result<()> {
         use std::io::Write;
@@ -1239,10 +1261,12 @@ impl Default for Exact {
 impl Exact {
     /// Admission (§4.5): (max label <= max_label, fibre product <= cap, unknowns <= cap) or a
     /// cost-table prediction <= max_call_s; a prediction above max_call_s vetoes the label rule
-    /// (per-call ceiling). Ok(rule) or Err(reason).
+    /// (per-call ceiling). The prediction is the record of exactly this call shape if measured,
+    /// else the bucket of the same call kind (M5c: a censored closure call no longer vetoes pair
+    /// calls of the same fibre product). Ok(rule) or Err(reason).
     pub fn admit(&self, labels: &[u8], fs: u128, ft: u128, unknowns: u128, deg: i32) -> Result<&'static str, String> {
         let fp = fs.saturating_mul(ft);
-        let pred = self.costs.as_ref().and_then(|c| c.predict(labels, fp.min(u64::MAX as u128) as u64, deg));
+        let pred = self.costs.as_ref().and_then(|c| c.predict_call(labels, fs, ft, unknowns, deg));
         let maxl = labels.iter().copied().max().unwrap_or(0);
         let label_rule = maxl <= self.max_label && fp <= self.max_fibre_product as u128 && unknowns <= self.max_unknowns as u128;
         match pred {
@@ -1741,7 +1765,7 @@ impl Search {
         }
         if let Some(c) = self.costs.as_ref() {
             // the bucket maximum (a different call shape may dominate it) can admit, not veto
-            if let Some(t) = c.predict(labels, fp as u64, d) {
+            if let Some(t) = c.predict_kind(labels, fa, fb, d) {
                 if t <= self.max_window_s {
                     return true;
                 }
