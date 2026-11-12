@@ -43,8 +43,9 @@ magic, version, (r, b), length, hash, and that the basis/weights equal the recom
 (r, b), flipped byte, truncation). `grwarm r:b ...` builds and persists tables.
 
 GrTable(3, 9) and GrTable(6, 9) were started in the background at 18:23 (`grwarm`); at report time (> 75 min) neither
-had finished (RSS 3.1 GB and 1.2 GB). They were not needed by anything in this session (no 9-root template was
-certified: the planner's template windows are ≤ 90 flows). Status at the final commit: see §7.
+had finished; they were **stopped after 90 min** (RSS 3.1 GB and 2.0 GB) unfinished. They were not needed by anything in this session (no 9-root template was
+certified: the planner's template windows are ≤ 90 flows). The cache lives in `target/grcache` (not committed); tables with
+b = 7 were persisted by the tests (gr_1_7 … gr_7_7).
 
 ## 2. Theorem-level Assoc certificate (src/leafgen.rs)
 
@@ -190,13 +191,15 @@ Form [[1]] everywhere; no map uses the theorem-level Assoc. For comparison, M5c'
    (persisted in layer A by reference); FlagMatch/Collapse templates are Added templates (re-certified on import).
 4. **Measurable pairs** (212, 335, 411; and the N = 6 instance of 313): measure their 1-4·10⁵ steps with
    `m4c measure` (as done for 313) — subject to caveat 2.
-5. **GrTable(3, 9)/(6, 9)**: still unbuilt in this session (see §7); the persistence is in place, so a completed build
+5. **GrTable(3, 9)/(6, 9)**: unbuilt (stopped after 90 min, §1); the persistence is in place, so a completed build
    is paid once. Not on the critical path of any census-feasible target.
 6. **Pad (B3): not needed** for the current lists; revisit only if B5's local steps introduce 4-block levels.
 7. The planner's Exact moves enumerate replacement words of ≤ 4 (2 uprights) / ≤ 3 (3 uprights) rungs; the census
    found every chain within these limits.
 
 ## 7. Commits and reproduction
+
+**Full suite** `KRHOM_THREADS=4 cargo test --release` on the final code: **275 passed, 0 failed**.
 
 Commits on `m4c-rexplan` (all pushed): merges; GrTable persistence + grwarm; theorem Assoc certificate + marker +
 spot check + tests; planner + realize_chain + tests; gp0 census; B4 rex-class pairs + logs; census data; this report
