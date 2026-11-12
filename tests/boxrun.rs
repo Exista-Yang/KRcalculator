@@ -214,3 +214,24 @@ fn chi_mismatch_is_an_error() {
         assert!(e.contains("CHI FAIL"), "{}", e);
     }
 }
+
+/// Review 2s_close F2/F4, 2s_core m2: the xscan JSON records the certification switches and the
+/// commit of the binary, and its peak RSS is the process peak.
+#[test]
+fn xscan_json_provenance() {
+    let d = tmp("xscan");
+    std::fs::create_dir_all(&d).unwrap();
+    let j = d.join("x.json");
+    let o = std::process::Command::new(env!("CARGO_BIN_EXE_xscan")).args(["2,2", "1 1 1", "3,4", "--both", "--json", j.to_str().unwrap()]).env("KRHOM_THREADS", "1").output().unwrap();
+    assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    let t = std::fs::read_to_string(&j).unwrap();
+    for k in ["\"check_d2\":true", "\"certified\":true", "\"rung_transport\":", "\"rungwise\":", "\"seed\":", "\"threads\":1", "\"commit\":\"", "\"basepoint_ok\":true", "\"peak_rss_scope\":\"process\""] {
+        assert!(t.contains(k), "missing {} in {}", k, &t[..t.len().min(600)]);
+    }
+    assert!(!t.contains("\"commit\":\"unknown\""));
+    let o = std::process::Command::new(env!("CARGO_BIN_EXE_xscan")).args(["2,2", "1 1 1", "3", "--no-d2", "--json", j.to_str().unwrap()]).env("KRHOM_THREADS", "1").output().unwrap();
+    assert!(o.status.success());
+    let t = std::fs::read_to_string(&j).unwrap();
+    assert!(t.contains("\"check_d2\":false") && t.contains("\"certified\":false"), "{}", &t[..t.len().min(600)]);
+    let _ = std::fs::remove_dir_all(d);
+}

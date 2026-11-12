@@ -112,7 +112,7 @@ fn resume_governing_header_and_replay_only() {
     for d in &tdir {
         for f in std::fs::read_dir(d).unwrap() {
             let f = f.unwrap().path();
-            if f.file_name().unwrap().to_string_lossy().starts_with("hom") {
+            if f.file_name().unwrap().to_string_lossy().starts_with("tmpl-") {
                 std::fs::remove_file(f).unwrap();
             }
         }
