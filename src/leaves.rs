@@ -421,7 +421,8 @@ pub struct Leaves {
     pub budget: u128,
     /// calls in (budget, hard_cap] only with an uncensored exact-shape cost record
     pub hard_cap: u128,
-    /// one-sided calls (an empty end) above this many unknowns only with a cost record
+    /// one-sided calls (an empty end) on windows with a label > 3 above this many unknowns only
+    /// with a cost record
     pub one_sided_cap: u128,
     pub costs: Option<CostTable>,
     /// try the differing window before the whole words
@@ -446,7 +447,7 @@ pub struct Leaves {
 }
 
 /// provider stamp suffix of the Leaves backend (layer-A headers)
-pub const LEAVES_STAMP: &str = "leaves=Leaves(v1,closure,threeup,prefix-ext+costalt5,window-whole,budget=1e5/4e5/os2e4)";
+pub const LEAVES_STAMP: &str = "leaves=Leaves(v1,closure,threeup,prefix-ext+costalt5,window-whole,budget=1e5/4e5/os2e4l4)";
 
 impl Default for Leaves {
     fn default() -> Self {
@@ -586,11 +587,13 @@ impl Leaves {
 
     /// budget rule: Ok(()) if the exact call may be made
     fn admit(&self, labels: &[u8], a: &[Rung], b: &[Rung], d: i32, unknowns: u128) -> Result<(), String> {
-        // one-sided calls (one end the empty word, `call_kind` 0) cost far more per unknown
-        // (M5c; A2: Hom^18(∅, F0.3 E0.3) on (3,6), 42 872 unknowns, > 25 min): above
-        // `one_sided_cap` they need a finite cost-table prediction
+        // one-sided calls (one end the empty word, `call_kind` 0) on windows with a label > 3
+        // (outside the measured (3,3,3) class) can cost far more per unknown (A2:
+        // Hom^18(∅, F0.3 E0.3) on (3,6), 42 872 unknowns, > 25 min and 3.3 GB, while one-sided
+        // calls on labels ≤ 3 up to 83 641 unknowns took ≤ 66 s): above `one_sided_cap` they need
+        // a finite exact-shape cost record
         let (fs, ft) = (crate::schur::flows(labels, a), crate::schur::flows(labels, b));
-        if call_kind(fs, ft) == 0 && unknowns > self.one_sided_cap {
+        if call_kind(fs, ft) == 0 && labels.iter().any(|&l| l > 3) && unknowns > self.one_sided_cap {
             let pred = self.costs.as_ref().and_then(|c| c.predict_exact(labels, fs, ft, unknowns, d));
             return match pred {
                 Some(t) if t.is_finite() && unknowns <= self.hard_cap => Ok(()),
