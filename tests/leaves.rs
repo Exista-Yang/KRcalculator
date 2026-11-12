@@ -319,7 +319,7 @@ fn sll_ex_7_40_7_41() {
 }
 
 /// G1(a) closure part with the Leaves backend alone: every type of (λ, λ), ins and outs
-fn g1a_closure<F: Field>(lam: &[u8]) -> (usize, usize) {
+fn g1a_closure<F: Field>(lam: &[u8]) -> (usize, usize, std::collections::BTreeMap<String, usize>) {
     let mut s = Schur::new(lam);
     let mut ar = Arena::<F>::new(lam, TmplLib::new(None));
     let (_, order) = g1_targets(&mut s);
@@ -327,6 +327,7 @@ fn g1a_closure<F: Field>(lam: &[u8]) -> (usize, usize) {
     let r0 = ar.expr(Expr::new(lam, &[]).unwrap());
     let b = Budget::default();
     let (mut ok, mut tot) = (0, 0);
+    let mut kinds = std::collections::BTreeMap::new();
     for p in order {
         let w = canonical_ladder(&mut s, p);
         let lp = ar.expr(Expr::new(lam, &w).unwrap());
@@ -337,21 +338,24 @@ fn g1a_closure<F: Field>(lam: &[u8]) -> (usize, usize) {
                 Ok((ms, _)) => {
                     certify_closure(&ar, lam, r0, lp, None, &ms, &want, outs, 0x9a1).unwrap();
                     ok += 1;
+                    for r in &lv.last.steps {
+                        *kinds.entry(format!("{:?}", r.kind)).or_insert(0usize) += 1;
+                    }
                 }
                 Err(e) => eprintln!("[G1a closure] {:?} {} outs={}: {:?}", lam, s.table(p).fmt(), outs, e),
             }
         }
     }
-    (ok, tot)
+    (ok, tot, kinds)
 }
 
 #[test]
 fn g1a_closure_leaves_alone() {
     for lam in [vec![3u8, 3], vec![2, 2, 2]] {
         let t0 = std::time::Instant::now();
-        let (a, n) = g1a_closure::<F31>(&lam);
-        let (b, m) = g1a_closure::<F32b>(&lam);
-        eprintln!("[G1a closure, Leaves alone] {:?}: F31 {}/{}, F32b {}/{} ({:.1}s)", lam, a, n, b, m, t0.elapsed().as_secs_f64());
+        let (a, n, ka) = g1a_closure::<F31>(&lam);
+        let (b, m, _) = g1a_closure::<F32b>(&lam);
+        eprintln!("[G1a closure, Leaves alone] {:?}: F31 {}/{}, F32b {}/{} ({:.1}s); step families (F31) {:?}", lam, a, n, b, m, t0.elapsed().as_secs_f64(), ka);
         let want = if lam.len() == 2 { 8 } else { 42 };
         assert_eq!((a, n, b, m), (want, want, want, want));
     }
@@ -360,4 +364,38 @@ fn g1a_closure_leaves_alone() {
 #[allow(dead_code)]
 fn _unused(_: u128) -> u128 {
     flows(&[1], &[])
+}
+
+/// validate_elem: every E2/E3 closed form with labels ≤ 3 is a nonzero multiple of the unique
+/// exact map (both primes); a wrong window is rejected
+#[test]
+fn validate_elem_small() {
+    use krhom::smap::ElemKind::*;
+    fn run<F: Field>() -> usize {
+        let mut n = 0;
+        for la in 0..=3u8 {
+            for lb in 0..=3u8 {
+                for k in 1..=3usize {
+                    for (a, dirs) in [(vec![Rung::e(0, k), Rung::f(0, k)], 0), (vec![Rung::f(0, k), Rung::e(0, k)], 1)] {
+                        let _ = dirs;
+                        if !valid_word(&[la, lb], &a) {
+                            continue;
+                        }
+                        for dir in [LeafDir::Out, LeafDir::In] {
+                            if let Some((kind, _)) = elem_pattern(&[la, lb], &a, &[], dir) {
+                                validate_elem::<F>(kind, &[la, lb], &a, 120_000).unwrap_or_else(|e| panic!("{}", e));
+                                n += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // a closed form on a window that is not its pattern is refused by the arena or rejected
+        assert!(validate_elem::<F>(Eps, &[2, 2], &[Rung::e(0, 1), Rung::f(0, 1)], 120_000).is_err());
+        n
+    }
+    let (a, b) = (run::<F31>(), run::<F32b>());
+    eprintln!("[validate_elem] {} / {} closed forms validated (F31 / F32b)", a, b);
+    assert!(a >= 30 && a == b);
 }

@@ -367,6 +367,7 @@ pub enum LeafDir {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum StepKind {
     Id,
+    Elem,
     Window,
     Whole,
 }
@@ -435,7 +436,7 @@ pub struct Leaves {
 }
 
 /// provider stamp suffix of the Leaves backend (layer-A headers)
-pub const LEAVES_STAMP: &str = "leaves=Leaves(v1,closure,threeup,prefix-ext,window-then-whole,budget=1e5/4e5)";
+pub const LEAVES_STAMP: &str = "leaves=Leaves(v1,closure,threeup,prefix-ext,elem-window-whole,budget=1e5/4e5)";
 
 impl Default for Leaves {
     fn default() -> Self {
@@ -458,6 +459,89 @@ pub fn rep_rank_of(s: &Schur, lam: &[u8], t: Tid) -> u64 {
 
 fn degs_of(g: &Lp) -> Vec<(i32, usize)> {
     (0..g.c.len()).filter(|&i| g.c[i] != 0).map(|i| (g.lo + i as i32, g.c[i] as usize)).collect()
+}
+
+/// The E2/E3 closed form (smap `ElemKind`) of a 2-upright step window, if any: Out: window
+/// a -> ∅ (Eps, EpsL, Trace, TraceL); In: ∅ -> a (Eta, EtaL, Iota, IotaL). Returns the kind and
+/// its constant key (E2: (a, b) labels; E3: (c, rung size)).
+pub fn elem_pattern(labels: &[u8], a: &[Rung], b: &[Rung], dir: LeafDir) -> Option<(crate::smap::ElemKind, (u8, u8))> {
+    use crate::smap::ElemKind::*;
+    use crate::web::Dir;
+    if labels.len() != 2 || !b.is_empty() || a.len() != 2 || a[0].i != 0 || a[1].i != 0 || a[0].r != a[1].r || a[0].dir == a[1].dir {
+        return None;
+    }
+    let k = a[0].r as u8;
+    let (l0, l1) = (labels[0], labels[1]);
+    let out = dir == LeafDir::Out;
+    if a[0].dir == Dir::E {
+        // [E0.k, F0.k]
+        if l0 == 0 {
+            return Some((if out { TraceL } else { IotaL }, (l1, k)));
+        }
+        if k == l1 {
+            return Some((if out { Eps } else { Eta }, (l0, l1)));
+        }
+    } else {
+        // [F0.k, E0.k]
+        if l1 == 0 {
+            return Some((if out { Trace } else { Iota }, (l0, k)));
+        }
+        if k == l0 {
+            return Some((if out { EpsL } else { EtaL }, (l0, l1)));
+        }
+    }
+    None
+}
+
+/// `validate_elem` (M4C_PLAN §3.4, C_m4c M5): the closed form `kind` on the 2-upright window
+/// (labels, a) with scalar 1 is a nonzero multiple of the exact `hom_space` map, which must be the
+/// unique one up to scalars (Hom^deg one-dimensional). Compared blockwise at every coset of the
+/// window at two points (exact comparison; refused above `cap` unknowns). Ok(ratio) on success.
+pub fn validate_elem<F: Field>(kind: crate::smap::ElemKind, labels: &[u8], a: &[Rung], cap: u128) -> Result<F, String> {
+    use crate::smap::ElemKind::*;
+    let out = matches!(kind, Eps | EpsL | Trace | TraceL);
+    let mut ar = Arena::<F>::new(labels, crate::tmpl::TmplLib::new(None));
+    let ew = ar.expr(Expr::new(labels, a)?);
+    let e0 = ar.expr(Expr::new(labels, &[])?);
+    let (src, tgt) = if out { (ew, e0) } else { (e0, ew) };
+    let el = ar.add(MapNode::Elem { kind, src, tgt, at: 0, upright: 0, scalar: F::one() }, "validate_elem")?;
+    let d = ar.info(el).deg;
+    let (wa, wb): (Vec<Rung>, Vec<Rung>) = if out { (a.to_vec(), vec![]) } else { (vec![], a.to_vec()) };
+    let u = hom_unknowns(labels, &wa, &wb, d);
+    if u > cap {
+        return Err(format!("validate_elem {:?} {:?}: {} unknowns > cap {}", kind, labels, u, cap));
+    }
+    let ids = ar.lib().try_hom_basis_cap(&Window::new(labels, &wa), &Window::new(labels, &wb), d, u128::MAX)?;
+    if ids.len() != 1 {
+        return Err(format!("validate_elem {:?} {:?}: Hom^{} has dimension {}", kind, labels, d, ids.len()));
+    }
+    let tm = ar.add(MapNode::Local { src, tgt, at: 0, first: 0, tmpl: ids[0] }, "validate_elem exact")?;
+    let cos: Vec<u64> = ar.flows(ew).support().to_vec();
+    let mut ratio: Option<F> = None;
+    for pt in points::<F>(ar.k(), 0xe1e7, 2, 0) {
+        let mut ev = Eval::new(&ar, pt);
+        for &c in &cos {
+            let (be, bt) = (ev.block(el, c), ev.block(tm, c));
+            for (x, y) in be.a.iter().zip(&bt.a) {
+                if y.is_zero() {
+                    if !x.is_zero() {
+                        return Err(format!("validate_elem {:?} {:?}: not proportional at coset {}", kind, labels, c));
+                    }
+                    continue;
+                }
+                let r = x.mul(&y.inv());
+                match &ratio {
+                    None => ratio = Some(r),
+                    Some(q) if *q == r => {}
+                    Some(_) => return Err(format!("validate_elem {:?} {:?}: not proportional at coset {}", kind, labels, c)),
+                }
+            }
+        }
+    }
+    match ratio {
+        Some(r) if !r.is_zero() => Ok(r),
+        _ => Err(format!("validate_elem {:?} {:?}: closed form vanishes", kind, labels)),
+    }
 }
 
 impl Leaves {
@@ -554,6 +638,36 @@ impl Leaves {
         }
         kinds.push(StepKind::Whole);
         let pt = points::<F>(ar.k(), self.seed ^ 0x57e9, 1, 0).remove(0);
+        // E2/E3 closed form for a one-dimensional cup/cap step (validated once per arena)
+        if n == 1 {
+            if let Some((ek, key)) = elem_pattern(&ws.labels, &ws.a, &ws.b, dir) {
+                let valid = ar.elem_certified(ek, key).is_some() || match validate_elem::<F>(ek, &ws.labels, &ws.a, 120_000) {
+                    Ok(_) => {
+                        ar.certify_elem(ek, key, F::one());
+                        true
+                    }
+                    Err(e) => {
+                        if self.trace() {
+                            eprintln!("[leaves] {}", e);
+                        }
+                        false
+                    }
+                };
+                if valid {
+                    if let Ok(m) = ar.add(MapNode::Elem { kind: ek, src, tgt, at: ws.at, upright: ws.first, scalar: F::one() }, "leaves step elem") {
+                        let d = ar.info(m).deg;
+                        if d == need[0].0 {
+                            let mut ev = Eval::new(ar, pt.clone());
+                            let blk = ev.block(m, c);
+                            if !blk.a[cols[0]].is_zero() {
+                                st.steps.push(StepRec { level, from: tp, to: t, kind: StepKind::Elem, degs: vec![d], unknowns: 0, secs: t0.elapsed().as_secs_f64() });
+                                return Ok(vec![m]);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let mut cands: Vec<(i32, MapId)> = vec![];
         let mut maxu = 0u128;
         let mut last_err = String::new();
