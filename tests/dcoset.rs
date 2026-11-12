@@ -1,16 +1,40 @@
 //! M4c A1, gate G-L1 (combinatorics of src/dcoset.rs): singular Deodhar sums of the independent
 //! rung-step generating functions against `Schur::ladder_char` on every canonical ladder of the
-//! visited blocks of (3,3), (2,1,2), (2,2,2), (3,3,3) and on every one-rung extension; flows per
+//! blocks (λ, μ) (every μ) of (3,3), (2,1,2), (2,2,2), (3,3,3) and on every one-rung extension; flows per
 //! coset (`sexpr::deodhar_check`); Lemma 8.7 sums (identity paths = c_diag, extensions =
 //! Σ term_mult·b_q); minimal representatives, ψ and Bruhat order; rung-level Grassmannian
 //! reduction (G_local = G_global); degree sign (E2 Eta degree = identity-path defect).
 use krhom::dcoset::*;
 use krhom::schur::{tables, Elt, Lp, Schur, Table, Tid};
-use krhom::sindec::{canonical_ladder, visited_blocks};
+use krhom::sindec::canonical_ladder;
 use krhom::web::{Dir, Rung};
 use std::collections::BTreeMap;
 
 const LAMS: [&[u8]; 4] = [&[3, 3], &[2, 1, 2], &[2, 2, 2], &[3, 3, 3]];
+
+/// every block μ of λ: compositions of K with as many parts as λ (zeros allowed)
+fn visited_blocks(lam: &[u8]) -> Vec<Vec<u8>> {
+    let k: u8 = lam.iter().sum();
+    let n = lam.len();
+    let mut out = vec![];
+    fn rec(n: usize, left: u8, cur: &mut Vec<u8>, out: &mut Vec<Vec<u8>>) {
+        if cur.len() == n - 1 {
+            cur.push(left);
+            out.push(cur.clone());
+            cur.pop();
+            return;
+        }
+        for a in 0..=left {
+            cur.push(a);
+            rec(n, left - a, cur, out);
+            cur.pop();
+        }
+    }
+    rec(n, k, &mut vec![], &mut out);
+    // λ first (closure types), then the rest
+    out.sort_by_key(|m| m.as_slice() != lam);
+    out
+}
 
 fn as_map(e: &Elt) -> BTreeMap<Tid, Lp> {
     e.t.iter().cloned().collect()
