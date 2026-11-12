@@ -1,0 +1,23 @@
+krhom-sindec v2 ladfn=schur.ladder_minflow.v1 tmpl_alg=hs1.lcx1 prov=homprov[hs-kl1] maxl=3 costs=hs-kl1:351recs:d4f4442276b1acd5 slowdown=1 chain=S0-2,Exact(l3,600s),S3-6 stage0=ProductClosure(v1,product-first) key=kind=closure;lam=3,3,3;field=F_2147483647;p=0,0,3/3,0,0/0,3,0;Lp=E0.3,F0.3,E1.3,F1.3;outs=false;ep=none
+krhom-smapio v1 field=F_2147483647 lam=3,3,3 tmpl_alg=hs1.lcx1
+exprs 3
+e E0.3,F0.3
+e -
+e E1.3,F1.3
+tmpls 1
+H 3,3| 3,3|E0.3,F0.3 9 0 d0667e01f680025c
+nodes 12
+I 0
+L 1 0 0 0 0
+I 1
+C 1 2
+C 0 3
+K 4 E1.3,F1.3
+I 2
+L 1 2 0 1 0
+I 1
+C 7 8
+C 6 9
+C 5 10
+roots 1 11
+end

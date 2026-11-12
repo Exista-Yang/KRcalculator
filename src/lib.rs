@@ -39,6 +39,9 @@ pub mod smapio;
 pub mod sindec;
 pub mod sengine;
 pub mod swire;
+pub mod dcoset;
+pub mod leaves;
+pub mod leafgen;
 
 /// Number of worker threads: the environment variable KRHOM_THREADS if set
 /// (useful to keep a shared machine responsive), otherwise all available cores.
