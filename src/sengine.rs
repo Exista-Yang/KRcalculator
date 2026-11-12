@@ -304,6 +304,8 @@ pub struct SCx<F> {
     inn: BTreeMap<usize, BTreeSet<usize>>,
     next: usize,
     bytes: u64,
+    /// number of stored components (kept with the byte counter)
+    nedges: u64,
 }
 
 impl<F: Field> Default for SCx<F> {
@@ -314,7 +316,7 @@ impl<F: Field> Default for SCx<F> {
 
 impl<F: Field> SCx<F> {
     pub fn new() -> Self {
-        SCx { objs: BTreeMap::new(), out: BTreeMap::new(), inn: BTreeMap::new(), next: 0, bytes: 0 }
+        SCx { objs: BTreeMap::new(), out: BTreeMap::new(), inn: BTreeMap::new(), next: 0, bytes: 0, nedges: 0 }
     }
     pub fn objs(&self) -> &BTreeMap<usize, SObj> {
         &self.objs
@@ -350,6 +352,7 @@ impl<F: Field> SCx<F> {
                 if old.is_zero() {
                     let gone = outs.remove(&y).unwrap();
                     self.bytes -= gone.bytes() as u64 + EDGE_BYTES;
+                    self.nedges -= 1;
                     self.inn.get_mut(&y).unwrap().remove(&x);
                 }
             }
@@ -358,6 +361,7 @@ impl<F: Field> SCx<F> {
                     return;
                 }
                 self.bytes += m.bytes() as u64 + EDGE_BYTES;
+                self.nedges += 1;
                 outs.insert(y, m);
                 self.inn.get_mut(&y).unwrap().insert(x);
             }
@@ -367,6 +371,7 @@ impl<F: Field> SCx<F> {
         let m = self.out.get_mut(&x)?.remove(&y)?;
         self.inn.get_mut(&y).unwrap().remove(&x);
         self.bytes -= m.bytes() as u64 + EDGE_BYTES;
+        self.nedges -= 1;
         Some(m)
     }
     pub fn remove_obj(&mut self, a: usize) {
@@ -374,12 +379,14 @@ impl<F: Field> SCx<F> {
             for (y, m) in outs {
                 self.inn.get_mut(&y).unwrap().remove(&a);
                 self.bytes -= m.bytes() as u64 + EDGE_BYTES;
+                self.nedges -= 1;
             }
         }
         if let Some(ins) = self.inn.remove(&a) {
             for x in ins {
                 let m = self.out.get_mut(&x).unwrap().remove(&a).unwrap();
                 self.bytes -= m.bytes() as u64 + EDGE_BYTES;
+                self.nedges -= 1;
             }
         }
         if self.objs.remove(&a).is_some() {
@@ -390,7 +397,8 @@ impl<F: Field> SCx<F> {
         self.objs.len()
     }
     pub fn components(&self) -> usize {
-        self.out.values().map(|m| m.len()).sum()
+        debug_assert_eq!(self.nedges as usize, self.out.values().map(|m| m.len()).sum::<usize>());
+        self.nedges as usize
     }
     /// stored block entries (all LocMap lengths)
     pub fn stored_entries(&self) -> u64 {
@@ -612,6 +620,8 @@ pub enum PivotOrder {
     /// grew is re-pushed at its current cost; only fill-in candidates are pushed after a pivot.
     /// Deterministic (structure only), so the frozen trace is as well defined as with `Heap`.
     Lazy,
+    /// the M6a-1b implementation of `Heap` (BTreeMap/HashMap lookups per push; reference)
+    HeapV1,
 }
 
 #[derive(Clone, Debug)]
@@ -629,6 +639,8 @@ pub struct EngOpts {
     pub ignore_eligibility: bool,
     /// the coset whose blocks `PointScan` extracts (the identity coset for closure data)
     pub id_coset: Option<u64>,
+    /// record the location string of the memory peak (a format! per new peak)
+    pub peak_detail: bool,
 }
 impl Default for EngOpts {
     fn default() -> Self {
@@ -640,6 +652,7 @@ impl Default for EngOpts {
             check_dead: true,
             ignore_eligibility: false,
             id_coset: None,
+            peak_detail: true,
         }
     }
 }
@@ -673,6 +686,10 @@ pub struct MemStats {
     /// peak of the complex alone (entries + overheads)
     pub peak_cx_bytes: u64,
     pub peak_entries: u64,
+    /// objects and components of the complex, and the previous complex's bytes, at the peak
+    pub peak_objs: u64,
+    pub peak_edges: u64,
+    pub peak_prev_bytes: u64,
 }
 
 /// The output of one scan at one point (what the box driver stores per point).
@@ -750,6 +767,63 @@ pub struct PEngine<F: Field> {
     /// edges created by the last pivot (fill-in), for the candidate index of the heap
     new_edges: Vec<(usize, usize)>,
     track_new: bool,
+    /// cumulative profile of the whole scan: (apply_pivot secs, pattern-hash secs, updates, multiply-adds)
+    pub tprof: (f64, f64, u64, u64),
+    /// composition plans per (x type, pivot type, y type): blocks of d_xy += d_ay ∘ d_xb
+    plans: HashMap<(Tid, Tid, Tid), Arc<CompPlan>>,
+    /// freed component buffers by length (reused by fill-in edges)
+    pool: HashMap<u32, Vec<Vec<F>>>,
+    pool_bytes: u64,
+}
+
+/// Blockwise composition dst(x → y) += g(a → y) ∘ f(x → a) over the registry layouts:
+/// per coset of dst where g and f have blocks, (dst off, g off, f off, m, k, n).
+#[derive(Debug)]
+pub struct CompPlan {
+    pub blocks: Vec<(u32, u32, u32, u32, u32, u32)>,
+    pub madds: u64,
+}
+
+impl CompPlan {
+    pub fn new(dst: &Layout, g: &Layout, f: &Layout) -> CompPlan {
+        let mut blocks = vec![];
+        let mut madds = 0;
+        for (i, &c) in dst.cosets.iter().enumerate() {
+            let (Some(ig), Some(jf)) = (g.index(c), f.index(c)) else { continue };
+            let (m, k, n) = (dst.rows[i], g.cols[ig], dst.cols[i]);
+            assert!(g.rows[ig] == m && f.cols[jf] == n && f.rows[jf] == k, "CompPlan: block shapes differ");
+            if m == 0 || k == 0 || n == 0 {
+                continue;
+            }
+            madds += m as u64 * k as u64 * n as u64;
+            blocks.push((dst.off[i], g.off[ig], f.off[jf], m, k, n));
+        }
+        CompPlan { blocks, madds }
+    }
+    /// dst += alpha · g ∘ f (no allocation)
+    #[inline]
+    pub fn apply<F: Field>(&self, dst: &mut [F], g: &[F], f: &[F], alpha: &F) {
+        for &(od, og, of, m, k, n) in &self.blocks {
+            let (m, k, n) = (m as usize, k as usize, n as usize);
+            let (od, og, of) = (od as usize, og as usize, of as usize);
+            for i in 0..m {
+                let crow = &mut dst[od + i * n..od + (i + 1) * n];
+                for t in 0..k {
+                    let x = &g[og + i * k + t];
+                    if x.is_zero() {
+                        continue;
+                    }
+                    let s = x.mul(alpha);
+                    let brow = &f[of + t * n..of + (t + 1) * n];
+                    for (cj, bj) in crow.iter_mut().zip(brow) {
+                        if !bj.is_zero() {
+                            cj.fma(&s, bj);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl<F: Field> PEngine<F> {
@@ -783,6 +857,10 @@ impl<F: Field> PEngine<F> {
             prof2: (0.0, 0, 0.0),
             new_edges: vec![],
             track_new: false,
+            tprof: (0.0, 0.0, 0, 0),
+            plans: HashMap::new(),
+            pool: HashMap::new(),
+            pool_bytes: 0,
         }
     }
     pub fn is_replay(&self) -> bool {
@@ -803,7 +881,7 @@ impl<F: Field> PEngine<F> {
     }
     /// bytes counted against the budget right now
     pub fn bytes(&self) -> u64 {
-        self.cx.bytes() + self.prev_bytes + self.reg.bytes() + self.extern_bytes
+        self.cx.bytes() + self.prev_bytes + self.reg.bytes() + self.extern_bytes + self.pool_bytes
     }
     /// declare memory held outside the engine for this point (Eval memo, evaluated library blocks)
     pub fn set_extern_bytes(&mut self, b: u64) {
@@ -817,7 +895,12 @@ impl<F: Field> PEngine<F> {
         }
         if b > self.mem.peak_bytes {
             self.mem.peak_bytes = b;
-            self.mem.peak_at = at();
+            if self.opts.peak_detail {
+                self.mem.peak_at = at();
+            }
+            self.mem.peak_objs = self.cx.objs.len() as u64;
+            self.mem.peak_edges = self.cx.nedges;
+            self.mem.peak_prev_bytes = self.prev_bytes;
         }
         if self.cx.bytes() > self.mem.peak_cx_bytes {
             self.mem.peak_cx_bytes = self.cx.bytes();
@@ -829,7 +912,9 @@ impl<F: Field> PEngine<F> {
     }
 
     fn checkpoint(&mut self, what: &str) -> Result<(), SErr> {
+        let th = Instant::now();
         let h = self.cx.pattern_hash();
+        self.tprof.1 += th.elapsed().as_secs_f64();
         match &self.mode {
             Mode::Record => self.rec.checkpoints.push(h),
             Mode::Replay(fz) => {
@@ -1112,7 +1197,8 @@ impl<F: Field> PEngine<F> {
         let round_no = self.round_i;
         let pivots = match self.mode.clone() {
             Mode::Record => match self.opts.order {
-                PivotOrder::Heap => self.markowitz_heap(all)?,
+                PivotOrder::Heap => self.markowitz_heap_fast(all)?,
+                PivotOrder::HeapV1 => self.markowitz_heap(all)?,
                 PivotOrder::Rescan => self.markowitz_rescan(all)?,
                 PivotOrder::Lazy => self.markowitz_lazy(all)?,
             },
@@ -1135,7 +1221,9 @@ impl<F: Field> PEngine<F> {
                 r.pivots.clone()
             }
         };
+        let th = Instant::now();
         let pattern = self.cx.pattern_hash();
+        self.tprof.1 += th.elapsed().as_secs_f64();
         if let Mode::Replay(fz) = &self.mode {
             if fz.rounds[round_no].pattern != pattern {
                 return Err(SErr::PointDependent { stage: self.stage, round: round_no, what: "sparsity pattern after the round differs from point 0".into() });
@@ -1205,6 +1293,118 @@ impl<F: Field> PEngine<F> {
             let Some((_, a, b)) = best else { break };
             self.apply_pivot(a, b)?;
             done.push((a, b));
+        }
+        Ok(done)
+    }
+
+    /// `Heap` order (= the rescan order: minimum of (cost, a, b) over all candidates) with
+    /// dense per-object arrays: degrees, versions, (type, t) keys, eligibility (fixed within a
+    /// round) and candidate neighbour lists; after a pivot only the touched objects' candidate
+    /// pairs are re-pushed; stale entries are skipped by version.
+    fn markowitz_heap_fast(&mut self, all: bool) -> Result<Vec<(usize, usize)>, SErr> {
+        let n = self.cx.next;
+        let mut key: Vec<(Tid, i32)> = vec![(Tid::MAX, i32::MIN); n];
+        let mut alive = vec![false; n];
+        let mut elig = vec![false; n];
+        let mut indeg = vec![0u32; n];
+        let mut outdeg = vec![0u32; n];
+        let mut ver = vec![0u32; n];
+        for (&id, o) in &self.cx.objs {
+            key[id] = (o.p, o.t);
+            alive[id] = true;
+            elig[id] = self.eligible(id, all);
+            indeg[id] = self.cx.inn[&id].len() as u32;
+            outdeg[id] = self.cx.out[&id].len() as u32;
+        }
+        let cost = |indeg: &[u32], outdeg: &[u32], a: usize, b: usize| (indeg[b].max(1) as u64 - 1) * (outdeg[a].max(1) as u64 - 1);
+        let mut c_out: Vec<Vec<u32>> = vec![vec![]; n];
+        let mut c_in: Vec<Vec<u32>> = vec![vec![]; n];
+        let mut heap: BinaryHeap<Reverse<(u64, u32, u32, u32, u32)>> = BinaryHeap::new();
+        for (&x, outs) in &self.cx.out {
+            for &y in outs.keys() {
+                if key[x] == key[y] {
+                    c_out[x].push(y as u32);
+                    c_in[y].push(x as u32);
+                    if elig[x] {
+                        heap.push(Reverse((cost(&indeg, &outdeg, x, y), x as u32, y as u32, 0, 0)));
+                    }
+                }
+            }
+        }
+        self.track_new = true;
+        let mut done = vec![];
+        let tpre = Instant::now();
+        let mut npush = 0u64;
+        let (mut npush_in, mut npop, mut maxheap, mut tap) = (0u64, 0u64, 0usize, 0.0f64);
+        let mut compact_at = (2 * heap.len()).max(1 << 16);
+        while let Some(Reverse((_, a, b, va, vb))) = heap.pop() {
+            npop += 1;
+            maxheap = maxheap.max(heap.len());
+            if heap.len() > compact_at {
+                // drop stale entries (dead objects, old versions) and duplicates: O(n), and the
+                // pop order of the valid entries is unchanged
+                let mut v = std::mem::take(&mut heap).into_vec();
+                v.retain(|Reverse((_, x, y, vx, vy))| alive[*x as usize] && alive[*y as usize] && ver[*x as usize] == *vx && ver[*y as usize] == *vy);
+                v.sort_unstable();
+                v.dedup();
+                heap = BinaryHeap::from(v);
+                compact_at = (2 * heap.len()).max(1 << 16);
+            }
+            let (a, b) = (a as usize, b as usize);
+            if !alive[a] || !alive[b] || ver[a] != va || ver[b] != vb {
+                continue;
+            }
+            if self.cx.get(a, b).is_none() {
+                continue;
+            }
+            self.new_edges.clear();
+            let tq = Instant::now();
+            let touched = match self.apply_pivot(a, b) {
+                Ok(t) => t,
+                Err(e) => {
+                    self.track_new = false;
+                    return Err(e);
+                }
+            };
+            tap += tq.elapsed().as_secs_f64();
+            done.push((a, b));
+            alive[a] = false;
+            alive[b] = false;
+            for &(x, y) in &self.new_edges {
+                if key[x] == key[y] {
+                    c_out[x].push(y as u32);
+                    c_in[y].push(x as u32);
+                }
+            }
+            let tpush = Instant::now();
+            for &t in &touched {
+                ver[t] += 1;
+                indeg[t] = self.cx.inn[&t].len() as u32;
+                outdeg[t] = self.cx.out[&t].len() as u32;
+            }
+            for &t in &touched {
+                let vt = ver[t];
+                c_out[t].retain(|&y| alive[y as usize]);
+                c_in[t].retain(|&x| alive[x as usize]);
+                if elig[t] {
+                    for &y in &c_out[t] {
+                        npush += 1;
+                        heap.push(Reverse((cost(&indeg, &outdeg, t, y as usize), t as u32, y, vt, ver[y as usize])));
+                    }
+                }
+                for &x in &c_in[t] {
+                    if elig[x as usize] {
+                        npush_in += 1;
+                        heap.push(Reverse((cost(&indeg, &outdeg, x as usize, t), x, t as u32, ver[x as usize], vt)));
+                    }
+                }
+            }
+            self.prof2.2 += tpush.elapsed().as_secs_f64();
+            self.prof2.1 += touched.len() as u64;
+        }
+        self.track_new = false;
+        if std::env::var("KRHOM_SPROF2").is_ok() {
+            eprintln!("[sprof2] round: {} pivots, {}+{} pushes, {} pops, max heap {}, heap loop {:.2}s (apply {:.2}s)", done.len(), npush, npush_in, npop, maxheap, tpre.elapsed().as_secs_f64(), tap);
         }
         Ok(done)
     }
@@ -1306,8 +1506,13 @@ impl<F: Field> PEngine<F> {
     /// out-set changed.
     fn apply_pivot(&mut self, a: usize, b: usize) -> Result<Vec<usize>, SErr> {
         let tp = Instant::now();
+        let (u0, m0) = (self.prof.0, self.prof.1);
         let r = self.apply_pivot_inner(a, b);
-        self.prof.2 += tp.elapsed().as_secs_f64();
+        let dt = tp.elapsed().as_secs_f64();
+        self.prof.2 += dt;
+        self.tprof.0 += dt;
+        self.tprof.2 += self.prof.0 - u0;
+        self.tprof.3 += self.prof.1 - m0;
         r
     }
     fn apply_pivot_inner(&mut self, a: usize, b: usize) -> Result<Vec<usize>, SErr> {
@@ -1322,13 +1527,14 @@ impl<F: Field> PEngine<F> {
             return Err(SErr::Pivot(format!("component {} → {} has scalar 0 at rep but is nonzero", a, b)));
         }
         let alpha = c.inv().neg();
-        let mut touched: BTreeSet<usize> = BTreeSet::new();
+        let mut touched: Vec<usize> = Vec::with_capacity(self.cx.inn[&a].len() + self.cx.inn[&b].len() + self.cx.out[&a].len() + self.cx.out[&b].len());
         touched.extend(self.cx.inn[&a].iter().copied());
         touched.extend(self.cx.inn[&b].iter().copied());
         touched.extend(self.cx.out[&a].keys().copied());
         touched.extend(self.cx.out[&b].keys().copied());
-        touched.remove(&a);
-        touched.remove(&b);
+        touched.sort_unstable();
+        touched.dedup();
+        touched.retain(|&t| t != a && t != b);
         let xs: Vec<usize> = self.cx.inn[&b].iter().copied().filter(|&x| x != a).collect();
         let ys: Vec<usize> = self.cx.out[&a].keys().copied().filter(|&y| y != b).collect();
         if !xs.is_empty() && !ys.is_empty() {
@@ -1336,29 +1542,74 @@ impl<F: Field> PEngine<F> {
             for &y in &ys {
                 day.push((y, self.cx.take_map(a, y).unwrap()));
             }
+            let ptypes: Vec<Tid> = day.iter().map(|(y, _)| self.cx.objs[y].p).collect();
+            // (x type, y type) → (layout, plan), local to this pivot (few types)
+            let mut local: Vec<((Tid, Tid), Arc<Layout>, Arc<CompPlan>)> = vec![];
+            let mut sel: Vec<usize> = vec![0; day.len()];
             for &x in &xs {
                 let dxb = self.cx.take_map(x, b).unwrap();
                 let px = self.cx.objs[&x].p;
-                for (y, g) in &day {
-                    let lay = self.reg.layout(px, self.cx.objs[y].p)?;
-                    let existed = self.cx.out[&x].contains_key(y);
-                    if !existed {
-                        if self.track_new {
-                            self.new_edges.push((x, *y));
+                for (j, ((_, g), &py)) in day.iter().zip(&ptypes).enumerate() {
+                    sel[j] = match local.iter().position(|e| e.0 == (px, py)) {
+                        Some(i) => i,
+                        None => {
+                            let lay = self.reg.layout(px, py)?;
+                            let plan = match self.plans.get(&(px, oa.p, py)) {
+                                Some(p) => p.clone(),
+                                None => {
+                                    let p = Arc::new(CompPlan::new(&lay, &g.lay, &dxb.lay));
+                                    self.plans.insert((px, oa.p, py), p.clone());
+                                    p
+                                }
+                            };
+                            local.push(((px, py), lay, plan));
+                            local.len() - 1
                         }
-                        let z = LocMap::zeros(lay);
-                        self.cx.bytes += z.bytes() as u64 + EDGE_BYTES;
-                        self.cx.out.get_mut(&x).unwrap().insert(*y, z);
-                        self.cx.inn.get_mut(y).unwrap().insert(x);
-                    }
-                    let dst = self.cx.out.get_mut(&x).unwrap().get_mut(y).unwrap();
+                    };
+                }
+                let xo = self.cx.out.get_mut(&x).unwrap();
+                let mut zeroed: Vec<usize> = vec![];
+                for (j, (y, g)) in day.iter().enumerate() {
+                    let (_, lay, plan) = &local[sel[j]];
+                    let dst = match xo.entry(*y) {
+                        std::collections::btree_map::Entry::Occupied(e) => e.into_mut(),
+                        std::collections::btree_map::Entry::Vacant(e) => {
+                            if self.track_new {
+                                self.new_edges.push((x, *y));
+                            }
+                            let n = lay.len as usize;
+                            let data = match self.pool.get_mut(&lay.len).and_then(|v| v.pop()) {
+                                Some(mut d) => {
+                                    self.pool_bytes -= (d.capacity() * std::mem::size_of::<F>()) as u64;
+                                    d.clear();
+                                    d.resize(n, F::zero());
+                                    d
+                                }
+                                None => vec![F::zero(); n],
+                            };
+                            let z = LocMap { lay: lay.clone(), data };
+                            self.cx.bytes += z.bytes() as u64 + EDGE_BYTES;
+                            self.cx.nedges += 1;
+                            self.cx.inn.get_mut(y).unwrap().insert(x);
+                            e.insert(z)
+                        }
+                    };
                     self.prof.0 += 1;
-                    self.prof.1 += compose_cost(dst, g, &dxb);
-                    compose_acc(dst, g, &dxb, alpha.clone());
+                    self.prof.1 += plan.madds;
+                    plan.apply(&mut dst.data, &g.data, &dxb.data, &alpha);
                     if dst.is_zero() {
-                        self.cx.take_map(x, *y);
+                        zeroed.push(*y);
                     }
                 }
+                for y in zeroed {
+                    if let Some(m) = self.cx.take_map(x, y) {
+                        self.recycle(m);
+                    }
+                }
+                self.recycle(dxb);
+            }
+            for (_, g) in day {
+                self.recycle(g);
             }
             let stage = self.stage;
             self.check_mem(&|| format!("stage {} elimination", stage))?;
@@ -1369,9 +1620,22 @@ impl<F: Field> PEngine<F> {
             self.dead.insert(a, Died::Source);
             self.dead.insert(b, Died::Target);
         }
-        Ok(touched.into_iter().collect())
+        Ok(touched)
+    }
+
+    /// keep a freed component buffer for reuse by fill-in edges (bounded; counted as external)
+    fn recycle(&mut self, m: LocMap<F>) {
+        let b = (m.data.capacity() * std::mem::size_of::<F>()) as u64;
+        if self.pool_bytes + b > POOL_BYTES {
+            return;
+        }
+        self.pool_bytes += b;
+        self.pool.entry(m.lay.len).or_default().push(m.data);
     }
 }
+
+/// cap of the buffer pool of `PEngine` (freed component data reused by fill-in edges)
+pub const POOL_BYTES: u64 = 16 << 20;
 
 // ------------------------------------------------------------------ closure Gram at a point
 
