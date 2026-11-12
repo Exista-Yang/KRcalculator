@@ -19,7 +19,7 @@ to the result over Q unless both primes are torsion primes.
 The localized path is correct wherever it was run (every closure equal to the exact references,
 term by term). It is not yet fast enough for the full gate: per-point cost grows about 4× per
 crossing on (3,3) (σ^5: 9.8 s and 130 MB per point; σ^6 record 65-87 s and 0.4-1 GB; σ^8 record
-> 2 GB), so σ^9 at 400 box points would take on the order of 400 × 1 h per prime and node sequence.
+> 2 GB), so σ^9 at 400 box points (and σ^8/σ^9 reduced at 20 points) would take on the order of 400 × 1 h per prime and node sequence.
 §4 has the measurements and §7 the open problems.
 
 ## 1. What was built
@@ -80,6 +80,7 @@ the provider stamp and hence every layer-A key (libbuild's own replay fails the 
 | `box_loop_against_exact_22_32` | box loop (record + replays at the box points of N = 6) vs xengine `close_stage_marked`: (2,2) σ^3 stages 2, 3 (F31 and F32b), (3,2) σ^2; N' = 3..6, unreduced and reduced; scaling check at 2 points | pass (every closure equal) |
 | `type_counts_41_333` | §5 | prints |
 
+Full suite `KRHOM_THREADS=4 cargo test --release` (after the merges and all changes): **233 passed, 0 failed, 28 ignored** (runs_g2b/full_suite.log).
 sengine's own suite still passes after the engine changes (11 + 1 ignored), including
 `markowitz_heap_equals_rescan_order` (the exact heap keeps the rescan order).
 
