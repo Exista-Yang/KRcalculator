@@ -1171,3 +1171,111 @@ pub fn braid_dag_thm<F: Field>(ar: &mut Arena<F>, bw: &BraidWords, seed: u64) ->
     let c2 = ar.add(MapNode::Comp(s3, c1), &format!("braid {}", THM_ASSOC_TAG))?;
     Ok((c2, log))
 }
+
+// ------------------------------------------------------------------ rex chains (B2/B4)
+
+/// How each move of a realized chain was certified.
+#[derive(Clone, Debug, Default)]
+pub struct ChainReport {
+    pub templates: usize,
+    pub template_secs: f64,
+    pub assoc_numeric: usize,
+    pub assoc_theorem: usize,
+    pub lines: Vec<String>,
+}
+
+/// Realize a rex chain (src/rexplan.rs) as a DAG words[0] → words.last() of degree 0:
+/// Collapse = Local(Rex ψ template), Expand = Local(Pull φ template), Swap = Local(Swap
+/// template), each certified by `build_in` (`certify_added`); Assoc = Elem Assoc, validated
+/// numerically (`validate_assoc`) when its window has ≤ `ASSOC_CERT_FLOWS` flows, otherwise by
+/// the theorem-level certificate (`add_thm_assoc`, marked). Templates are cached per window pair
+/// within the arena's library by the caller's `cache` map.
+pub fn realize_chain<F: Field>(ar: &mut Arena<F>, ch: &crate::rexplan::Chain, cache: &mut std::collections::HashMap<(crate::rexplan::MoveKind, Vec<u8>, Vec<Rung>, Vec<Rung>), TmplId>, seed: u64) -> Result<(MapId, ChainReport), String> {
+    use crate::rexplan::MoveKind;
+    let lam = ar.lam().to_vec();
+    let mut rep = ChainReport::default();
+    let e0 = ar.expr(SExpr::new(&lam, &ch.words[0])?);
+    let mut cur = ar.add(MapNode::Id(e0), "rex chain start")?;
+    for (k, mv) in ch.moves.iter().enumerate() {
+        let src = ar.expr(SExpr::new(&lam, &ch.words[k])?);
+        let tgt = ar.expr(SExpr::new(&lam, &ch.words[k + 1])?);
+        let step = match mv.kind {
+            MoveKind::Assoc => {
+                let m = ar.add(MapNode::Elem { kind: ElemKind::Assoc, src, tgt, at: mv.at, upright: mv.first, scalar: F::one() }, "rex chain assoc")?;
+                let (ws, wt) = {
+                    let (a, b) = ar.elem_windows(m).ok_or("realize_chain: Assoc without window")?;
+                    (a.clone(), b.clone())
+                };
+                if ar.assoc_certified(&ws, &wt).is_some() {
+                    rep.lines.push(format!("{} (cached constant)", mv.fmt()));
+                    m
+                } else if FlowIndex::build(&ws).nflows() <= ASSOC_CERT_FLOWS {
+                    validate_assoc(ar, &ws, &wt, seed + k as u64)?;
+                    rep.assoc_numeric += 1;
+                    rep.lines.push(format!("{} numeric", mv.fmt()));
+                    m
+                } else {
+                    let mt = add_thm_assoc(ar, src, tgt, mv.at, mv.first, "rex chain assoc")?;
+                    rep.assoc_theorem += 1;
+                    rep.lines.push(format!("{} {}", mv.fmt(), THM_ASSOC_TAG));
+                    mt
+                }
+            }
+            MoveKind::Exact => {
+                // exact Hom^0 window: a basis element with 1⊗ ↦ c·1⊗, c ≠ 0, scaled to c = 1
+                let (ws, wt) = (win(&mv.labels, &mv.src), win(&mv.labels, &mv.tgt));
+                let t0 = std::time::Instant::now();
+                let ids = ar.lib().try_hom_basis_cap(&ws, &wt, 0, u128::MAX)?;
+                let kw: usize = mv.labels.iter().map(|&a| a as usize).sum();
+                let y = points::<F>(kw, seed ^ 0xe8ac, 1, 0).remove(0).x;
+                let mut pick: Option<(TmplId, F)> = None;
+                for &t in &ids {
+                    let d = ar.lib_ref().localize(t, &y).dense();
+                    // image of 1⊗ (all ones)
+                    let img: Vec<F> = d.iter().map(|row| row.iter().fold(F::zero(), |acc, v| acc.add(v))).collect();
+                    if let Some(c) = img.first().cloned() {
+                        if !c.is_zero() && img.iter().all(|v| *v == c) {
+                            pick = Some((t, c));
+                            break;
+                        }
+                    }
+                }
+                let (t, c) = pick.ok_or_else(|| format!("realize_chain: no exact basis element of {} maps 1⊗ to a nonzero multiple", mv.fmt()))?;
+                rep.lines.push(format!("{} exact ({} basis elements, {:.2} s)", mv.fmt(), ids.len(), t0.elapsed().as_secs_f64()));
+                let l = ar.add(MapNode::Local { src, tgt, at: mv.at, first: mv.first, tmpl: t }, "rex chain exact")?;
+                if c.is_one() { l } else { ar.add(MapNode::Lin(vec![(c.inv(), l)]), "rex chain exact (normalized)")? }
+            }
+            kind => {
+                let key = (kind, mv.labels.clone(), mv.src.clone(), mv.tgt.clone());
+                let t = match cache.get(&key) {
+                    Some(&t) => t,
+                    None => {
+                        let (ws, wt) = (win(&mv.labels, &mv.src), win(&mv.labels, &mv.tgt));
+                        let cf = match kind {
+                            MoveKind::Collapse => ClosedForm::new("rex collapse", CfKind::Rex, ws, wt)?,
+                            MoveKind::Expand => ClosedForm::new("rex expand", CfKind::Pull, ws, wt)?,
+                            MoveKind::FlagMatch => ClosedForm::new("rex flag match", CfKind::Pull, ws, wt)?,
+                            MoveKind::Swap => {
+                                let na = 1;
+                                ClosedForm::new("rex swap", CfKind::Swap { na }, ws, wt)?
+                            }
+                            MoveKind::Assoc | MoveKind::Exact => unreachable!(),
+                        };
+                        if cf.deg != 0 {
+                            return Err(format!("realize_chain: {} has degree {}", mv.fmt(), cf.deg));
+                        }
+                        let b = build_in(ar, &cf, seed + 100 + k as u64)?;
+                        rep.templates += 1;
+                        rep.template_secs += b.interp_secs + b.cert.secs;
+                        rep.lines.push(format!("{} certified ({:.2} s)", mv.fmt(), b.interp_secs + b.cert.secs));
+                        cache.insert(key, b.tmpl);
+                        b.tmpl
+                    }
+                };
+                ar.add(MapNode::Local { src, tgt, at: mv.at, first: mv.first, tmpl: t }, "rex chain move")?
+            }
+        };
+        cur = if matches!(ar.node(cur), MapNode::Id(_)) { step } else { ar.add(MapNode::Comp(step, cur), "rex chain")? };
+    }
+    Ok((cur, rep))
+}
