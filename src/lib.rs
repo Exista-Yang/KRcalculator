@@ -28,6 +28,7 @@ pub mod engine2;
 pub mod tower;
 pub mod schur;
 pub mod cclose;
+pub mod boxclose;
 pub mod xengine;
 pub mod coset;
 pub mod sexpr;
@@ -36,6 +37,8 @@ pub mod tmpl;
 pub mod homprov;
 pub mod smapio;
 pub mod sindec;
+pub mod sengine;
+pub mod swire;
 
 /// Number of worker threads: the environment variable KRHOM_THREADS if set
 /// (useful to keep a shared machine responsive), otherwise all available cores.

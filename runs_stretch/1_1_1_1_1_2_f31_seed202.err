@@ -1,0 +1,6 @@
+[costs] warning: tests/data/homprov/costs_333.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
+library: 4 types, 4 closable, build 0.3s (0 provider calls, 10 layer-A loads), hash bcc8445ca51459c2
+scaling check: 1098 entries checked, 468 zero at both points (0.0s)
+chi = decat_chi: 24 of 24 closures
+64 points: scan 0.2s wall, per point mean 0.002s max 0.003s, engine peak 0.1 MB, eval memo 0.1 MB; closures 0.0s; record 0.1s; VmHWM 16 MB
+exit 0

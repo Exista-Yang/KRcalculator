@@ -1,0 +1,7 @@
+library: 4 types, 4 closable, build 23.7s (0 provider calls, 80 layer-A loads), hash 9f1a86352f058c89
+
+thread 'main' (8573) panicked at src/bin/sbox.rs:65:60:
+box: per-point memory 2147.5 MB above the budget 2147.5 MB at stage 8 insertion: run with streaming or on the cloud
+stack backtrace:
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+exit 101

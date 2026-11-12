@@ -2359,3 +2359,686 @@ pub fn closure_data_from_ladder<F: Field>(lad: &Ladder) -> Result<(ClosureDataC<
     data.validate()?;
     Ok((data, basis))
 }
+
+// ------------------------------------------------------------------ MBOX: staged rank stage on P
+
+/// Closed pairing per final edge (s, t, P) with P[b][a] = (h^t_b ∘ d ∘ g^s_a), i.e. Σ_c G_t[b][c]
+/// F[c][a] (rows: outs of the target type, columns: ins of the source type), homogeneous with
+/// 2·weight = q_s − q_t + ins_s[a] + outs_t[b]. The rank stage reads the differential only
+/// through P (R3 §4.2): v ↦ m·P_{·a} on a representative (a, m).
+pub type Pairing<F> = Vec<(usize, usize, Vec<Vec<EPoly<F>>>)>;
+
+/// Ranks of the state spaces per type and representative degree d (the degree before the
+/// object shift, as in the oracle): dim Φ_N(B_p)_d. Used as the MOY rank cap of the staged rank
+/// stage ([`StagedOpts::rank_cap`]); produced uncapped by `boxclose::box_moy_check` (T0).
+pub type TypeRanks = BTreeMap<u32, BTreeMap<i32, usize>>;
+
+/// P = G_t·F for every edge of `data` (exactly the product of the oracle's rank stage).
+pub fn pairing_from_f<F: Field>(data: &ClosureDataC<F>) -> Pairing<F> {
+    data.edges
+        .iter()
+        .map(|(s, t, f)| {
+            let gt = &data.types[&data.objs[*t].0];
+            let na = data.types[&data.objs[*s].0].ins.len();
+            let p = (0..gt.outs.len())
+                .map(|b| {
+                    (0..na)
+                        .map(|a| {
+                            let mut acc = EPoly::zero();
+                            for c in 0..gt.ins.len() {
+                                acc.add_assign(&gt.gram[b][c].mul(&f[c][a]));
+                            }
+                            acc
+                        })
+                        .collect()
+                })
+                .collect();
+            (*s, *t, p)
+        })
+        .collect()
+}
+
+/// Shapes, homological degrees and homogeneity of a pairing against the objects and types of
+/// `data` (its `edges` are not used).
+pub fn validate_pairing<F: Field>(data: &ClosureDataC<F>, pairing: &[(usize, usize, Vec<Vec<EPoly<F>>>)]) -> Result<(), String> {
+    let ring = data.ring();
+    let nv = ring.nvars;
+    for (e, (s, t, p)) in pairing.iter().enumerate() {
+        if *s >= data.objs.len() || *t >= data.objs.len() {
+            return Err(format!("pairing edge {}: object out of range", e));
+        }
+        let (os, ot) = (data.objs[*s], data.objs[*t]);
+        if ot.1 != os.1 + 1 {
+            return Err(format!("pairing edge {}: h {} -> {}", e, os.1, ot.1));
+        }
+        let (ts, tt) = match (data.types.get(&os.0), data.types.get(&ot.0)) {
+            (Some(a), Some(b)) => (a, b),
+            _ => return Err(format!("pairing edge {}: unknown type", e)),
+        };
+        if p.len() != tt.outs.len() || p.iter().any(|r| r.len() != ts.ins.len()) {
+            return Err(format!("pairing edge {}: P is not {} x {}", e, tt.outs.len(), ts.ins.len()));
+        }
+        for (b, row) in p.iter().enumerate() {
+            for (a, x) in row.iter().enumerate() {
+                if !x.t.iter().all(|(m, _)| nv == EMAX_VARS || m >> (EBITS * nv) == 0) {
+                    return Err(format!("pairing edge {}: P[{}][{}] uses variables outside R^lambda", e, b, a));
+                }
+                let d = os.2 - ot.2 + ts.ins[a] + tt.outs[b];
+                if x.t.iter().any(|(m, _)| 2 * ring.weight(*m) as i32 != d) {
+                    return Err(format!("pairing edge {}: P[{}][{}] not homogeneous of degree {}", e, b, a, d));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Options of the staged rank stage ([`try_close_staged`]).
+#[derive(Clone, Debug, Default)]
+pub struct StagedOpts {
+    /// memory cap in bytes (None: [`mem_cap_bytes`]), compared with [`staged_mem_estimate`]
+    pub cap: Option<u128>,
+    /// MOY rank cap: representative selection of type p in degree d stops at rank_cap[p][d]
+    /// (a missing degree has rank 0), and Err if that rank is not reached. Sound only after an
+    /// uncapped T0 on the same library (SPEC D14, C_sound m2); `boxclose::close_box` enforces
+    /// that by the library hash.
+    pub rank_cap: Option<TypeRanks>,
+}
+
+/// Columns of a type's state space in representative degree d: (out b, box element of weight
+/// (d + outs_b)/2), numbered per b in lex-descending `order_key` order (leading terms first).
+struct DegCols {
+    /// per out b: (first column, weight) or None if (d + outs_b) is odd or negative
+    off: Vec<Option<(u32, u32)>>,
+    /// per weight: key -> position in the order_key order
+    pos: HashMap<u32, HashMap<u64, u32>>,
+    /// column -> (b, key)
+    cols: Vec<(u32, u64)>,
+}
+
+impl DegCols {
+    fn new<F: Field>(alg: &GrAlg<F>, outs: &[i32], d: i32) -> Self {
+        let mut off = vec![];
+        let mut pos: HashMap<u32, HashMap<u64, u32>> = HashMap::new();
+        let mut cols = vec![];
+        for (b, &ob) in outs.iter().enumerate() {
+            let s = d + ob;
+            if s < 0 || s % 2 != 0 || (s / 2) as u32 > alg.top_weight {
+                off.push(None);
+                continue;
+            }
+            let w = (s / 2) as u32;
+            let ent = pos.entry(w).or_insert_with(|| {
+                let mut keys: Vec<u64> = alg.box_of_weight(w).iter().map(|e| e.0).collect();
+                keys.sort_unstable_by_key(|&k| alg.order_key(k));
+                keys.into_iter().enumerate().map(|(i, k)| (k, i as u32)).collect()
+            });
+            let first = cols.len() as u32;
+            let mut ks: Vec<(u32, u64)> = ent.iter().map(|(&k, &i)| (i, k)).collect();
+            ks.sort_unstable();
+            cols.extend(ks.into_iter().map(|(_, k)| (b as u32, k)));
+            off.push(Some((first, w)));
+        }
+        DegCols { off, pos, cols }
+    }
+    #[inline]
+    fn col(&self, b: usize, key: u64) -> Option<u32> {
+        let (first, w) = self.off[b]?;
+        self.pos[&w].get(&key).map(|&i| first + i)
+    }
+}
+
+/// m1·G_{·a} in the columns of `dc`.
+fn rep_vec<F: Field>(alg: &GrAlg<F>, tb: &TypeBasisC<F>, dc: &DegCols, acc: &mut Acc<F>, buf: &mut Vec<(u64, F)>, a: usize, m1: u128) -> SpVec<F> {
+    for (b, row) in tb.gram.iter().enumerate() {
+        for (mono, c) in &row[a].t {
+            alg.nf_prod(m1, *mono, buf);
+            for (k, x) in buf.iter() {
+                let col = dc.col(b, *k).expect("state space: image outside the degree's columns (inhomogeneous Gram entry)");
+                acc.add(col, &c.mul(x));
+            }
+        }
+    }
+    acc.take()
+}
+
+/// Degrees d of a type's representatives (ins degree + 2·box weight).
+fn type_degrees<F: Field>(alg: &GrAlg<F>, tb: &TypeBasisC<F>) -> BTreeSet<i32> {
+    let mut degs = BTreeSet::new();
+    for &da in &tb.ins {
+        for w in 0..=alg.top_weight as i32 {
+            degs.insert(da + 2 * w);
+        }
+    }
+    degs
+}
+
+/// Staged state space of one type: rows m·G_{·a} are generated one at a time and inserted into
+/// a sparse echelon form; only independent rows are kept, and with a cap the selection stops at
+/// the capped rank. Same representatives as the oracle's `type_state_space` when uncapped
+/// (greedy in the same row order), duals chosen among the kept rows.
+fn type_state_space_staged<F: Field>(alg: &GrAlg<F>, tb: &TypeBasisC<F>, cap: Option<&BTreeMap<i32, usize>>) -> Result<TypeSS, String> {
+    let mut reps = BTreeMap::new();
+    let mut duals = BTreeMap::new();
+    let mut buf = vec![];
+    for d in type_degrees(alg, tb) {
+        let want = cap.map(|c| c.get(&d).copied().unwrap_or(0));
+        if want == Some(0) {
+            continue;
+        }
+        let dc = DegCols::new(alg, &tb.outs, d);
+        if dc.cols.is_empty() {
+            if want.is_some() {
+                return Err(format!("rank cap {} in degree {} but no image columns", want.unwrap(), d));
+            }
+            continue;
+        }
+        let ncols = dc.cols.len();
+        let mut acc = Acc::<F>::new(ncols);
+        let mut ech = RankEchelon::<F>::new(ncols);
+        let mut sel: Vec<(u32, u128)> = vec![];
+        let mut vecs: Vec<SpVec<F>> = vec![];
+        'rows: for (a, &da) in tb.ins.iter().enumerate() {
+            let rd = d - da;
+            if rd < 0 || rd % 2 != 0 {
+                continue;
+            }
+            for &(_, m1) in alg.box_of_weight((rd / 2) as u32) {
+                let v = rep_vec(alg, tb, &dc, &mut acc, &mut buf, a, m1);
+                if !v.is_empty() && ech.insert(&v) {
+                    sel.push((a as u32, m1));
+                    vecs.push(v);
+                    if want == Some(sel.len()) {
+                        break 'rows;
+                    }
+                }
+            }
+        }
+        drop(ech);
+        if let Some(w) = want {
+            if sel.len() != w {
+                return Err(format!("degree {}: rank {} below the MOY rank cap {} (data inconsistent with T0)", d, sel.len(), w));
+            }
+        }
+        if sel.is_empty() {
+            continue;
+        }
+        let r = sel.len();
+        let mut tcols: Vec<SpVec<F>> = vec![vec![]; ncols];
+        for (ri, v) in vecs.iter().enumerate() {
+            for (c, x) in v {
+                tcols[*c as usize].push((ri as u32, x.clone()));
+            }
+        }
+        drop(vecs);
+        let mut ech2 = RankEchelon::<F>::new(r);
+        let mut dsel = vec![];
+        for (c, v) in tcols.iter().enumerate() {
+            if ech2.insert(v) {
+                dsel.push(dc.cols[c]);
+                if dsel.len() == r {
+                    break;
+                }
+            }
+        }
+        if dsel.len() != r {
+            return Err(format!("state space degree {}: row and column ranks differ", d));
+        }
+        reps.insert(d, sel);
+        duals.insert(d, dsel);
+    }
+    Ok(TypeSS { reps, duals })
+}
+
+/// Heuristic peak bytes of one type's staged state space (the largest degree): the dense
+/// accumulators of the two echelon forms (40 bytes per column), and the kept rows, their echelon
+/// rows and the transposed copy, each charged as dense (8·max(field size, 8) bytes per
+/// rank × columns entry, the worst case of fill-in). The rank is the cap when given, else
+/// min(#candidate rows, #columns).
+pub fn staged_type_mem_estimate<F: Field>(lam: &[u8], nn: usize, marked: Option<usize>, tb: &TypeBasisC<F>, cap: Option<&BTreeMap<i32, usize>>) -> u128 {
+    let boxw = box_weight_counts(lam, nn, marked);
+    let cnt = |w: i32| -> u128 { if w < 0 { 0 } else { boxw.get(w as usize).copied().unwrap_or(0) } };
+    let top = boxw.len() as i32 - 1;
+    let sf = (std::mem::size_of::<F>() as u128).max(8);
+    let mut degs = BTreeSet::new();
+    for &da in &tb.ins {
+        for w in 0..=top {
+            degs.insert(da + 2 * w);
+        }
+    }
+    let mut best = 0u128;
+    for d in degs {
+        let rows: u128 = tb.ins.iter().map(|&da| if (d - da) % 2 == 0 { cnt((d - da) / 2) } else { 0 }).sum();
+        let cols: u128 = tb.outs.iter().map(|&ob| if (d + ob) % 2 == 0 { cnt((d + ob) / 2) } else { 0 }).sum();
+        let r = match cap {
+            Some(c) => c.get(&d).copied().unwrap_or(0) as u128,
+            None => rows.min(cols),
+        };
+        let b = 40u128.saturating_mul(cols).saturating_add((8 * sf).saturating_mul(r).saturating_mul(cols));
+        best = best.max(b);
+    }
+    best
+}
+
+/// Number of box basis elements of A_λ per weight (the product of the per-block Gaussian
+/// binomials; the marked block contributes 1).
+pub fn box_weight_counts(lam: &[u8], nn: usize, marked: Option<usize>) -> Vec<u128> {
+    let mut acc = vec![1u128];
+    for (i, &l) in lam.iter().enumerate() {
+        if l == 0 || Some(i) == marked || l as usize > nn {
+            continue;
+        }
+        let g = gauss_binom_coeffs(nn, l as usize);
+        let mut out = vec![0u128; acc.len() + g.len() - 1];
+        for (x, &u) in acc.iter().enumerate() {
+            for (y, &v) in g.iter().enumerate() {
+                out[x + y] = out[x + y].saturating_add(u.saturating_mul(v));
+            }
+        }
+        acc = out;
+    }
+    acc
+}
+
+/// Heuristic bound of the peak bytes of the staged rank stage ([`try_close_staged`]): the A_λ
+/// tables ([`gr_alg_mem_estimate`]); the k largest per-type state-space builds running at once
+/// (k = `KRHOM_THREADS`, [`staged_type_mem_estimate`]); 64 bytes per chain coordinate for
+/// the kept representatives, duals, groups and dual index; per thread one rank-stage echelon
+/// form charged as dense over its group (the largest k groups: 8·max(field size, 8) bytes per
+/// min(rows, columns) × columns entry plus 40 bytes per column); the pairing (48 bytes per
+/// term); and 16 MB fixed. The dense charges make it an upper model in practice (fill-in rarely
+/// reaches dense); calibrated in tests/boxclose_mem.rs with a counting allocator on synthetic
+/// data of 4_1 size (MBOX test (e)). This is the refit of [`exact_mem_estimate`] for the staged
+/// path: the oracle's model charges Gram terms × dim A_λ for all types at once.
+pub fn staged_mem_estimate<F: Field>(data: &ClosureDataC<F>, pairing: &[(usize, usize, Vec<Vec<EPoly<F>>>)], nn: usize, marked: Option<usize>, rank_cap: Option<&TypeRanks>) -> u128 {
+    let nt = crate::num_threads().max(1);
+    let sf = (std::mem::size_of::<F>() as u128).max(8);
+    let mut per_type: Vec<u128> = data.types.iter().map(|(x, tb)| staged_type_mem_estimate(&data.lam, nn, marked, tb, rank_cap.and_then(|c| c.get(x)).or(rank_cap.map(|_| &EMPTY_DEG_RANKS)))).collect();
+    per_type.sort_unstable_by(|a, b| b.cmp(a));
+    let ss: u128 = per_type.iter().take(nt).fold(0u128, |x, y| x.saturating_add(*y));
+    // chain coordinates per (h, q): Σ over objects of the type's state-space bound in that
+    // degree, min(#candidate rows, #columns) (or the cap)
+    let boxw = box_weight_counts(&data.lam, nn, marked);
+    let gq = data.global_q(nn, marked);
+    let cnt = |w: i32| -> u128 { if w < 0 { 0 } else { boxw.get(w as usize).copied().unwrap_or(0) } };
+    let mut tdims: BTreeMap<u32, BTreeMap<i32, u128>> = BTreeMap::new();
+    for (x, tb) in &data.types {
+        let capd = rank_cap.and_then(|c| c.get(x));
+        let mut m = BTreeMap::new();
+        let mut degs = BTreeSet::new();
+        for &da in &tb.ins {
+            for w in 0..boxw.len() as i32 {
+                degs.insert(da + 2 * w);
+            }
+        }
+        for d in degs {
+            let rows: u128 = tb.ins.iter().map(|&da| if (d - da) % 2 == 0 { cnt((d - da) / 2) } else { 0 }).sum();
+            let cols: u128 = tb.outs.iter().map(|&ob| if (d + ob) % 2 == 0 { cnt((d + ob) / 2) } else { 0 }).sum();
+            let r = match capd {
+                Some(c) => c.get(&d).copied().unwrap_or(0) as u128,
+                None if rank_cap.is_some() => 0,
+                None => rows.min(cols),
+            };
+            if r > 0 {
+                m.insert(d, r);
+            }
+        }
+        tdims.insert(*x, m);
+    }
+    let mut groups: BTreeMap<(i32, i32), u128> = BTreeMap::new();
+    for o in &data.objs {
+        let Some(m) = tdims.get(&o.0) else { continue };
+        for (d, r) in m {
+            *groups.entry((o.1, d + o.2 + gq)).or_default() += r;
+        }
+    }
+    let coords: u128 = groups.values().sum();
+    let mut stage: Vec<u128> = groups
+        .iter()
+        .map(|((h, q), &rows)| {
+            let tl = groups.get(&(h + 1, *q)).copied().unwrap_or(0);
+            (8 * sf).saturating_mul(rows.min(tl)).saturating_mul(tl).saturating_add(40u128.saturating_mul(tl))
+        })
+        .collect();
+    stage.sort_unstable_by(|a, b| b.cmp(a));
+    let rank: u128 = stage.iter().take(nt).fold(0u128, |x, y| x.saturating_add(*y));
+    let pterms: u128 = pairing.iter().map(|(_, _, p)| p.iter().flatten().map(|x| x.t.len() as u128).sum::<u128>()).sum();
+    gr_alg_mem_estimate::<F>(&data.lam, nn, marked)
+        .saturating_add(ss)
+        .saturating_add(64u128.saturating_mul(coords))
+        .saturating_add(rank)
+        .saturating_add(48u128.saturating_mul(pterms))
+        .saturating_add(EXACT_FIXED_BYTES)
+}
+
+static EMPTY_DEG_RANKS: BTreeMap<i32, usize> = BTreeMap::new();
+
+/// Common checks of the staged stage; Ok(None) if a label exceeds N (closure 0).
+fn staged_precheck<F: Field>(data: &ClosureDataC<F>, pairing: &[(usize, usize, Vec<Vec<EPoly<F>>>)], nn: usize, marked: Option<usize>, opts: &StagedOpts) -> Result<Option<GrAlg<F>>, String> {
+    data.validate().map_err(|e| format!("invalid closure data: {}", e))?;
+    validate_pairing(data, pairing).map_err(|e| format!("invalid pairing: {}", e))?;
+    check_marked(&data.lam, marked)?;
+    if data.lam.iter().any(|&l| l as usize > nn) {
+        return Ok(None);
+    }
+    check_alg_shape(&data.lam, nn, marked)?;
+    let cap = opts.cap.unwrap_or_else(mem_cap_bytes);
+    let est = staged_mem_estimate(data, pairing, nn, marked, opts.rank_cap.as_ref());
+    if est > cap {
+        return Err(format!("staged rank stage for {:?} at N = {} needs about {} MB, above the memory cap of {} MB (set KRHOM_MEM_CAP_MB to raise it)", data.lam, nn, est >> 20, cap >> 20));
+    }
+    Ok(Some(GrAlg::<F>::try_new_capped(&data.lam, nn, marked, cap)?))
+}
+
+fn staged_spaces<F: Field>(alg: &GrAlg<F>, data: &ClosureDataC<F>, opts: &StagedOpts) -> Result<BTreeMap<u32, TypeSS>, String> {
+    // only the types that carry objects; built one per thread at a time
+    let used: BTreeSet<u32> = data.objs.iter().map(|o| o.0).collect();
+    let items: Vec<(u32, &TypeBasisC<F>)> = data.types.iter().filter(|(x, _)| used.contains(x)).map(|(&x, tb)| (x, tb)).collect();
+    let res = par_map(&items, |(x, tb)| {
+        let cap = opts.rank_cap.as_ref().map(|c| c.get(x).unwrap_or(&EMPTY_DEG_RANKS));
+        type_state_space_staged(alg, tb, cap).map_err(|e| format!("type {}: {}", x, e))
+    });
+    let mut out = BTreeMap::new();
+    for ((x, _), r) in items.iter().zip(res) {
+        out.insert(*x, r?);
+    }
+    Ok(out)
+}
+
+/// Graded dimensions dim Φ_N(B_p)_d of every type (staged state spaces; with a rank cap these
+/// are the cap, asserted to be reached). A label > N gives no degrees.
+pub fn try_staged_type_ranks<F: Field>(data: &ClosureDataC<F>, nn: usize, marked: Option<usize>, opts: &StagedOpts) -> Result<TypeRanks, String> {
+    let Some(alg) = staged_precheck(data, &[], nn, marked, opts)? else {
+        return Ok(data.types.keys().map(|&x| (x, BTreeMap::new())).collect());
+    };
+    let mut d2 = data.clone();
+    d2.objs = data.types.keys().map(|&x| (x, 0, 0)).collect();
+    let ss = staged_spaces(&alg, &d2, opts)?;
+    Ok(ss.into_iter().map(|(x, s)| (x, s.reps.iter().map(|(d, v)| (*d, v.len())).filter(|e| e.1 > 0).collect())).collect())
+}
+
+/// Chain groups and dual columns of the closed complex.
+struct ClosedCx {
+    groups: BTreeMap<(i32, i32), Vec<(usize, i32, usize)>>,
+    dual_size: HashMap<(i32, i32), usize>,
+    dual_index: FxMap<(u32, u32, u64), u32>,
+    out_edges: HashMap<usize, Vec<usize>>,
+}
+
+fn closed_cx<F: Field>(alg: &GrAlg<F>, data: &ClosureDataC<F>, pairing: &[(usize, usize, Vec<Vec<EPoly<F>>>)], ss: &BTreeMap<u32, TypeSS>, gq: i32) -> ClosedCx {
+    let mut groups: BTreeMap<(i32, i32), Vec<(usize, i32, usize)>> = BTreeMap::new();
+    for (i, o) in data.objs.iter().enumerate() {
+        for (d, reps) in &ss[&o.0].reps {
+            for k in 0..reps.len() {
+                groups.entry((o.1, d + o.2 + gq)).or_default().push((i, *d, k));
+            }
+        }
+    }
+    let mut dual_lists: BTreeMap<(i32, i32), Vec<(u64, u32, u32, u64)>> = BTreeMap::new();
+    for (j, o) in data.objs.iter().enumerate() {
+        for (d, duals) in &ss[&o.0].duals {
+            for &(b, key) in duals {
+                dual_lists.entry((o.1, d + o.2 + gq)).or_default().push((alg.order_key(key), j as u32, b, key));
+            }
+        }
+    }
+    let mut dual_size = HashMap::new();
+    let mut dual_index: FxMap<(u32, u32, u64), u32> = FxMap::default();
+    for (g, mut list) in dual_lists {
+        list.sort_unstable();
+        for (c, e) in list.iter().enumerate() {
+            dual_index.insert((e.1, e.2, e.3), c as u32);
+        }
+        dual_size.insert(g, list.len());
+    }
+    let mut out_edges: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (ei, (s, _, _)) in pairing.iter().enumerate() {
+        out_edges.entry(*s).or_default().push(ei);
+    }
+    ClosedCx { groups, dual_size, dual_index, out_edges }
+}
+
+/// Colored closure from the closed pairing P (R3 §4.2, §6): staged per-type state spaces
+/// (optionally capped by MOY ranks), then ranks per (h, q) of v ↦ m·P_{·a} projected onto the
+/// target duals. `data.edges` is ignored; the differential is `pairing`. With
+/// `pairing = pairing_from_f(data)` this equals [`close_exact_colored`]. Meaningful only when
+/// D² = 0 on the closed complex (unpruned data, or a recorded Freivalds certificate; see
+/// `boxclose::close_box`, which enforces it).
+pub fn try_close_staged<F: Field>(data: &ClosureDataC<F>, pairing: &[(usize, usize, Vec<Vec<EPoly<F>>>)], nn: usize, marked: Option<usize>, opts: &StagedOpts) -> Result<Poincare, String> {
+    let Some(alg) = staged_precheck(data, pairing, nn, marked, opts)? else {
+        return Ok(Poincare::default());
+    };
+    let gq = data.global_q(nn, marked);
+    let ss = staged_spaces(&alg, data, opts)?;
+    let cx = closed_cx(&alg, data, pairing, &ss, gq);
+    let blocks: Vec<((i32, i32), &Vec<(usize, i32, usize)>)> = cx.groups.iter().map(|(k, v)| (*k, v)).collect();
+    let ranks: Vec<usize> = par_map(&blocks, |((h, q), elems)| {
+        let tl = cx.dual_size.get(&(h + 1, *q)).copied().unwrap_or(0);
+        if tl == 0 {
+            return 0;
+        }
+        let mut ech = RankEchelon::<F>::new(tl);
+        let mut acc = Acc::<F>::new(tl);
+        let mut buf = vec![];
+        for &(i, d, k) in elems.iter() {
+            let (a, m1) = ss[&data.objs[i].0].reps[&d][k];
+            for &ei in cx.out_edges.get(&i).map(|v| v.as_slice()).unwrap_or(&[]) {
+                let t = pairing[ei].1;
+                for (b, row) in pairing[ei].2.iter().enumerate() {
+                    for (mono, c) in &row[a as usize].t {
+                        alg.nf_prod(m1, *mono, &mut buf);
+                        for (key, x) in &buf {
+                            if let Some(&col) = cx.dual_index.get(&(t as u32, b as u32, *key)) {
+                                acc.add(col, &c.mul(x));
+                            }
+                        }
+                    }
+                }
+            }
+            ech.insert(&acc.take());
+        }
+        ech.rank()
+    });
+    let rank: HashMap<(i32, i32), usize> = blocks.iter().map(|(k, _)| *k).zip(ranks).collect();
+    let mut pc = Poincare::default();
+    for ((h, q), elems) in &cx.groups {
+        let r_out = rank.get(&(*h, *q)).copied().unwrap_or(0);
+        let r_in = rank.get(&(h - 1, *q)).copied().unwrap_or(0);
+        pc.add_term(*h, *q, elems.len() as i128 - r_out as i128 - r_in as i128);
+    }
+    Ok(pc)
+}
+
+/// Dense LU (row pivoting) of a square matrix over F, for solving A x = y.
+struct DenseLu<F: Field> {
+    lu: Vec<Vec<F>>,
+    perm: Vec<usize>,
+}
+
+impl<F: Field> DenseLu<F> {
+    fn new(mut a: Vec<Vec<F>>) -> Option<Self> {
+        let n = a.len();
+        let mut perm: Vec<usize> = (0..n).collect();
+        for k in 0..n {
+            let p = (k..n).find(|&i| !a[i][k].is_zero())?;
+            a.swap(k, p);
+            perm.swap(k, p);
+            let inv = a[k][k].inv();
+            let (top, bot) = a.split_at_mut(k + 1);
+            let rk = &top[k];
+            for row in bot.iter_mut() {
+                if row[k].is_zero() {
+                    continue;
+                }
+                let f = row[k].mul(&inv);
+                row[k] = f.clone();
+                let nf = f.neg();
+                for j in (k + 1)..n {
+                    if !rk[j].is_zero() {
+                        row[j].fma(&nf, &rk[j]);
+                    }
+                }
+            }
+        }
+        Some(DenseLu { lu: a, perm })
+    }
+    fn solve(&self, y: &[F]) -> Vec<F> {
+        let n = self.lu.len();
+        let mut x: Vec<F> = self.perm.iter().map(|&i| y[i].clone()).collect();
+        for i in 0..n {
+            for j in 0..i {
+                if !self.lu[i][j].is_zero() {
+                    let t = self.lu[i][j].mul(&x[j]);
+                    x[i].sub_assign(&t);
+                }
+            }
+        }
+        for i in (0..n).rev() {
+            for j in (i + 1)..n {
+                if !self.lu[i][j].is_zero() {
+                    let t = self.lu[i][j].mul(&x[j]);
+                    x[i].sub_assign(&t);
+                }
+            }
+            x[i] = x[i].mul(&self.lu[i][i].inv());
+        }
+        x
+    }
+}
+
+/// Largest state-space block (rank r of one type in one degree) the Freivalds test inverts
+/// densely.
+pub const FREIVALDS_MAX_BLOCK: usize = 4096;
+
+/// Freivalds test of D² = 0 on the closed complex (SPEC D7, R3 §5.3): for `k` random vectors u
+/// per (h, q) block, D_{h+1} Π^{-1} D_h u = 0, where D_h u is the image of u (a combination of
+/// representatives) under the pairing, Π^{-1} recovers representative coordinates from its dual
+/// coordinates (per type and degree), and the check is on every A_λ coordinate of the second
+/// image (not only on duals). Additionally the first image must lie in the closed state space
+/// (Σ x_i·rep_i equals it on every coordinate), which catches pairing entries outside Im(G_t).
+/// Returns the number of blocks checked; Err names the first failing block. A false pass has
+/// probability ≤ p^{-k} per block (degree-1 test in u). A label > N: closure 0, Ok(0).
+pub fn closed_d2_freivalds_raw<F: Field>(data: &ClosureDataC<F>, pairing: &[(usize, usize, Vec<Vec<EPoly<F>>>)], nn: usize, marked: Option<usize>, opts: &StagedOpts, k: usize, seed: u64) -> Result<usize, String> {
+    use rand::{rngs::StdRng, Rng, SeedableRng};
+    let Some(alg) = staged_precheck(data, pairing, nn, marked, opts)? else {
+        return Ok(0);
+    };
+    let gq = data.global_q(nn, marked);
+    let ss = staged_spaces(&alg, data, opts)?;
+    let cx = closed_cx(&alg, data, pairing, &ss, gq);
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut buf = vec![];
+    // full image of a combination of representatives of (h, q): (target object, b, key) -> value
+    let image = |coef: &[(usize, i32, usize, F)], buf: &mut Vec<(u64, F)>| -> HashMap<(usize, u32, u64), F> {
+        let mut out: HashMap<(usize, u32, u64), F> = HashMap::new();
+        for (i, d, kk, u) in coef {
+            if u.is_zero() {
+                continue;
+            }
+            let (a, m1) = ss[&data.objs[*i].0].reps[d][*kk];
+            for &ei in cx.out_edges.get(i).map(|v| v.as_slice()).unwrap_or(&[]) {
+                let t = pairing[ei].1;
+                for (b, row) in pairing[ei].2.iter().enumerate() {
+                    for (mono, c) in &row[a as usize].t {
+                        alg.nf_prod(m1, *mono, buf);
+                        for (key, x) in buf.iter() {
+                            out.entry((t, b as u32, *key)).or_insert_with(F::zero).fma(&u.mul(c), x);
+                        }
+                    }
+                }
+            }
+        }
+        out.retain(|_, v| !v.is_zero());
+        out
+    };
+    // Π_{type, d}: rows = reps, columns = duals; LU of Π^T; and the reps' full vectors
+    struct Blk<F: Field> {
+        lu: DenseLu<F>,
+        vecs: Vec<HashMap<(u32, u64), F>>,
+    }
+    let mut cache: HashMap<(u32, i32), Blk<F>> = HashMap::new();
+    let build_blk = |x: u32, d: i32, buf: &mut Vec<(u64, F)>| -> Result<Blk<F>, String> {
+        let tb = &data.types[&x];
+        let reps = &ss[&x].reps[&d];
+        let duals = &ss[&x].duals[&d];
+        let r = reps.len();
+        if r > FREIVALDS_MAX_BLOCK {
+            return Err(format!("type {} degree {}: state space block {} > {} (dense Π^-1 not supported)", x, d, r, FREIVALDS_MAX_BLOCK));
+        }
+        let mut vecs = vec![];
+        for &(a, m1) in reps {
+            let mut v: HashMap<(u32, u64), F> = HashMap::new();
+            for (b, row) in tb.gram.iter().enumerate() {
+                for (mono, c) in &row[a as usize].t {
+                    alg.nf_prod(m1, *mono, buf);
+                    for (key, y) in buf.iter() {
+                        v.entry((b as u32, *key)).or_insert_with(F::zero).fma(c, y);
+                    }
+                }
+            }
+            v.retain(|_, y| !y.is_zero());
+            vecs.push(v);
+        }
+        // A = Π^T: A[j][i] = Π[i][j] = coefficient of dual j in rep i
+        let a: Vec<Vec<F>> = duals.iter().map(|dk| vecs.iter().map(|v| v.get(dk).cloned().unwrap_or_else(F::zero)).collect()).collect();
+        let lu = DenseLu::new(a).ok_or_else(|| format!("type {} degree {}: Π is singular", x, d))?;
+        Ok(Blk { lu, vecs })
+    };
+    let mut nblocks = 0;
+    for ((h, q), elems) in &cx.groups {
+        if !cx.groups.contains_key(&(h + 1, *q)) {
+            continue;
+        }
+        nblocks += 1;
+        for _ in 0..k.max(1) {
+            let coef: Vec<(usize, i32, usize, F)> = elems.iter().map(|&(i, d, kk)| (i, d, kk, F::from_i64(rng.gen_range(1..i64::MAX)))).collect();
+            let y = image(&coef, &mut buf);
+            // per target object at h+1: recover representative coordinates
+            let mut by_obj: BTreeMap<usize, HashMap<(u32, u64), F>> = BTreeMap::new();
+            for ((t, b, key), v) in y {
+                by_obj.entry(t).or_default().insert((b, key), v);
+            }
+            let mut coef2: Vec<(usize, i32, usize, F)> = vec![];
+            for (t, yt) in by_obj {
+                let o = data.objs[t];
+                let d = q - o.2 - gq;
+                let has = ss[&o.0].reps.get(&d).map_or(false, |v| !v.is_empty());
+                if !has {
+                    return Err(format!("D² block (h {}, q {}): image on object {} in degree {} where Φ_N(B) is 0", h, q, t, d));
+                }
+                if !cache.contains_key(&(o.0, d)) {
+                    let blk = build_blk(o.0, d, &mut buf)?;
+                    cache.insert((o.0, d), blk);
+                }
+                let blk = &cache[&(o.0, d)];
+                let duals = &ss[&o.0].duals[&d];
+                let yv: Vec<F> = duals.iter().map(|dk| yt.get(dk).cloned().unwrap_or_else(F::zero)).collect();
+                let x = blk.lu.solve(&yv);
+                // the image must lie in the state space: Σ x_i rep_i = y_t on every coordinate
+                let mut rec: HashMap<(u32, u64), F> = HashMap::new();
+                for (xi, v) in x.iter().zip(blk.vecs.iter()) {
+                    if xi.is_zero() {
+                        continue;
+                    }
+                    for (kk, y) in v {
+                        rec.entry(*kk).or_insert_with(F::zero).fma(xi, y);
+                    }
+                }
+                rec.retain(|_, v| !v.is_zero());
+                if rec != yt {
+                    return Err(format!("D² block (h {}, q {}): the image on object {} is not in Im(G) (pairing inconsistent with the Gram data)", h, q, t));
+                }
+                for (kk, xi) in x.into_iter().enumerate() {
+                    if !xi.is_zero() {
+                        coef2.push((t, d, kk, xi));
+                    }
+                }
+            }
+            let z = image(&coef2, &mut buf);
+            if !z.is_empty() {
+                return Err(format!("D² != 0 on the closed complex at gl_{} (marked {:?}): block (h {}, q {}) -> h {} ({} nonzero coordinates)", nn, marked, h, q, h + 2, z.len()));
+            }
+        }
+    }
+    Ok(nblocks)
+}
