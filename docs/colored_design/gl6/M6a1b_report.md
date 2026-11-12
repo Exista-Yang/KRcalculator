@@ -121,8 +121,8 @@ after each crossing, mean over 399 points; engine peak bytes = the per-point bud
 | 3 | 0.45 | 19 MB | 0.43 | 928 → 40 | 444 |
 | 4 | 2.45 | 48 MB | 3.4 | 2 599 → 85 | 1 257 |
 | 5 | 9.75 | 130 MB | 17.5 | 5 580 → 156 | 2 712 |
-| 6 | __S6__ | 364 MB (record) | 48-66 | 10 249 → 259 | 4 995 |
-| 7 | __S7C__ | | | | |
+| 6 | 29.2 | 322 MB | 66.9 | 10 249 → 259 | 4 995 |
+| 7 | 87.7 (3 threads) | 756 MB | 231.9 | 16 984 → 400 | 8 292 |
 | 8 | — | > 2 GB at the record point (refused by the budget) | > 20 min | | |
 
 σ^5 box run: 977 s scan wall for 399 points (4 threads), 21 s record, 1 s for all 40 closures
