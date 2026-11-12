@@ -55,6 +55,17 @@ fn jstr(s: &str) -> String {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // gp0 --unknowns "labels;a;b": hom_unknowns of the call (both directions) for d in -12..=12
+    if let Some(c) = opt(&args, "--unknowns") {
+        let f: Vec<&str> = c.split(';').collect();
+        let lab: Vec<u8> = f[0].split(',').map(|x| x.parse().unwrap()).collect();
+        let pw = |x: &str| -> Vec<Rung> { if x == "-" { vec![] } else { krhom::smapio::parse_rungs(x).unwrap() } };
+        let (a, b) = (pw(f[1]), pw(f[2]));
+        for d in -12..=12 {
+            println!("d {:>3}: a->b {:>10} b->a {:>10}", d, krhom::homprov::hom_unknowns(&lab, &a, &b, d), krhom::homprov::hom_unknowns(&lab, &b, &a, d));
+        }
+        return;
+    }
     let lam: Vec<u8> = opt(&args, "--lam").unwrap_or_else(|| "3,3,3".into()).split(',').map(|x| x.parse().unwrap()).collect();
     let n: u8 = opt(&args, "--n").expect("--n").parse().unwrap();
     let pairs: Vec<usize> = match opt(&args, "--pairs") {
@@ -66,8 +77,17 @@ fn main() {
     let maxlen: usize = opt(&args, "--maxlen").map(|v| v.parse().unwrap()).unwrap_or(12);
     let exact_budget: u128 = opt(&args, "--exact-budget").map(|v| v.parse().unwrap()).unwrap_or(100_000);
     let no_pad = args.iter().any(|a| a == "--no-pad");
+    let alt_final_len: usize = opt(&args, "--alt-final").map(|v| v.parse().unwrap()).unwrap_or(7);
     let alt_len: usize = opt(&args, "--alt-len").map(|v| v.parse().unwrap()).unwrap_or(5);
     let mut out = opt(&args, "--out").map(|p| std::fs::File::create(p).expect("out"));
+    if let Some(f) = opt(&args, "--b4") {
+        match f.as_str() {
+            "31" => b4::<krhom::field::F31>(&lam, n, &pairs, &args),
+            "32b" => b4::<krhom::field::F32b>(&lam, n, &pairs, &args),
+            _ => panic!("--b4 31|32b"),
+        }
+        return;
+    }
     let mut s = Schur::new(&lam);
     let plan = pruned_plan(&mut s, Some(n));
     let id = s.intern(Table::identity(&lam));
@@ -101,6 +121,7 @@ fn main() {
             let mut unrecorded = 0usize;
             let mut max_junction_flows = xf;
             let mut worst = String::new();
+            let mut max_nonfinal = 0u128;
             for lv in 1..=m {
                 for (t, wt) in &wp[lv] {
                     max_junction_flows = max_junction_flows.max(flows(&lam, wt));
@@ -118,6 +139,9 @@ fn main() {
                                 unrecorded += 1;
                             }
                         }
+                        if lv < m {
+                            max_nonfinal = max_nonfinal.max(u);
+                        }
                         if u > max_step {
                             max_step = u;
                             worst = format!("level {} {} -> {} [{}]·{} -> [{}]", lv, s.table(*tp).fmt(), s.table(*t).fmt(), rungs_str(wtp), rungs_str(&[x[lv - 1]]), rungs_str(wt));
@@ -125,7 +149,34 @@ fn main() {
                     }
                 }
             }
-            let wq: Vec<Rung> = wp[m].iter().find(|e| e.0 == q).map(|e| e.1.clone()).unwrap_or_default();
+            let mut wq: Vec<Rung> = wp[m].iter().find(|e| e.0 == q).map(|e| e.1.clone()).unwrap_or_default();
+            // B2: the final junction word is free (the exit chain W_q -> L_q absorbs it): if the
+            // final step exceeds the budget, choose W_q among the reduced words of q
+            let final_into = |s: &mut Schur, sc: &mut StepCache, w: &[Rung]| -> u128 {
+                let mut mx = 0u128;
+                for (tp, wtp) in &wp[m - 1] {
+                    if let Some(g) = sc.step(s, *tp, &x[m - 1]).into_iter().find(|e| e.0 == q).map(|e| e.1) {
+                        mx = mx.max(step_score(&lam, wtp, &x[m - 1], w, &g));
+                    }
+                }
+                mx
+            };
+            let mut alt_final = String::new();
+            if m > 0 && final_into(&mut s, &mut sc, &wq) > 100_000 {
+                let cands = krhom::dcoset::reduced_words(&mut s, q, alt_final_len, 400_000);
+                let mut best = (final_into(&mut s, &mut sc, &wq), flows(&lam, &wq), wq.clone());
+                for c in cands {
+                    let sc_c = final_into(&mut s, &mut sc, &c);
+                    if (sc_c, flows(&lam, &c)) < (best.0, best.1) {
+                        best = (sc_c, flows(&lam, &c), c);
+                    }
+                }
+                if best.2 != wq {
+                    alt_final = format!("final word [{}] -> [{}] ({} unknowns)", rungs_str(&wq), rungs_str(&best.2), best.0);
+                    wq = best.2;
+                    max_step = max_nonfinal.max(best.0);
+                }
+            }
             let wq_reduced = reduced_for(&mut s, &wq, q).ok();
             // option A: final step directly into L_q
             let mut final_lq = 0u128;
@@ -222,6 +273,9 @@ fn main() {
                 if feasible { "FEASIBLE".to_string() } else { format!("INFEASIBLE ({})", reason) },
                 secs
             );
+            if !alt_final.is_empty() {
+                println!("    {}", alt_final);
+            }
             if !worst.is_empty() {
                 println!("    worst step: {}", worst);
             }
@@ -234,7 +288,7 @@ fn main() {
             if let Some(f) = out.as_mut() {
                 writeln!(
                     f,
-                    "{{\"n\":{},\"pair\":{},\"q\":{},\"s\":{},\"mult\":{},\"x_flows\":{},\"rex_class\":{},\"steps\":{},\"nonid_steps\":{},\"max_step_unknowns\":{},\"unrecorded_steps\":{},\"worst_step\":{},\"wq\":{},\"wq_flows\":{},\"lq\":{},\"final_into_lq_unknowns\":{},\"chain\":{},\"chain_len\":{},\"pad\":{},\"max_template_flows\":{},\"max_assoc_flows\":{},\"theorem_moves\":{},\"uncertifiable_assoc\":{},\"max_exact_unknowns\":{},\"max_word_flows\":{},\"pred_exact_s\":{:.1},\"pred_template_s\":{:.1},\"feasible\":{},\"reason\":{},\"moves\":[{}],\"secs\":{:.2}}}",
+                    "{{\"n\":{},\"pair\":{},\"q\":{},\"s\":{},\"mult\":{},\"x_flows\":{},\"rex_class\":{},\"steps\":{},\"nonid_steps\":{},\"max_step_unknowns\":{},\"unrecorded_steps\":{},\"worst_step\":{},\"wq\":{},\"wq_flows\":{},\"lq\":{},\"final_into_lq_unknowns\":{},\"chain\":{},\"chain_len\":{},\"pad\":{},\"max_template_flows\":{},\"max_assoc_flows\":{},\"theorem_moves\":{},\"uncertifiable_assoc\":{},\"max_exact_unknowns\":{},\"max_word_flows\":{},\"pred_exact_s\":{:.1},\"pred_template_s\":{:.1},\"feasible\":{},\"reason\":{},\"moves\":[{}],\"alt_final\":{},\"max_nonfinal\":{},\"secs\":{:.2}}}",
                     n,
                     k,
                     jstr(&s.table(q).fmt()),
@@ -265,6 +319,8 @@ fn main() {
                     feasible,
                     jstr(&reason),
                     moves.iter().map(|m| jstr(m)).collect::<Vec<_>>().join(","),
+                    jstr(&alt_final),
+                    max_nonfinal,
                     secs
                 )
                 .unwrap();
@@ -273,4 +329,41 @@ fn main() {
         }
     }
     eprintln!("planner stats {:?} / pad {:?}", pl.stats, pl4.stats);
+}
+
+/// B4 start: rex-class pairs through `leaves::rex_class_pairs` (π, ι = realized rex chains,
+/// `certify_pairs`, π∘ι = id at every coset of L_q).
+fn b4<F: krhom::field::Field>(lam: &[u8], n: u8, pairs: &[usize], args: &[String]) {
+    use krhom::sexpr::Expr;
+    use krhom::smap::Arena;
+    use krhom::tmpl::TmplLib;
+    let exact_budget: u128 = opt(args, "--exact-budget").map(|v| v.parse().unwrap()).unwrap_or(100_000);
+    let mut s = Schur::new(lam);
+    let plan = pruned_plan(&mut s, Some(n));
+    for &k in pairs {
+        let pp = plan.pairs[k].clone();
+        let mut x = canonical_ladder(&mut s, pp.p);
+        x.push(pp.rung);
+        for tg in &pp.kept {
+            if !reduced_for(&mut s, &x, tg.q).ok() {
+                continue;
+            }
+            let lq = canonical_ladder(&mut s, tg.q);
+            let mut ar: Arena<F> = Arena::new(lam, TmplLib::new(None));
+            let (xe, le) = (ar.expr(Expr::new(lam, &x).unwrap()), ar.expr(Expr::new(lam, &lq).unwrap()));
+            let opts = PlanOpts { exact_budget, max_len: 12, max_visit: 60_000, ..PlanOpts::default() };
+            match krhom::leaves::rex_class_pairs(&mut ar, &mut s, xe, tg.q, le, &opts, 0xb4b4 + k as u64) {
+                Ok((p, r)) => {
+                    println!("B4 {} pair {} q {} X {} flows: CERTIFIED (form {:?}), pi.iota = id at all cosets; templates {}, exact moves {} (≤ {} unknowns), theorem-Assoc nodes {:?}, {:.1} s", F::name(), k, s.table(tg.q).fmt(), flows(lam, &x), p.form, r.templates, r.exact_moves, r.max_exact_unknowns, r.theorem_assoc, r.secs);
+                    for l in r.pi_chain.iter() {
+                        println!("    pi: {}", l);
+                    }
+                    for l in r.iota_chain.iter() {
+                        println!("    iota: {}", l);
+                    }
+                }
+                Err(e) => println!("B4 {} pair {} q {}: FAILED: {}", F::name(), k, s.table(tg.q).fmt(), e),
+            }
+        }
+    }
 }

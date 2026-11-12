@@ -1099,3 +1099,73 @@ impl<F: Field> HomProvider<F> for ClosureLeaves<F> {
         self.last_fail.clone()
     }
 }
+
+// =============================================================================================
+// M4c B2/B4: rex-class pairs (X ≅ B_q: X is itself a reduced expression of q, s = 0, mult 1)
+// =============================================================================================
+
+/// Report of a rex-class pair built from rex chains.
+#[derive(Clone, Debug)]
+pub struct RexPairReport {
+    pub pi_chain: Vec<String>,
+    pub iota_chain: Vec<String>,
+    pub templates: usize,
+    pub exact_moves: usize,
+    pub max_exact_unknowns: u128,
+    pub theorem_assoc: Vec<MapId>,
+    pub secs: f64,
+}
+
+/// π: X → L_q and ι: L_q → X as realized rex chains (src/rexplan.rs, `leafgen::realize_chain`),
+/// certified by `certify_pairs` (form rank 1 at rep(q) at two points, genuine) and checked:
+/// π∘ι = id_{L_q} at every coset of the support of L_q (End⁰(B_q) = k and the top scalar is 1).
+/// Every map that uses the theorem-level Assoc certificate is listed in `theorem_assoc`.
+pub fn rex_class_pairs<F: Field>(ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, opts: &crate::rexplan::PlanOpts, seed: u64) -> Result<(Pairs<F>, RexPairReport), String> {
+    let t0 = Instant::now();
+    let lam = ar.lam().to_vec();
+    let (xw, lw) = (ar.expr_of(x).rungs.clone(), ar.expr_of(lq).rungs.clone());
+    if !crate::dcoset::reduced_for(s, &xw, q).ok() {
+        return Err("rex_class_pairs: X is not a reduced expression of q".into());
+    }
+    let mut pl = crate::rexplan::Planner::new();
+    let ch_pi = pl.plan(s, q, &xw, &lw, opts)?;
+    let ch_io = pl.plan(s, q, &lw, &xw, opts)?;
+    let mut cache = HashMap::new();
+    let (pi, rp) = crate::leafgen::realize_chain(ar, &ch_pi, &mut cache, seed)?;
+    let (io, ri) = crate::leafgen::realize_chain(ar, &ch_io, &mut cache, seed + 1000)?;
+    let c = rep_rank_of(s, &lam, q);
+    let pairs = certify_pairs(ar, x, lq, 0, &[io], &[pi], c, 1, seed ^ 0xb4)?;
+    // π∘ι = id on L_q at every coset of its support (two points)
+    let comp = ar.add(MapNode::Comp(pi, io), "rex pair pi.iota")?;
+    for pt in points::<F>(ar.k(), seed ^ 0x1d, 2, 0) {
+        let mut ev = Eval::new(ar, pt);
+        let lay = ev.layout(lq, lq);
+        for &cc in &lay.cosets {
+            let b = ev.block(comp, cc);
+            let n = b.rows as usize;
+            for i in 0..n {
+                for j in 0..n {
+                    let want = if i == j { F::one() } else { F::zero() };
+                    if b.a[i * n + j] != want {
+                        return Err(format!("rex_class_pairs: pi.iota != id at coset {}", cc));
+                    }
+                }
+            }
+        }
+    }
+    let mut thm = crate::leafgen::relies_on_theorem(ar, pi);
+    thm.extend(crate::leafgen::relies_on_theorem(ar, io));
+    let exact: Vec<&crate::rexplan::Move> = ch_pi.moves.iter().chain(&ch_io.moves).filter(|m| m.kind == crate::rexplan::MoveKind::Exact).collect();
+    Ok((
+        pairs,
+        RexPairReport {
+            pi_chain: rp.lines,
+            iota_chain: ri.lines,
+            templates: rp.templates + ri.templates,
+            exact_moves: exact.len(),
+            max_exact_unknowns: exact.iter().map(|m| m.unknowns).max().unwrap_or(0),
+            theorem_assoc: thm,
+            secs: t0.elapsed().as_secs_f64(),
+        },
+    ))
+}
