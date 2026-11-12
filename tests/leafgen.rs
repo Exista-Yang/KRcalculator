@@ -470,3 +470,37 @@ fn braid_pieces_333() {
         println!("CERT braid333 {} flows {:?} interp {:.1}s cert {:.1}s (monos {}) total {:.1}s", cf.name, b.flows, b.interp_secs, b.cert.secs, b.cert.max_monos, t0.elapsed().as_secs_f64());
     }
 }
+
+/// Switchback and cup/cap families of `certify_all_to_333` alone, smallest windows first
+/// (separate process: the 9-root windows wait on one-time GrTable(r, 9) builds).
+#[test]
+#[ignore]
+fn certify_switchbacks_and_cups() {
+    let mut lib: TmplLib<F> = TmplLib::new(None);
+    let mut list: Vec<ClosedForm> = vec![];
+    for n in 3..=9u8 {
+        for a in 1..=3u8.min(n - 1) {
+            let m = n - a;
+            for b in 1..m {
+                if let Ok((phi, psi)) = switchback_eko(a, m, b) {
+                    list.push(phi);
+                    list.push(psi);
+                }
+            }
+        }
+        for &(a, b) in &[(3u8, 3u8), (3, 6), (6, 3)] {
+            if a + b == n {
+                for r in 1..=b.min(3) {
+                    let (cap, cup) = cup_cap(&[a, b], Rung::e(0, r as usize)).unwrap();
+                    list.push(cap);
+                    list.push(cup);
+                }
+            }
+        }
+    }
+    for (i, cf) in list.iter().enumerate() {
+        let t1 = Instant::now();
+        let b = build(&mut lib, cf, 2000 + i as u64).unwrap_or_else(|e| panic!("{}", e));
+        println!("CERT {} deg {} flows {:?} interp {:.2}s cert {:.2}s (pts {}, monos {}) total {:.2}s", cf.name, b.deg, b.flows, b.interp_secs, b.cert.secs, b.cert.points, b.cert.max_monos, t1.elapsed().as_secs_f64());
+    }
+}
