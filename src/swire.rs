@@ -749,7 +749,14 @@ pub fn box_word<F: PrimeField>(lib: &WLib<F>, word: &[i32], o: &BoxOpts) -> Resu
     for a in accs.iter().flatten() {
         maxsize = maxsize.max(a.needed_size().unwrap_or(0));
     }
-    let pts = ug.points_up_to(maxsize);
+    let mut pts = ug.points_up_to(maxsize);
+    if o.modes.iter().all(|m| m.is_some()) {
+        // reduced extraction only: the points of the reduced grids (μ^m = ∅)
+        pts.retain(|&id| {
+            let mu = ug.mu(id);
+            o.modes.iter().any(|m| mu[m.unwrap()].iter().all(|&x| x == 0))
+        });
+    }
     let mut popts = ScanOpts { eng: o.eng.clone(), close_stages: o.stages.clone(), k0_check: false };
     popts.eng.id_coset = lib.id_coset;
     popts.eng.check_d2 = o.eng.check_d2 && o.d2_all_points;
