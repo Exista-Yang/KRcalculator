@@ -471,10 +471,12 @@ fn leaves_cmd<F: Field>(args: &[String]) {
         let cache = opt(args, "--cache").map(PathBuf::from);
         let mut ar = Arena::<F>::new(&lam, krhom::tmpl::TmplLib::new(cache.map(|c| c.join("tmpl"))));
         let b = Budget::default();
-        for ts in &list {
+        let from: usize = opt(args, "--from").map(|v| v.parse().unwrap()).unwrap_or(0);
+        for (ix, ts) in list.iter().enumerate().skip(from) {
             let p = s0.intern(Table::parse(ts));
             let w = canonical_ladder(&mut s0, p);
             let lp = ar.expr(krhom::sexpr::Expr::new(&lam, &w).unwrap());
+            eprintln!("START #{} {} L_p = {} ({} flows)", ix, ts, wstr(&w), flows(&lam, &w));
             for outs in [false, true] {
                 tried += 1;
                 let t0 = Instant::now();

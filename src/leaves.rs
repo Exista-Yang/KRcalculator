@@ -421,9 +421,15 @@ pub struct Leaves {
     pub budget: u128,
     /// calls in (budget, hard_cap] only with an uncensored exact-shape cost record
     pub hard_cap: u128,
+    /// one-sided calls (an empty end) above this many unknowns only with a cost record
+    pub one_sided_cap: u128,
     pub costs: Option<CostTable>,
     /// try the differing window before the whole words
     pub use_window: bool,
+    /// E2/E3 closed forms for one-dimensional cup/cap steps (validated by `validate_elem`). Off by
+    /// default: Elem constants are recorded per arena and are not part of layer A, so a replay
+    /// (or another session) would reject the loaded maps as not genuine (A2 finding)
+    pub use_elem: bool,
     /// BFS limits of `junction_word`
     pub bfs_len: usize,
     pub bfs_cap: usize,
@@ -440,11 +446,11 @@ pub struct Leaves {
 }
 
 /// provider stamp suffix of the Leaves backend (layer-A headers)
-pub const LEAVES_STAMP: &str = "leaves=Leaves(v1,closure,threeup,prefix-ext+costalt5,elem-window-whole,budget=1e5/4e5)";
+pub const LEAVES_STAMP: &str = "leaves=Leaves(v1,closure,threeup,prefix-ext+costalt5,window-whole,budget=1e5/4e5/os2e4)";
 
 impl Default for Leaves {
     fn default() -> Self {
-        Leaves { budget: 100_000, hard_cap: 400_000, costs: None, use_window: true, bfs_len: 6, bfs_cap: 20_000, alt_len: 5, alt_cap: 400_000, seed: 0x1ea7e5, last: LeafStats::default(), verbose: false, last_fail: None }
+        Leaves { budget: 100_000, hard_cap: 400_000, one_sided_cap: 20_000, costs: None, use_window: true, use_elem: false, bfs_len: 6, bfs_cap: 20_000, alt_len: 5, alt_cap: 400_000, seed: 0x1ea7e5, last: LeafStats::default(), verbose: false, last_fail: None }
     }
 }
 
@@ -580,6 +586,17 @@ impl Leaves {
 
     /// budget rule: Ok(()) if the exact call may be made
     fn admit(&self, labels: &[u8], a: &[Rung], b: &[Rung], d: i32, unknowns: u128) -> Result<(), String> {
+        // one-sided calls (one end the empty word, `call_kind` 0) cost far more per unknown
+        // (M5c; A2: Hom^18(∅, F0.3 E0.3) on (3,6), 42 872 unknowns, > 25 min): above
+        // `one_sided_cap` they need a finite cost-table prediction
+        let (fs, ft) = (crate::schur::flows(labels, a), crate::schur::flows(labels, b));
+        if call_kind(fs, ft) == 0 && unknowns > self.one_sided_cap {
+            let pred = self.costs.as_ref().and_then(|c| c.predict_exact(labels, fs, ft, unknowns, d));
+            return match pred {
+                Some(t) if t.is_finite() && unknowns <= self.hard_cap => Ok(()),
+                _ => Err(format!("one-sided step call {:?} [{}] -> [{}] d={}: {} unknowns > {} and no uncensored exact-shape cost record", labels, wstr(a), wstr(b), d, unknowns, self.one_sided_cap)),
+            };
+        }
         if unknowns <= self.budget {
             return Ok(());
         }
@@ -604,6 +621,9 @@ impl Leaves {
         self.admit(labels, a, b, d, u).map_err(|e| lfail(MissKind::Refused, e))?;
         let (wa, wb) = (Window::new(labels, a), Window::new(labels, b));
         let cached = ar.lib_ref().has_hom(&wa, &wb, d);
+        if self.trace() && !cached {
+            eprintln!("[leaves] exact {:?} [{}] -> [{}] d={} ({} unknowns)", labels, wstr(a), wstr(b), d, u);
+        }
         let t0 = Instant::now();
         let ids = ar.lib().try_hom_basis_cap(&wa, &wb, d, u128::MAX).map_err(|e| lfail(MissKind::Refused, format!("step call: {}", e)))?;
         if !cached {
@@ -664,7 +684,7 @@ impl Leaves {
         kinds.push(StepKind::Whole);
         let pt = points::<F>(ar.k(), self.seed ^ 0x57e9, 1, 0).remove(0);
         // E2/E3 closed form for a one-dimensional cup/cap step (validated once per arena)
-        if n == 1 {
+        if n == 1 && self.use_elem {
             if let Some((ek, key)) = elem_pattern(&ws.labels, &ws.a, &ws.b, dir) {
                 let valid = ar.elem_certified(ek, key).is_some() || match validate_elem::<F>(ek, &ws.labels, &ws.a, 120_000) {
                     Ok(_) => {

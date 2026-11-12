@@ -154,7 +154,8 @@ fn rlam_basis(lam: &[u8], k: usize) -> Vec<Vec<Vec<u8>>> {
 fn v0<F: Field>(lam: &[u8], len: usize, dspan: i32, max_unk: u128) -> usize {
     let mut s = Schur::new(lam);
     let mut ar = Arena::<F>::new(lam, TmplLib::new(None));
-    let lv = Leaves::new();
+    let mut lv = Leaves::new();
+    lv.use_elem = true;
     let id = s.intern(Table::identity(lam));
     let r0 = ar.expr(Expr::new(lam, &[]).unwrap());
     let c = identity_coset(lam);
@@ -324,6 +325,7 @@ fn g1a_closure<F: Field>(lam: &[u8]) -> (usize, usize, std::collections::BTreeMa
     let mut ar = Arena::<F>::new(lam, TmplLib::new(None));
     let (_, order) = g1_targets(&mut s);
     let mut lv = Leaves::new();
+    lv.use_elem = true;
     let r0 = ar.expr(Expr::new(lam, &[]).unwrap());
     let b = Budget::default();
     let (mut ok, mut tot) = (0, 0);
