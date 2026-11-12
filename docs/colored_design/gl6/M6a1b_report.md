@@ -11,7 +11,7 @@ to the result over Q unless both primes are torsion primes.
 | wiring (`dec_word`, `rickard_comp_at`, d_C ⊗ id per coset, K_0 / LB / degree asserts, `check_d2`, λz scans, box loop) | **done** (src/swire.rs, src/bin/sbox.rs) |
 | tests: sengine vs xengine at 2 points ((2,2), (3,2) default; (3,3) ignored), (1,1,1) vs engine2, box loop vs exact closure | **pass** |
 | **G2B as specified (σ^1..σ^9 at N = 6 by box)** | **not reached: σ^1..σ^5 PASS; σ^6..σ^9 not run unreduced** (cost, §4) |
-| G2B σ^1..σ^5 unreduced + reduced, N' = 3..6, both primes × two node sequences, scaling | __G2B5__ |
+| G2B σ^1..σ^5 unreduced + reduced, N' = 3..6, both primes × two node sequences, scaling | **PASS** (Hopf 400, T(2,3) 136, T(2,4) 864, T(2,5) 396 and all reduced, full polynomials = m2s / Wang) |
 | σ^7 reduced (20 box points) | __S7__ |
 | 4_1 type counts (C_feas m9) | **34** types in the final LB complex at N = 6 (276 objects); 40 over all stages; "38" is none of the counts (§5) |
 | stretch: (3,3,3) prune 4 at N = 4 through the localized path | **PASS**: 4_1 = engine2 gl_4 via duality (expected); Markov words σ_1^m σ_2 (m = 1..5) = 2-strand σ^m exactly; both primes × two node sequences; χ; scaling |
@@ -90,7 +90,24 @@ Runs: `runs_g2b/runw.sh M FIELD SEED` = `sbox --lam 3,3 --word σ^M --n 6 --ns 3
 comparison `tools/g2b_compare.py docs/colored_design/gl6/m2s/sigma9_33_F31.json runs_g2b/*.json`.
 Node sequences: seeds 101/103 (F31), 102/104 (F32b).
 
-__G2BTABLE__
+| stage | link | unreduced N'=3/4/5/6 | reduced N'=3/4/5/6 | reference | result |
+|---|---|---|---|---|---|
+| 1 | σ (unknot) | 1/4/10/20 | 1/1/1/1 | [N choose 3]_q (χ) | PASS |
+| 2 | σ^2 Hopf | 1/16/100/**400** | 1/4/10/20 | m2s; Hopf formula | PASS |
+| 3 | σ^3 T(2,3) | 1/10/46/**136** | 1/3/9/27 | m2s; Wang 3 N 1 | PASS |
+| 4 | σ^4 T(2,4) link | 1/22/184/**864** | 1/6/26/88 | m2s | PASS |
+| 5 | σ^5 T(2,5) | 1/16/106/**396** | 1/5/25/125 | m2s; Wang 3 N 2 | PASS |
+
+Every run (F31 seeds 101, 103; F32b seeds 102, 104) gives all 32 stage-2..5 closures equal to the
+m2s JSON of its prime as **full polynomials** (`g2b_compare.py`: 0 differences), the Wang blocks
+3 N 1 and 3 N 2 at N = 3..6 as full polynomials, χ = `decat_chi` on all 40 closures, and the
+scaling check (3 724 entries checked at z and λz at 2 box points, all stages; 3 808 zero at both).
+Freivalds D2Cert (k = 3) recorded for every closure. Scan wall 940-1 174 s per run (399 points,
+4 threads), record point 21-22 s, closures ≈ 1 s, VmHWM 0.9-1.1 GB.
+
+Not run: σ^6..σ^9 unreduced (T(2,6) 1568, T(2,7) 848, T(2,8) 2560, T(2,9) 1540): the σ^9 attempt
+(F31 seed 101) was refused by the per-point memory budget (2 GB) at crossing 8 of the record point
+after ≈ 25 min (runs_g2b/s9_f31_seed101.err) — see §4.
 
 ## 4. Per-point costs
 
