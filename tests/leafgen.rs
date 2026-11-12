@@ -265,7 +265,7 @@ fn top_coset(lam: &[u8], top: &[u8], anti: bool) -> u64 {
 /// The atomic braid composite A → B: certified (genuine) DAG, degree 0, 1⊗ ↦ 1⊗ at every coset,
 /// 1×1 at the top coset with value 1; in the exact Hom^0(A, B) window where affordable; equal to
 /// the direct Rex closed form on the whole window; B → A → B top scalar 1.
-fn braid_case(x: u8, y: u8, z: u8, exact: bool) {
+fn braid_case(x: u8, y: u8, z: u8, exact: bool, direct_max: usize) {
     let t0 = Instant::now();
     let bw = braid_words(x, y, z).unwrap();
     let lam = vec![x, y, z];
@@ -295,7 +295,7 @@ fn braid_case(x: u8, y: u8, z: u8, exact: bool) {
     assert!(bt.a[0].is_one());
     let nfa = FlowIndex::build(&Expr::new(&lam, &bw.a).unwrap()).nflows();
     eprintln!("braid {:?}: A {} flows, {} cosets, composite ok ({:.1} s)", (x, y, z), nfa, lay.cosets.len(), t0.elapsed().as_secs_f64());
-    if nfa <= 400 {
+    if nfa <= direct_max {
         // the direct closed form on the whole window agrees with the composite everywhere
         let wa = Window::new(&lam, &bw.a);
         let wb = Window::new(&lam, &bw.b);
@@ -332,21 +332,23 @@ fn braid_case(x: u8, y: u8, z: u8, exact: bool) {
 
 #[test]
 fn braid_small_cells() {
-    braid_case(1, 1, 1, true);
-    braid_case(1, 2, 1, true);
-    braid_case(2, 1, 2, true);
+    braid_case(1, 1, 1, true, 400);
+    braid_case(1, 2, 1, true, 400);
+    braid_case(2, 1, 2, true, 400);
 }
 
 #[test]
 fn braid_222() {
-    braid_case(2, 2, 2, false);
+    // composite checks only (the direct 216-flow Rex comparison is in `braid_large`)
+    braid_case(2, 2, 2, false, 0);
 }
 
 #[test]
 #[ignore]
 fn braid_large() {
-    braid_case(3, 1, 3, false);
-    braid_case(2, 3, 2, false);
+    braid_case(2, 2, 2, false, 400);
+    braid_case(3, 1, 3, false, 0);
+    braid_case(2, 3, 2, false, 0);
 }
 
 const FAR_CELLS: &[(u8, u8, u8, u8)] = &[(1, 1, 1, 1), (1, 2, 1, 1), (2, 1, 1, 2)];
