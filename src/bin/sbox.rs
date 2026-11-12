@@ -72,6 +72,23 @@ fn run<F: PrimeField>(a: &[String]) {
         eprintln!("scaling check: {} entries checked, {} zero at both points ({:.1}s)", c, z, ts.elapsed().as_secs_f64());
         scal = format!("{{\"checked\":{},\"zero_both\":{},\"pass\":true}}", c, z);
     }
+    // χ = schur::decat_chi (unreduced), and [N choose λ_0]·χ(reduced) = χ(unreduced)
+    let mut chi: std::collections::BTreeMap<(usize, usize, bool), bool> = Default::default();
+    for sr in &out.stages {
+        let mut sch = krhom::schur::Schur::new(&lam);
+        let sopts = krhom::schur::ScanOpts { peak: false, every_stage: false, marked_block: None };
+        let res = krhom::schur::decat_scan(&mut sch, &word[..sr.stage], &sopts);
+        for (&(nn, marked), p) in &sr.closed {
+            let want = krhom::schur::decat_chi(&mut sch, &res, &word[..sr.stage], nn);
+            let got = if marked.is_some() { p.euler().mul(&krhom::laurent::LPoly::qbinom(nn as i64, lam[0] as i64)) } else { p.euler() };
+            let ok = got == want;
+            if !ok {
+                eprintln!("CHI FAIL stage {} N={} marked {:?}: {:?} vs decat_chi {:?}", sr.stage, nn, marked, got, want);
+            }
+            chi.insert((sr.stage, nn, marked.is_some()), ok);
+        }
+    }
+    eprintln!("chi = decat_chi: {} of {} closures", chi.values().filter(|&&b| b).count(), chi.len());
     for sr in &out.stages {
         for (&(nn, marked), p) in &sr.closed {
             println!("stage {} N={} {}: {}  (rank {})", sr.stage, nn, if marked.is_some() { "reduced" } else { "unreduced" }, p, p.total_rank());
@@ -91,7 +108,7 @@ fn run<F: PrimeField>(a: &[String]) {
         let mut res = vec![];
         for sr in &out.stages {
             for (&(nn, marked), p) in &sr.closed {
-                res.push(format!("{{\"stage\":{},\"reduced\":{},\"N\":{},\"P\":{},\"entries\":{},\"objects\":{},\"d2_blocks\":{}}}", sr.stage, marked.is_some(), nn, poly_json(p), sr.entries, sr.objects, sr.d2_blocks[&(nn, marked)]));
+                res.push(format!("{{\"stage\":{},\"reduced\":{},\"N\":{},\"P\":{},\"entries\":{},\"objects\":{},\"d2_blocks\":{},\"chi_ok\":{}}}", sr.stage, marked.is_some(), nn, poly_json(p), sr.entries, sr.objects, sr.d2_blocks[&(nn, marked)], chi[&(sr.stage, nn, marked.is_some())]));
             }
         }
         let rec: Vec<String> = out.record.iter().map(|s| format!("{{\"stage\":{},\"inserted\":{},\"objects\":{},\"components\":{},\"pivots\":{},\"c_e\":{:.3},\"peak_bytes\":{},\"secs\":{:.3}}}", s.stage + 1, s.inserted, s.objects, s.components, s.pivots, s.c_e, s.peak_bytes, s.secs)).collect();

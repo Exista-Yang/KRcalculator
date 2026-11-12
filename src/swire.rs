@@ -108,7 +108,7 @@ pub fn build_wlib<F: Field>(mut sd: SIndec<F>, words: &[Vec<i32>], closure: bool
                 }
                 let mut sums: BTreeMap<usize, Vec<(Tid, i32)>> = BTreeMap::new();
                 for &k in &kept {
-                    let dec = sd.dec_word(p, &terms[k].rungs).map_err(String::from)?;
+                    let dec = sd.dec_word(p, &terms[k].rungs).map_err(|e| format!("dec_word({} ⊗ {}): {}", sd.schur.table(p).fmt(), crate::smapio::rungs_str(&terms[k].rungs), String::from(e)))?;
                     for sm in &dec.summands {
                         next.insert(sm.q);
                     }
@@ -120,7 +120,7 @@ pub fn build_wlib<F: Field>(mut sd: SIndec<F>, words: &[Vec<i32>], closure: bool
                         if !kept.contains(&ks) || !kept.contains(&kt) {
                             continue;
                         }
-                        let comps = sd.rickard_comp_at(p, i, pos, j).map_err(String::from)?;
+                        let comps = sd.rickard_comp_at(p, i, pos, j).map_err(|e| format!("rickard_comp_at({}, {}, {}, {}): {}", sd.schur.table(p).fmt(), i, pos, j, String::from(e)))?;
                         for &(si, ti, m) in comps.iter() {
                             let (qs, ss) = sums[&ks][si];
                             let (qt, st) = sums[&kt][ti];
