@@ -39,6 +39,7 @@ pub mod smapio;
 pub mod sindec;
 pub mod sengine;
 pub mod swire;
+pub mod boxrun;
 pub mod dcoset;
 pub mod leaves;
 pub mod leafgen;

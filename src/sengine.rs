@@ -292,6 +292,8 @@ pub struct SObj {
 }
 
 /// fixed overheads of the byte counter (BTreeMap/BTreeSet entries, measured order of magnitude)
+/// engine version stamp (v2: pivot values in the frozen trace, M6a-2a)
+pub const SENGINE_STAMP: &str = "sengine-v2";
 pub const OBJ_BYTES: u64 = 160;
 pub const EDGE_BYTES: u64 = 96;
 
@@ -568,6 +570,14 @@ impl Default for Fnv {
 
 // ------------------------------------------------------------------ frozen structure
 
+/// Deterministic fingerprint of a field value (pivot scalars of the frozen trace).
+pub fn value_fingerprint<F: Field>(c: &F) -> u64 {
+    use std::hash::Hasher;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    c.hash(&mut h);
+    h.finish()
+}
+
 /// One elimination round: the stage (crossing index), the pivots in order, and the pattern
 /// hash after the round.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -575,6 +585,10 @@ pub struct Round {
     pub stage: usize,
     pub pivots: Vec<(usize, usize)>,
     pub pattern: u64,
+    /// fingerprint of the pivot scalar c (d_ab = c·I) of every pivot, in order (M6a-2a). A
+    /// degree-0 component between equal types of genuine bimodule maps is c·id with c ∈ k, the
+    /// same at every point; with `EngOpts::check_pivot_values` a replay compares it to point 0.
+    pub values: Vec<u64>,
 }
 
 /// The structure decided at point 0 (D14): replayed, never re-decided, at every other point.
@@ -641,6 +655,10 @@ pub struct EngOpts {
     pub id_coset: Option<u64>,
     /// record the location string of the memory peak (a format! per new peak)
     pub peak_detail: bool,
+    /// Replay: every pivot scalar must equal the one recorded at point 0 (D14 frozen structure;
+    /// true for scans of genuine bimodule maps, e.g. swire; false for synthetic complexes whose
+    /// cone scalars depend on the point by construction)
+    pub check_pivot_values: bool,
 }
 impl Default for EngOpts {
     fn default() -> Self {
@@ -653,6 +671,7 @@ impl Default for EngOpts {
             ignore_eligibility: false,
             id_coset: None,
             peak_detail: true,
+            check_pivot_values: false,
         }
     }
 }
@@ -767,6 +786,8 @@ pub struct PEngine<F: Field> {
     /// edges created by the last pivot (fill-in), for the candidate index of the heap
     new_edges: Vec<(usize, usize)>,
     track_new: bool,
+    /// fingerprints of the pivot scalars applied since the start of the current round
+    piv_vals: Vec<u64>,
     /// cumulative profile of the whole scan: (apply_pivot secs, pattern-hash secs, updates, multiply-adds)
     pub tprof: (f64, f64, u64, u64),
     /// composition plans per (x type, pivot type, y type): blocks of d_xy += d_ay ∘ d_xb
@@ -857,6 +878,7 @@ impl<F: Field> PEngine<F> {
             prof2: (0.0, 0, 0.0),
             new_edges: vec![],
             track_new: false,
+            piv_vals: vec![],
             tprof: (0.0, 0.0, 0, 0),
             plans: HashMap::new(),
             pool: HashMap::new(),
@@ -1195,6 +1217,7 @@ impl<F: Field> PEngine<F> {
     }
     fn eliminate_round_inner(&mut self, all: bool) -> Result<(), SErr> {
         let round_no = self.round_i;
+        self.piv_vals.clear();
         let pivots = match self.mode.clone() {
             Mode::Record => match self.opts.order {
                 PivotOrder::Heap => self.markowitz_heap_fast(all)?,
@@ -1209,7 +1232,7 @@ impl<F: Field> PEngine<F> {
                 if r.stage != self.stage {
                     return Err(SErr::PointDependent { stage: self.stage, round: round_no, what: format!("round belongs to stage {} at point 0", r.stage) });
                 }
-                for &(a, b) in &r.pivots {
+                for (k, &(a, b)) in r.pivots.iter().enumerate() {
                     if !(self.alive(a) && self.alive(b) && self.cx.get(a, b).is_some() && self.is_candidate(a, b, all)) {
                         return Err(SErr::PointDependent { stage: self.stage, round: round_no, what: format!("recorded pivot {} → {} is not a component here", a, b) });
                     }
@@ -1217,6 +1240,9 @@ impl<F: Field> PEngine<F> {
                         SErr::Pivot(s) => SErr::PointDependent { stage: self.stage, round: round_no, what: format!("recorded pivot {} → {}: {}", a, b, s) },
                         e => e,
                     })?;
+                    if self.opts.check_pivot_values && self.piv_vals.last() != r.values.get(k) {
+                        return Err(SErr::PointDependent { stage: self.stage, round: round_no, what: format!("pivot {} → {}: scalar differs from point 0 (a degree-0 component between equal types must be a constant c·id)", a, b) });
+                    }
                 }
                 r.pivots.clone()
             }
@@ -1231,7 +1257,19 @@ impl<F: Field> PEngine<F> {
         }
         self.stage_pivots.extend_from_slice(&pivots);
         self.stage_rounds += 1;
-        self.rec.rounds.push(Round { stage: self.stage, pivots, pattern });
+        let values = std::mem::take(&mut self.piv_vals);
+        if values.len() != pivots.len() {
+            return Err(SErr::Usage(format!("round {}: {} pivot values for {} pivots", round_no, values.len(), pivots.len())));
+        }
+        if let Mode::Replay(fz) = &self.mode {
+            if !self.opts.check_pivot_values {
+                // values are not compared: keep point 0's so that `finish` compares structure only
+                self.rec.rounds.push(Round { stage: self.stage, pivots, pattern, values: fz.rounds[round_no].values.clone() });
+                self.round_i += 1;
+                return Ok(());
+            }
+        }
+        self.rec.rounds.push(Round { stage: self.stage, pivots, pattern, values });
         self.round_i += 1;
         Ok(())
     }
@@ -1526,6 +1564,7 @@ impl<F: Field> PEngine<F> {
         if c.is_zero() {
             return Err(SErr::Pivot(format!("component {} → {} has scalar 0 at rep but is nonzero", a, b)));
         }
+        self.piv_vals.push(value_fingerprint(&c));
         let alpha = c.inv().neg();
         let mut touched: Vec<usize> = Vec::with_capacity(self.cx.inn[&a].len() + self.cx.inn[&b].len() + self.cx.out[&a].len() + self.cx.out[&b].len());
         touched.extend(self.cx.inn[&a].iter().copied());
