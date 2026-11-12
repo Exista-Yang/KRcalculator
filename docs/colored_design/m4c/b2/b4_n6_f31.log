@@ -1,0 +1,52 @@
+B4 F_2147483647 pair 159 q 0,2,1/3,0,0/0,1,2 X 240 flows: CERTIFIED (form [[1]]), pi.iota = id at all cosets; templates 2, exact moves 2 (≤ 370 unknowns), theorem-Assoc nodes [], 20.5 s
+    pi: Assoc@3/u0 [5, 4, 0] [F1.3,F0.2] -> [F1.4,F0.2,E1.1] (40x40 flows) numeric
+    pi: FlagMatch@1/u0 [6, 0, 3] [F0.1,E1.3,F1.4,F0.2] -> [F0.3,F1.1] (60x60 flows, 475 monos) certified (2.98 s)
+    pi: Exact@2/u1 [3, 3] [F0.1,E0.1] -> [E0.1,F0.1] (12x12 flows, 370 unknowns) exact (1 basis elements, 0.01 s)
+    iota: Exact@2/u1 [3, 3] [E0.1,F0.1] -> [F0.1,E0.1] (12x12 flows, 370 unknowns) exact (1 basis elements, 0.01 s)
+    iota: FlagMatch@1/u0 [6, 0, 3] [F0.3,F1.1] -> [F0.1,F1.1,F0.2] (60x60 flows, 475 monos) certified (2.92 s)
+    iota: Assoc@2/u0 [5, 1, 3] [F1.1,F0.2,E1.1] -> [E1.3,F1.3,F0.2] (40x40 flows) numeric
+B4 F_2147483647 pair 71 q 0,1,2/3,0,0/0,2,1 X 600 flows: CERTIFIED (form [[1]]), pi.iota = id at all cosets; templates 2, exact moves 2 (≤ 4251 unknowns), theorem-Assoc nodes [], 29.6 s
+    pi: Assoc@3/u0 [4, 5, 0] [F1.3,F0.1] -> [F1.5,F0.1,E1.2] (40x40 flows) numeric
+    pi: FlagMatch@1/u0 [6, 0, 3] [F0.2,E1.3,F1.5,F0.1] -> [F0.3,F1.2] (60x60 flows, 475 monos) certified (2.91 s)
+    pi: Exact@2/u1 [3, 3] [F0.2,E0.2] -> [E0.2,F0.2] (30x30 flows, 4251 unknowns) exact (1 basis elements, 0.27 s)
+    iota: Exact@2/u1 [3, 3] [E0.2,F0.2] -> [F0.2,E0.2] (30x30 flows, 4251 unknowns) exact (1 basis elements, 0.26 s)
+    iota: FlagMatch@1/u0 [6, 0, 3] [F0.3,F1.2] -> [F0.2,F1.2,F0.1] (60x60 flows, 475 monos) certified (2.84 s)
+    iota: Assoc@2/u0 [4, 2, 3] [F1.2,F0.1,E1.2] -> [E1.3,F1.3,F0.1] (40x40 flows) numeric
+B4 F_2147483647 pair 323 q 0,2,1/2,0,1/1,1,1 X 2880 flows: CERTIFIED (form [[1]]), pi.iota = id at all cosets; templates 2, exact moves 2 (≤ 370 unknowns), theorem-Assoc nodes [], 45.8 s
+    pi: Assoc@3/u0 [6, 3, 0] [F1.2,F0.3] -> [F1.3,F0.3,E1.1] (60x60 flows) numeric
+    pi: Exact@5/u1 [3, 3] [E0.1,F0.1] -> [F0.1,E0.1] (12x12 flows, 370 unknowns) exact (1 basis elements, 0.01 s)
+    pi: FlagMatch@3/u0 [6, 3, 0] [F1.3,F0.3,F1.1] -> [F0.1,F1.4,F0.2] (60x60 flows, 475 monos) certified (2.91 s)
+    pi: Assoc@4/u0 [5, 4, 0] [F1.4,F0.2,E1.1] -> [F1.3,F0.2] (40x40 flows) numeric
+    iota: Assoc@4/u0 [5, 4, 0] [F1.3,F0.2] -> [F1.4,F0.2,E1.1] (40x40 flows) numeric
+    iota: FlagMatch@3/u0 [6, 3, 0] [F0.1,F1.4,F0.2] -> [F1.3,F0.3,F1.1] (60x60 flows, 475 monos) certified (2.72 s)
+    iota: Exact@5/u1 [3, 3] [F0.1,E0.1] -> [E0.1,F0.1] (12x12 flows, 370 unknowns) exact (1 basis elements, 0.01 s)
+    iota: Assoc@3/u0 [6, 3, 0] [F1.3,F0.3,E1.1] -> [F1.2,F0.3] (60x60 flows) numeric
+B4 F_2147483647 pair 322 q 1,1,1/1,1,1/1,1,1 X 4320 flows: CERTIFIED (form [[1]]), pi.iota = id at all cosets; templates 0, exact moves 6 (≤ 50016 unknowns), theorem-Assoc nodes [], 38.8 s
+    pi: Exact@4/u0 [5, 2, 2] [F0.2,F1.1] -> [F0.1,F1.1,F0.1] (40x60 flows, 32590 unknowns) exact (1 basis elements, 3.68 s)
+    pi: Exact@3/u0 [5, 3, 1] [F1.1,F0.1,F1.1] -> [F0.1,F1.2] (45x30 flows, 12595 unknowns) exact (1 basis elements, 0.98 s)
+    pi: Exact@1/u0 [4, 2, 3] [E1.2,E0.1,F0.1] -> [F0.1,E1.2,E0.1] (60x60 flows, 50016 unknowns) exact (1 basis elements, 11.78 s)
+    iota: Exact@1/u0 [4, 2, 3] [F0.1,E1.2,E0.1] -> [E1.2,E0.1,F0.1] (60x60 flows, 50016 unknowns) exact (1 basis elements, 10.55 s)
+    iota: Exact@3/u0 [5, 3, 1] [F0.1,F1.2] -> [F1.1,F0.1,F1.1] (30x45 flows, 12595 unknowns) exact (1 basis elements, 0.80 s)
+    iota: Exact@4/u0 [5, 2, 2] [F0.1,F1.1,F0.1] -> [F0.2,F1.1] (60x40 flows, 32590 unknowns) exact (1 basis elements, 3.58 s)
+B4 F_2147483647 pair 334 q 0,2,1/1,0,2/2,1,0 X 7200 flows: CERTIFIED (form [[1]]), pi.iota = id at all cosets; templates 2, exact moves 4 (≤ 99175 unknowns), theorem-Assoc nodes [], 212.8 s
+    pi: Assoc@3/u0 [6, 3, 0] [F1.2,F0.3] -> [F1.3,F0.3,E1.1] (60x60 flows) numeric
+    pi: Exact@5/u1 [3, 3] [E0.1,F0.1] -> [F0.1,E0.1] (12x12 flows, 370 unknowns) exact (1 basis elements, 0.01 s)
+    pi: FlagMatch@3/u0 [6, 3, 0] [F1.3,F0.3,F1.1] -> [F0.1,F1.4,F0.2] (60x60 flows, 475 monos) certified (2.82 s)
+    pi: Exact@1/u0 [4, 2, 3] [E1.3,E0.2,F0.1] -> [F0.1,E1.3,E0.2] (60x60 flows, 99175 unknowns) exact (1 basis elements, 48.87 s)
+    pi: Assoc@4/u0 [5, 4, 0] [F1.4,F0.2,E1.1] -> [F1.3,F0.2] (40x40 flows) numeric
+    iota: Assoc@4/u0 [5, 4, 0] [F1.3,F0.2] -> [F1.4,F0.2,E1.1] (40x40 flows) numeric
+    iota: Exact@1/u0 [4, 2, 3] [F0.1,E1.3,E0.2] -> [E1.3,E0.2,F0.1] (60x60 flows, 99175 unknowns) exact (1 basis elements, 55.56 s)
+    iota: FlagMatch@3/u0 [6, 3, 0] [F0.1,F1.4,F0.2] -> [F1.3,F0.3,F1.1] (60x60 flows, 475 monos) certified (2.95 s)
+    iota: Exact@5/u1 [3, 3] [F0.1,E0.1] -> [E0.1,F0.1] (12x12 flows, 370 unknowns) exact (1 basis elements, 0.01 s)
+    iota: Assoc@3/u0 [6, 3, 0] [F1.3,F0.3,E1.1] -> [F1.2,F0.3] (60x60 flows) numeric
+B4 F_2147483647 pair 419 q 0,1,2/2,0,1/1,2,0 X 7200 flows: CERTIFIED (form [[1]]), pi.iota = id at all cosets; templates 2, exact moves 4 (≤ 74312 unknowns), theorem-Assoc nodes [], 164.5 s
+    pi: Assoc@3/u0 [6, 3, 0] [F1.1,F0.3] -> [F1.3,F0.3,E1.2] (60x60 flows) numeric
+    pi: Exact@5/u1 [3, 3] [E0.2,F0.2] -> [F0.2,E0.2] (30x30 flows, 4251 unknowns) exact (1 basis elements, 0.29 s)
+    pi: FlagMatch@3/u0 [6, 3, 0] [F1.3,F0.3,F1.2] -> [F0.2,F1.5,F0.1] (60x60 flows, 475 monos) certified (2.96 s)
+    pi: Exact@1/u0 [5, 1, 3] [E1.3,E0.1,F0.2] -> [F0.2,E1.3,E0.1] (60x60 flows, 74312 unknowns) exact (1 basis elements, 35.21 s)
+    pi: Assoc@4/u0 [4, 5, 0] [F1.5,F0.1,E1.2] -> [F1.3,F0.1] (40x40 flows) numeric
+    iota: Assoc@4/u0 [4, 5, 0] [F1.3,F0.1] -> [F1.5,F0.1,E1.2] (40x40 flows) numeric
+    iota: Exact@1/u0 [5, 1, 3] [F0.2,E1.3,E0.1] -> [E1.3,E0.1,F0.2] (60x60 flows, 74312 unknowns) exact (1 basis elements, 22.15 s)
+    iota: FlagMatch@3/u0 [6, 3, 0] [F0.2,F1.5,F0.1] -> [F1.3,F0.3,F1.2] (60x60 flows, 475 monos) certified (1.94 s)
+    iota: Exact@5/u1 [3, 3] [F0.2,E0.2] -> [E0.2,F0.2] (30x30 flows, 4251 unknowns) exact (1 basis elements, 0.20 s)
+    iota: Assoc@3/u0 [6, 3, 0] [F1.3,F0.3,E1.2] -> [F1.1,F0.3] (60x60 flows) numeric

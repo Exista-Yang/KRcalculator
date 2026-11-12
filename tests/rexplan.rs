@@ -223,3 +223,33 @@ fn window_splice_roundtrip() {
         }
     }
 }
+
+/// B4 machinery at small λ: every rex-class pair target (X reduced for q, X ≠ L_q) of the G1
+/// plan of (2,1,2) and (2,2,2): π, ι from rex chains, `certify_pairs`, π∘ι = id.
+#[test]
+fn rex_class_pairs_small() {
+    let mut n = 0;
+    for lam in [vec![2u8, 1, 2], vec![2, 2, 2]] {
+        let mut s = Schur::new(&lam);
+        let plan = krhom::sindec::pruned_plan(&mut s, None);
+        for pp in &plan.pairs {
+            let mut x = krhom::sindec::canonical_ladder(&mut s, pp.p);
+            x.push(pp.rung);
+            for tg in &pp.kept {
+                let lq = krhom::sindec::canonical_ladder(&mut s, tg.q);
+                if lq == x || !reduced_for(&mut s, &x, tg.q).ok() {
+                    continue;
+                }
+                let mut ar: Arena<F> = Arena::new(&lam, TmplLib::new(None));
+                let (xe, le) = (ar.expr(Expr::new(&lam, &x).unwrap()), ar.expr(Expr::new(&lam, &lq).unwrap()));
+                let opts = PlanOpts { exact_budget: 100_000, max_len: 10, ..PlanOpts::default() };
+                let (p, r) = krhom::leaves::rex_class_pairs(&mut ar, &mut s, xe, tg.q, le, &opts, 99).unwrap_or_else(|e| panic!("{:?} [{}] -> q {}: {}", lam, krhom::smapio::rungs_str(&x), s.table(tg.q).fmt(), e));
+                assert_eq!(p.form, vec![vec![F::one()]]);
+                assert!(r.theorem_assoc.is_empty());
+                n += 1;
+            }
+        }
+    }
+    eprintln!("rex-class pair targets certified: {}", n);
+    assert!(n > 0);
+}
