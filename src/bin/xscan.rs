@@ -31,7 +31,8 @@ struct Args {
     json: Option<String>,
 }
 
-fn run<F: Field>(labels: &[usize], word: &[Gen], a: &Args, opts: XOpts) {
+/// Returns false if a base-point check failed (the process then exits nonzero).
+fn run<F: Field>(labels: &[usize], word: &[Gen], a: &Args, opts: XOpts) -> bool {
     if let Some(n0) = opts.prune_n {
         if let Some(&n) = a.ns.iter().find(|&&n| n > n0) {
             eprintln!("--prune {}: N = {} > {} is not computed by a pruned scan", n0, n, n0);
@@ -87,12 +88,19 @@ fn run<F: Field>(labels: &[usize], word: &[Gen], a: &Args, opts: XOpts) {
     }
     let t_close = tc.elapsed().as_secs_f64();
     println!("closures {:.2}s", t_close);
-    println!("total {:.2}s, peak RSS {} kB", t0.elapsed().as_secs_f64(), rss_kb().1);
+    // the process peak: xengine resets VmHWM at every crossing, so VmHWM alone is the peak since
+    // the last crossing; take the maximum with every stage's peak (2s_close review F4)
+    let peak_kb = sc.stages.iter().map(|s| s.mem.rss_peak_kb).max().unwrap_or(0).max(rss_kb().1);
+    println!("total {:.2}s, peak RSS {} kB", t0.elapsed().as_secs_f64(), peak_kb);
+    let bp_ok = basepoint.values().all(|&b| b);
     if let Some(path) = &a.json {
         let mut j = String::new();
         let w: Vec<String> = word.iter().map(|g| format!("{}", if g.positive { g.i as i64 + 1 } else { -(g.i as i64 + 1) })).collect();
         write!(j, "{{\"field\":\"{}\",\"labels\":{:?},\"word\":[{}],\"prune_n\":{},\"stream\":{},\"compact\":{},", F::name(), labels, w.join(","), opts.prune_n.map_or("null".into(), |n| n.to_string()), opts.stream, opts.compact).unwrap();
-        write!(j, "\"scan_secs\":{:.3},\"closure_data_secs\":{:.3},\"closure_secs\":{:.3},\"peak_rss_kb\":{},\"stages\":[", sc.timings.0, sc.timings.1, t_close, rss_kb().1).unwrap();
+        // certification switches and provenance (2s_close F2, 2s_core m2): check_d2 also gates the
+        // Π∘Ι = id composite check; a record with check_d2 = false is not certified
+        write!(j, "\"check_d2\":{},\"certified\":{},\"rung_transport\":{},\"rungwise\":{},\"seed\":{},\"threads\":{},\"commit\":\"{}\",\"basepoint_ok\":{},", opts.check_d2, opts.check_d2 && bp_ok, opts.rung_transport, opts.rungwise, opts.seed, krhom::num_threads(), krhom::boxrun::build_commit(), bp_ok).unwrap();
+        write!(j, "\"scan_secs\":{:.3},\"closure_data_secs\":{:.3},\"closure_secs\":{:.3},\"peak_rss_kb\":{},\"peak_rss_scope\":\"process\",\"stages\":[", sc.timings.0, sc.timings.1, t_close, peak_kb).unwrap();
         let st: Vec<String> = sc
             .stages
             .iter()
@@ -110,6 +118,10 @@ fn run<F: Field>(labels: &[usize], word: &[Gen], a: &Args, opts: XOpts) {
         write!(j, "{}],\"basepoint_check\":{{{}}}}}\n", rs.join(","), bp.join(",")).unwrap();
         std::fs::write(path, j).expect("write --json");
     }
+    if !bp_ok {
+        eprintln!("FATAL: base-point check FAILED");
+    }
+    bp_ok
 }
 
 fn main() {
@@ -154,12 +166,15 @@ fn main() {
     }
     let a = Args { ns, modes, close_stages: flag("--close-stages"), json };
     let opts = XOpts { check_d2: !flag("--no-d2"), verbose: true, prune_n: prune, stream: !flag("--full"), compact: !flag("--plain"), close_stages: flag("--close-stages"), stage_close_ns: if flag("--close-stages") { a.ns.clone() } else { vec![] }, ..Default::default() };
-    match prime.as_str() {
+    let ok = match prime.as_str() {
         "31" => run::<F31>(&labels, &word, &a, opts),
         "32b" => run::<F32b>(&labels, &word, &a, opts),
         p => {
             eprintln!("--prime must be 31 or 32b, not {}", p);
             std::process::exit(1)
         }
+    };
+    if !ok {
+        std::process::exit(3); // a base-point FAIL is a failed run (2s_core m2)
     }
 }
