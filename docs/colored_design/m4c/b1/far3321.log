@@ -1,0 +1,1 @@
+CERT far [3, 3, 2, 1] [Rung { i: 0, dir: E, r: 3 }, Rung { i: 0, dir: F, r: 3 }]|[Rung { i: 2, dir: E, r: 1 }, Rung { i: 2, dir: F, r: 2 }] flows (60, 60) interp 420.0s cert 398.7s (pts 4648, monos 4644) total 818.8s
