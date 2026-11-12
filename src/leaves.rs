@@ -353,7 +353,7 @@ impl<F: Field> HomProvider<F> for ProductClosure<F> {
 // Internal rank tests are diagnostics; acceptance is `certify_closure` only.
 
 use crate::coset::CosetSpace;
-use crate::dcoset::{junction_types, junction_word, StepCache, WordKind};
+use crate::dcoset::{junction_types, junction_word, StepCache};
 use crate::smap::{points, Eval};
 
 /// direction of a leaf family: Out = maps X -> W_t, In = maps W_t -> X
@@ -427,6 +427,10 @@ pub struct Leaves {
     /// BFS limits of `junction_word`
     pub bfs_len: usize,
     pub bfs_cap: usize,
+    /// alternative reduced junction words (≤ alt_len rungs, ≤ alt_cap words visited) when a step
+    /// into the default word exceeds the budget; 0 = off
+    pub alt_len: usize,
+    pub alt_cap: usize,
     pub seed: u64,
     /// counters of the last call
     pub last: LeafStats,
@@ -436,11 +440,11 @@ pub struct Leaves {
 }
 
 /// provider stamp suffix of the Leaves backend (layer-A headers)
-pub const LEAVES_STAMP: &str = "leaves=Leaves(v1,closure,threeup,prefix-ext,elem-window-whole,budget=1e5/4e5)";
+pub const LEAVES_STAMP: &str = "leaves=Leaves(v1,closure,threeup,prefix-ext+costalt5,elem-window-whole,budget=1e5/4e5)";
 
 impl Default for Leaves {
     fn default() -> Self {
-        Leaves { budget: 100_000, hard_cap: 400_000, costs: None, use_window: true, bfs_len: 6, bfs_cap: 20_000, seed: 0x1ea7e5, last: LeafStats::default(), verbose: false, last_fail: None }
+        Leaves { budget: 100_000, hard_cap: 400_000, costs: None, use_window: true, bfs_len: 6, bfs_cap: 20_000, alt_len: 5, alt_cap: 400_000, seed: 0x1ea7e5, last: LeafStats::default(), verbose: false, last_fail: None }
     }
 }
 
@@ -459,6 +463,27 @@ pub fn rep_rank_of(s: &Schur, lam: &[u8], t: Tid) -> u64 {
 
 fn degs_of(g: &Lp) -> Vec<(i32, usize)> {
     (0..g.c.len()).filter(|&i| g.c[i] != 0).map(|i| (g.lo + i as i32, g.c[i] as usize)).collect()
+}
+
+/// Estimated unknowns of the step family W_{t'}·ρ -> W_t (max over supp G and both directions;
+/// the differing window when the words share a prefix or suffix, else the whole words; 0 for Id)
+pub fn step_score(lam: &[u8], wfrom: &[Rung], rho: &Rung, wto: &[Rung], g: &Lp) -> u128 {
+    let mut a = wfrom.to_vec();
+    a.push(*rho);
+    if a == wto {
+        return 0;
+    }
+    if crate::schur::flows(lam, wto) == 0 || crate::dcoset::top_labels(lam, &a) != crate::dcoset::top_labels(lam, wto) {
+        return u128::MAX;
+    }
+    let ws = win_split(lam, &a, wto);
+    let mut mx = 0u128;
+    for (d, _) in degs_of(g) {
+        let whole = hom_unknowns(lam, &a, wto, d).max(hom_unknowns(lam, wto, &a, d));
+        let u = if ws.at > 0 || ws.suffix > 0 { whole.min(hom_unknowns(&ws.labels, &ws.a, &ws.b, d).max(hom_unknowns(&ws.labels, &ws.b, &ws.a, d))) } else { whole };
+        mx = mx.max(u);
+    }
+    mx
 }
 
 /// The E2/E3 closed form (smap `ElemKind`) of a 2-upright step window, if any: Out: window
@@ -742,6 +767,87 @@ impl Leaves {
         Err(lfail(MissKind::Exhausted, format!("step {} -> {} ([{}] -> [{}]): {}", s.table(tp).fmt(), s.table(t).fmt(), wstr(&a), wstr(wto), last_err)))
     }
 
+    /// Junction words of every level (pure combinatorics, before any map is built): the default
+    /// rule (`junction_word`: prefix extension, canonical ladder, BFS; ∅ for the final identity
+    /// type), then, if some step exceeds the budget, coordinate descent over the reduced words of
+    /// each junction type (≤ alt_len rungs) on the estimated step unknowns (`step_score`) of the
+    /// steps into and out of it (objective: max, then flows), at most 4 sweeps.
+    pub fn plan_words(&self, s: &mut Schur, sc: &mut StepCache, w: &[Rung], js: &[Vec<crate::dcoset::Junction>], id: Tid) -> Vec<Vec<(Tid, Vec<Rung>)>> {
+        let lam = s.lam.clone();
+        let m = w.len();
+        let mut plan: Vec<Vec<(Tid, Vec<Rung>)>> = vec![vec![(id, vec![])]];
+        for k in 1..=m {
+            let prev = plan[k - 1].clone();
+            let mut lv = vec![];
+            for j in &js[k] {
+                let wt = if k == m && j.t == id { vec![] } else { junction_word(s, j.t, &prev, Some(&w[k - 1]), self.bfs_len, self.bfs_cap).0 };
+                lv.push((j.t, wt));
+            }
+            plan.push(lv);
+        }
+        if self.alt_len == 0 {
+            return plan;
+        }
+        // step score of (level k type index a) -> (level k+1 type index b)
+        let step = |s: &mut Schur, sc: &mut StepCache, plan: &Vec<Vec<(Tid, Vec<Rung>)>>, k: usize, a: usize, b: usize| -> Option<u128> {
+            let (tp, wp) = &plan[k][a];
+            let (t, wt) = &plan[k + 1][b];
+            let g = sc.step(s, *tp, &w[k]).into_iter().find(|x| x.0 == *t).map(|x| x.1)?;
+            Some(step_score(&lam, wp, &w[k], wt, &g))
+        };
+        let local = |s: &mut Schur, sc: &mut StepCache, plan: &Vec<Vec<(Tid, Vec<Rung>)>>, k: usize, j: usize| -> u128 {
+            let mut mx = 0u128;
+            for a in 0..plan[k - 1].len() {
+                if let Some(x) = step(s, sc, plan, k - 1, a, j) {
+                    mx = mx.max(x);
+                }
+            }
+            if k < m {
+                for b in 0..plan[k + 1].len() {
+                    if let Some(x) = step(s, sc, plan, k, j, b) {
+                        mx = mx.max(x);
+                    }
+                }
+            }
+            mx
+        };
+        let mut alts: HashMap<Tid, Vec<Vec<Rung>>> = HashMap::new();
+        for _sweep in 0..4 {
+            let mut changed = false;
+            for k in 1..m {
+                for j in 0..plan[k].len() {
+                    let s0 = local(s, sc, &plan, k, j);
+                    if s0 <= self.budget {
+                        continue;
+                    }
+                    let t = plan[k][j].0;
+                    let cands = alts.entry(t).or_insert_with(|| crate::dcoset::reduced_words(s, t, self.alt_len, self.alt_cap)).clone();
+                    let orig = plan[k][j].1.clone();
+                    let mut best = (s0, crate::schur::flows(&lam, &orig), orig.clone());
+                    for c in cands {
+                        plan[k][j].1 = c.clone();
+                        let sa = local(s, sc, &plan, k, j);
+                        let fa = crate::schur::flows(&lam, &c);
+                        if (sa, fa) < (best.0, best.1) {
+                            best = (sa, fa, c);
+                        }
+                    }
+                    if best.2 != orig {
+                        changed = true;
+                        if self.trace() {
+                            eprintln!("[leaves] plan level {} {}: [{}] ({} unknowns) -> [{}] ({} unknowns)", k, s.table(t).fmt(), wstr(&orig), s0, wstr(&best.2), best.0);
+                        }
+                    }
+                    plan[k][j].1 = best.2;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        plan
+    }
+
     /// Lemma A, level by level (D1 §1.3/§2.3): the leaf families of X for the junction types at
     /// its top level that lie on paths to `targets`. Final words: ∅ for the identity type,
     /// otherwise `junction_word` (prefix extension, canonical ladder, BFS). Intermediate
@@ -755,17 +861,17 @@ impl Leaves {
         if js[w.len()].is_empty() {
             return Err(lfail(MissKind::Exhausted, "build_leaves: no target type is reached".into()));
         }
+        let plan = self.plan_words(s, &mut sc, &w, &js, id);
         let e0 = ar.expr(Expr::new(&lam, &[]).map_err(|e| lfail(MissKind::Exhausted, e))?);
         let id0 = ar.add(MapNode::Id(e0), "leaves base").map_err(|e| lfail(MissKind::Exhausted, e))?;
         let mut cur: Vec<LeafFamily> = vec![LeafFamily { t: id, word: vec![], wid: e0, maps: vec![id0] }];
         let pt = points::<F>(ar.k(), self.seed ^ 0xd1a9, 1, 0).remove(0);
         for k in 1..=w.len() {
             let rho = w[k - 1];
-            let prev: Vec<(Tid, Vec<Rung>)> = cur.iter().map(|f| (f.t, f.word.clone())).collect();
             let mut next: Vec<LeafFamily> = vec![];
             for j in &js[k] {
                 let t = j.t;
-                let (wt, _kind) = if k == w.len() && t == id { (vec![], WordKind::Canonical) } else { junction_word(s, t, &prev, Some(&rho), self.bfs_len, self.bfs_cap) };
+                let wt = plan[k].iter().find(|x| x.0 == t).map(|x| x.1.clone()).expect("planned junction word");
                 if !crate::dcoset::reduced_for(s, &wt, t).ok() {
                     return Err(lfail(MissKind::Exhausted, format!("build_leaves: no reduced junction word for {} at level {}", s.table(t).fmt(), k)));
                 }

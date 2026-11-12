@@ -395,6 +395,40 @@ fn stage0<F: Field>(args: &[String]) {
     println!("STAGE0 field={} replay={} certified {}/{}", F::name(), replay, ok, tried);
 }
 
+/// G-L5 (downstream cost of a family): DAG nodes, distinct expressions and their resident
+/// FlowIndex bytes, and the wall time of a full localization (`Eval::all`) of every map at one
+/// fresh point (one Eval memo for the family, as M6a evaluates a library per point).
+fn gl5<F: Field>(ar: &Arena<F>, ms: &[MapId]) -> (usize, usize, usize, f64, usize) {
+    use krhom::smap::MapNode;
+    let mut seen = std::collections::HashSet::new();
+    let mut exprs = std::collections::HashSet::new();
+    let mut stack: Vec<MapId> = ms.to_vec();
+    while let Some(m) = stack.pop() {
+        if !seen.insert(m) {
+            continue;
+        }
+        let i = ar.info(m);
+        exprs.insert(i.src);
+        exprs.insert(i.tgt);
+        match ar.node(m) {
+            MapNode::Comp(g, f) => stack.extend([*g, *f]),
+            MapNode::Lin(t) => stack.extend(t.iter().map(|x| x.1)),
+            MapNode::Kron(f, _) => stack.push(*f),
+            _ => {}
+        }
+    }
+    let bytes: usize = exprs.iter().filter(|&&e| ar.has_index(e)).map(|&e| ar.flows(e).bytes()).sum();
+    let pt = krhom::smap::points::<F>(ar.k(), 0x6151, 1, 7).remove(0);
+    let t0 = Instant::now();
+    let mut ev = krhom::smap::Eval::new(ar, pt);
+    let mut entries = 0usize;
+    for &m in ms {
+        entries += ev.all(m).nonzero_blocks();
+    }
+    let secs = t0.elapsed().as_secs_f64();
+    (seen.len(), exprs.len(), bytes, secs, ev.memo_bytes() + entries * 0)
+}
+
 /// `m4c leaves`: closure generators through the Leaves backend alone (A2/A3).
 /// --types fails (the 13 closure jobs) | all (every type of (λ, λ)) | product | T1;T2;...
 /// --direct: the provider on a fresh arena (step records and costs printed per type);
@@ -454,12 +488,18 @@ fn leaves_cmd<F: Field>(args: &[String]) {
                 match r {
                     Ok((ms, _)) => {
                         ok += 1;
+                        let (nodes, nex, ibytes, esecs, memo) = gl5(&ar, &ms);
                         println!(
-                            "LEAVES {} {} OK n={} wall {:.2}s steps {:?} exact computed {} ({:.2}s) max unknowns {} max W flows {} leaves built {} worst step {}",
+                            "LEAVES {} {} OK n={} wall {:.2}s G-L5 dag_nodes {} exprs {} index_bytes {} eval_all {:.4}s memo_bytes {} steps {:?} exact computed {} ({:.2}s) max unknowns {} max W flows {} leaves built {} worst step {}",
                             ts,
                             if outs { "outs" } else { "ins" },
                             ms.len(),
                             t0.elapsed().as_secs_f64(),
+                            nodes,
+                            nex,
+                            ibytes,
+                            esecs,
+                            memo,
                             kinds,
                             st.exact_calls,
                             st.exact_secs,
