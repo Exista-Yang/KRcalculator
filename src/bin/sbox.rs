@@ -61,6 +61,19 @@ fn run<F: PrimeField>(a: &[String]) {
     }
     let stages: Vec<usize> = opt(a, "--stages").map(|s| list(&s)).unwrap_or(closable);
     let eng = EngOpts { check_d2: prune.is_none() && !flag(a, "--no-d2"), mem_point_bytes: opt(a, "--mem-mb").map_or(2048, |s| s.parse::<u64>().unwrap()) << 20, ..Default::default() };
+    if flag(a, "--record-only") {
+        let k: usize = lam.iter().map(|&x| x as usize).sum();
+        let mut so = ScanOpts { eng: eng.clone(), close_stages: stages.clone(), k0_check: !flag(a, "--no-k0") };
+        so.eng.id_coset = lib.id_coset;
+        let t = Instant::now();
+        let r = scan_point(&lib, &word, record_x::<F>(k, seed), 0, krhom::sengine::Mode::Record, &so).unwrap();
+        for s in &r.ps.stages {
+            eprintln!("stage {}: inserted {} objects {} components {} pivots {} rounds {} entries {} c_e {:.2} peak {:.1} MB secs {:.2}", s.stage + 1, s.inserted, s.objects, s.components, s.pivots, s.rounds, s.stored_entries, s.c_e, s.peak_bytes as f64 / 1e6, s.secs);
+        }
+        eprintln!("build {:.2}s engine {:.2}s", r.t_build, r.t_engine);
+        eprintln!("record scan {:.2}s, eval memo {:.1} MB, VmHWM {} MB", t.elapsed().as_secs_f64(), r.eval_bytes as f64 / 1e6, hwm_kb() / 1024);
+        return;
+    }
     let o = BoxOpts { n_box: n, seed, n_close: ns.clone(), modes: modes.clone(), stages: stages.clone(), eng, d2_all_points: flag(a, "--d2-all"), freivalds_k: 3 };
     let out = box_word(&lib, &word, &o).unwrap_or_else(|e| panic!("box: {}", e));
     let mut scal = String::from("null");

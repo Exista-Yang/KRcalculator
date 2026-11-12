@@ -73,6 +73,20 @@ pub struct WLib<F: Field> {
     pub hash: u64,
     pub build_secs: f64,
     pub stats: crate::sindec::DecStats,
+    /// point-independent Kron flow maps, keyed by (L_a, L_b, X_a, X_b, coset)
+    pub kron: std::sync::RwLock<HashMap<(u32, u32, u32, u32, u64), Arc<KronIdx>>>,
+}
+
+impl<F: Field> WLib<F> {
+    pub fn kron_idx(&self, la: u32, lb: u32, xa: u32, xb: u32, c: u64) -> Arc<KronIdx> {
+        let key = (la, lb, xa, xb, c);
+        if let Some(k) = self.kron.read().unwrap().get(&key) {
+            return k.clone();
+        }
+        let k = Arc::new(kron_idx(self.dd.ar(), la, lb, xa, xb, c));
+        self.kron.write().unwrap().insert(key, k.clone());
+        k
+    }
 }
 
 /// Build the wired library for `words` (every type of every unsimplified stage of every word,
@@ -233,7 +247,7 @@ pub fn build_wlib<F: Field>(mut sd: SIndec<F>, words: &[Vec<i32>], closure: bool
         h.str(&format!("{:?}", w));
     }
     let by_name = names.iter().map(|(p, n)| (n.clone(), *p)).collect();
-    Ok(WLib { dd, lam, prune_n: prune, shapes, names, by_name, id_tid: id, id_coset, closure: cl, no_closure: no_cl, words: words.to_vec(), hash: h.get(), build_secs: t0.elapsed().as_secs_f64(), stats })
+    Ok(WLib { dd, lam, prune_n: prune, shapes, names, by_name, id_tid: id, id_coset, closure: cl, no_closure: no_cl, words: words.to_vec(), hash: h.get(), build_secs: t0.elapsed().as_secs_f64(), stats, kron: Default::default() })
 }
 
 // ------------------------------------------------------------------ the decategorified oracle
@@ -319,41 +333,45 @@ pub struct ScanOut<F> {
     /// per crossing: (objects, LB) from the K_0 check (empty without it)
     pub lb: Vec<(usize, u64)>,
     pub eval_bytes: usize,
+    /// seconds: construction of C ⊗ W (Kron, π K ι, Rickard), engine (insertion + elimination)
+    pub t_build: f64,
+    pub t_engine: f64,
 }
 
-/// Dense block of f ⊗ id_W at coset c: rows = flows of X_b at c, cols = flows of X_a at c.
-fn kron_dense<F: Field>(ar: &crate::smap::Arena<F>, f: &LocMap<F>, la: u32, lb: u32, xa: u32, xb: u32, c: u64) -> (usize, usize, Vec<F>) {
+/// Point-independent flow map of f ⊗ id_W at a coset c of X_a = L_a ⊗ W: per source flow g of
+/// X_a at c the coset cp and column of its L_a prefix, and for every row rp of f's block at cp the
+/// row of X_b = L_b ⊗ W at c.
+pub struct KronIdx {
+    pub rows: usize,
+    pub cols: usize,
+    /// per column g: (cp, colp, offset into rowmap); rowmap[off + rp] = row
+    pub colinfo: Vec<(u64, u32, u32)>,
+    pub rowmap: Vec<u32>,
+}
+
+fn kron_idx<F: Field>(ar: &crate::smap::Arena<F>, la: u32, lb: u32, xa: u32, xb: u32, c: u64) -> KronIdx {
     let (fs, ft) = (ar.flows(la), ar.flows(lb));
     let (sfi, tfi) = (ar.flows(xa), ar.flows(xb));
     let nf = fs.nr;
     let (rows, cols) = (tfi.range(c).len(), sfi.range(c).len());
-    let mut b = vec![F::zero(); rows * cols];
-    if rows == 0 || cols == 0 {
-        return (rows, cols, b);
-    }
+    let mut colinfo = Vec::with_capacity(cols);
+    let mut rowmap = vec![];
     let mut tau = vec![0; tfi.nr];
-    for (col, g) in sfi.range(c).enumerate() {
+    for g in sfi.range(c) {
         let flow = sfi.flow(g);
         let (sigma, w) = flow.split_at(nf);
         let cp = fs.top.rank(&fs.top_conf(sigma));
-        let Some(fi) = f.lay.index(cp) else { continue };
-        let colp = fs.find(cp, sigma).expect("Kron: source prefix flow missing") as usize;
-        let (fr, fc) = (f.lay.rows[fi] as usize, f.lay.cols[fi] as usize);
-        let blk = f.block(fi);
-        let r0 = ft.range(cp).start;
-        for rp in 0..fr {
-            let v = &blk[rp * fc + colp];
-            if v.is_zero() {
-                continue;
-            }
-            let t = ft.flow(r0 + rp as u32);
-            tau[..t.len()].copy_from_slice(t);
-            tau[t.len()..].copy_from_slice(w);
-            let row = tfi.find(c, &tau).expect("Kron: target flow missing") as usize;
-            b[row * cols + col].add_assign(v);
+        let colp = fs.find(cp, sigma).expect("Kron: source prefix flow missing");
+        let off = rowmap.len() as u32;
+        for t in ft.range(cp) {
+            let tf = ft.flow(t);
+            tau[..tf.len()].copy_from_slice(tf);
+            tau[tf.len()..].copy_from_slice(w);
+            rowmap.push(tfi.find(c, &tau).expect("Kron: target flow missing"));
         }
+        colinfo.push((cp, colp, off));
     }
-    (rows, cols, b)
+    KronIdx { rows, cols, colinfo, rowmap }
 }
 
 /// A library map evaluated on the engine's layout of (src type, tgt type), times `scale`.
@@ -374,6 +392,7 @@ fn lib_map<F: Field>(ev: &mut Eval<F>, eng: &mut PEngine<F>, m: MapId, qs: Tid, 
 
 /// One scan of `word` at the point x (Arena coordinates: the roots of block 0, then block 1, ...).
 pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u32, mode: Mode, opts: &ScanOpts) -> Result<ScanOut<F>, String> {
+    let t0s = Instant::now();
     let dd = &*lib.dd;
     let ar = dd.ar();
     let mut ev = Eval::new(ar, Point { id: point_id, x });
@@ -389,6 +408,7 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
     let mut lbs = vec![];
     let mut outs = vec![];
     let mut crossings = vec![];
+    let (mut t_build, mut t_engine) = (0.0f64, 0.0f64);
     let one = F::one();
     let mone = F::zero().sub(&one);
     for (st, &g) in word.iter().enumerate() {
@@ -427,8 +447,10 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
                     let (sa, sb) = (ar.flows(da.x).support().to_vec(), ar.flows(db.x).support().to_vec());
                     let mut per: Vec<Vec<BTreeMap<u64, (usize, usize, Vec<F>)>>> = vec![vec![BTreeMap::new(); db.summands.len()]; da.summands.len()];
                     for &cc in sa.iter().filter(|cc| sb.binary_search(cc).is_ok()) {
-                        let (kr, kc, kb) = kron_dense(ar, f, la, lb, da.x, db.x, cc);
-                        if kb.iter().all(|v| v.is_zero()) {
+                        let ki_ = lib.kron_idx(la, lb, da.x, db.x, cc);
+                        let kr = ki_.rows;
+                        // nonzero test of the f blocks this coset reads
+                        if !ki_.colinfo.iter().any(|&(cp, _, _)| f.lay.index(cp).is_some_and(|i| f.block(i).iter().any(|v| !v.is_zero()))) {
                             continue;
                         }
                         for (ia, sg) in da.summands.iter().enumerate() {
@@ -436,17 +458,44 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
                             if ib.cols == 0 {
                                 continue;
                             }
-                            let mut ki = vec![F::zero(); kr * ib.cols as usize];
-                            gemm_acc(&mut ki, &kb, &ib.a, kr, kc, ib.cols as usize, one.clone());
+                            let m_s = ib.cols as usize;
+                            // KI = (f ⊗ id) ι, sparse in f: row(rp) += f[rp, colp] · ι[g, :]
+                            let mut ki = vec![F::zero(); kr * m_s];
+                            let mut any = false;
+                            for (g, &(cp, colp, off)) in ki_.colinfo.iter().enumerate() {
+                                let Some(fi) = f.lay.index(cp) else { continue };
+                                let irow = &ib.a[g * m_s..(g + 1) * m_s];
+                                if irow.iter().all(|v| v.is_zero()) {
+                                    continue;
+                                }
+                                let (fr, fc) = (f.lay.rows[fi] as usize, f.lay.cols[fi] as usize);
+                                let blk = f.block(fi);
+                                for rp in 0..fr {
+                                    let v = &blk[rp * fc + colp as usize];
+                                    if v.is_zero() {
+                                        continue;
+                                    }
+                                    any = true;
+                                    let row = ki_.rowmap[off as usize + rp] as usize;
+                                    for (d, x) in ki[row * m_s..(row + 1) * m_s].iter_mut().zip(irow) {
+                                        if !x.is_zero() {
+                                            d.fma(v, x);
+                                        }
+                                    }
+                                }
+                            }
+                            if !any {
+                                continue;
+                            }
                             for (it, tu) in db.summands.iter().enumerate() {
                                 let pb_ = ev.block(tu.pi, cc);
                                 if pb_.rows == 0 {
                                     continue;
                                 }
-                                let mut m = vec![F::zero(); pb_.rows as usize * ib.cols as usize];
-                                gemm_acc(&mut m, &pb_.a, &ki, pb_.rows as usize, kr, ib.cols as usize, one.clone());
+                                let mut m = vec![F::zero(); pb_.rows as usize * m_s];
+                                gemm_acc(&mut m, &pb_.a, &ki, pb_.rows as usize, kr, m_s, one.clone());
                                 if m.iter().any(|v| !v.is_zero()) {
-                                    per[ia][it].insert(cc, (pb_.rows as usize, ib.cols as usize, m));
+                                    per[ia][it].insert(cc, (pb_.rows as usize, m_s, m));
                                 }
                             }
                         }
@@ -491,10 +540,14 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
                 }
             }
             eng.set_extern_bytes(ev.memo_bytes() as u64);
+            let te = Instant::now();
             eng.end_step().map_err(String::from)?;
+            t_engine += te.elapsed().as_secs_f64();
         }
         drop(prev);
+        let te = Instant::now();
         eng.end_crossing().map_err(String::from)?;
+        t_engine += te.elapsed().as_secs_f64();
         labels.swap(i, i + 1);
         crossings.push((pos, c.min(d)));
         if let Some(dc) = decat.as_mut() {
@@ -520,7 +573,8 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
     }
     let eval_bytes = ev.memo_bytes();
     let (ps, _) = eng.finish(point_id).map_err(String::from)?;
-    Ok(ScanOut { ps, stages: outs, lb: lbs, eval_bytes })
+    t_build = t0s.elapsed().as_secs_f64() - t_engine;
+    Ok(ScanOut { ps, stages: outs, lb: lbs, eval_bytes, t_build, t_engine })
 }
 
 /// Closure skeleton and entry values of the current complex at the identity coset.

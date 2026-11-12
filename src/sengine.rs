@@ -492,6 +492,17 @@ pub fn compose_acc<F: Field>(dst: &mut LocMap<F>, g: &LocMap<F>, f: &LocMap<F>, 
     }
 }
 
+/// multiply-adds of compose_acc(dst, g, f)
+pub fn compose_cost<F: Field>(dst: &LocMap<F>, g: &LocMap<F>, f: &LocMap<F>) -> u64 {
+    let mut t = 0u64;
+    for (i, &c) in dst.lay.cosets.iter().enumerate() {
+        if let (Some(ig), Some(_)) = (g.lay.index(c), f.lay.index(c)) {
+            t += dst.lay.rows[i] as u64 * g.lay.cols[ig] as u64 * dst.lay.cols[i] as u64;
+        }
+    }
+    t
+}
+
 /// Some(c) if every block of m is c·I (m: p → p over layout(p, p)); the scalar is read at the
 /// rep coset (one entry); cost Σ_c m_c².
 pub fn scalar_of<F: Field>(m: &LocMap<F>, shape: &TypeShape) -> Option<F> {
@@ -729,6 +740,12 @@ pub struct PEngine<F: Field> {
     pub stages: Vec<StageStat>,
     t_stage: Instant,
     t0: Instant,
+    /// profile of the current crossing: pivot updates, multiply-adds, seconds in apply_pivot
+    pub prof: (u64, u64, f64),
+    pub prof2: (f64, u64, f64),
+    /// edges created by the last pivot (fill-in), for the candidate index of the heap
+    new_edges: Vec<(usize, usize)>,
+    track_new: bool,
 }
 
 impl<F: Field> PEngine<F> {
@@ -758,6 +775,10 @@ impl<F: Field> PEngine<F> {
             stages: vec![],
             t_stage: Instant::now(),
             t0: Instant::now(),
+            prof: (0, 0, 0.0),
+            prof2: (0.0, 0, 0.0),
+            new_edges: vec![],
+            track_new: false,
         }
     }
     pub fn is_replay(&self) -> bool {
@@ -955,6 +976,11 @@ impl<F: Field> PEngine<F> {
             return Err(SErr::Usage("end_crossing outside a crossing or with a step open".into()));
         }
         self.eliminate_round(true)?;
+        if std::env::var("KRHOM_SPROF").is_ok() {
+            eprintln!("[sprof] stage {}: {} pivots, {} updates, {:.3e} mult-adds, {:.2}s in apply_pivot, {:.2}s stage; rounds {:.2}s, heap fill {:.2}s, edges {}", self.stage, self.stage_pivots.len(), self.prof.0, self.prof.1 as f64, self.prof.2, self.t_stage.elapsed().as_secs_f64(), self.prof2.0, self.prof2.2, self.cx.components());
+            self.prof2 = (0.0, 0, 0.0);
+            self.prof = (0, 0, 0.0);
+        }
         if self.opts.check_d2 {
             let bad = self.cx.d2_nonzero(&mut self.reg)?;
             if let Some(&(x, z)) = bad.first() {
@@ -1073,6 +1099,12 @@ impl<F: Field> PEngine<F> {
     }
 
     fn eliminate_round(&mut self, all: bool) -> Result<(), SErr> {
+        let tr = Instant::now();
+        let r = self.eliminate_round_inner(all);
+        self.prof2.0 += tr.elapsed().as_secs_f64();
+        r
+    }
+    fn eliminate_round_inner(&mut self, all: bool) -> Result<(), SErr> {
         let round_no = self.round_i;
         let pivots = match self.mode.clone() {
             Mode::Record => match self.opts.order {
@@ -1140,6 +1172,7 @@ impl<F: Field> PEngine<F> {
     fn markowitz_heap(&mut self, all: bool) -> Result<Vec<(usize, usize)>, SErr> {
         let mut ver: HashMap<usize, u32> = HashMap::new();
         let mut heap: BinaryHeap<Reverse<(u64, usize, usize, u32, u32)>> = BinaryHeap::new();
+        let tf = Instant::now();
         for (&a, outs) in &self.cx.out {
             for &b in outs.keys() {
                 if self.is_candidate(a, b, all) {
@@ -1147,6 +1180,26 @@ impl<F: Field> PEngine<F> {
                 }
             }
         }
+        // candidates join objects of equal (type, t): per object the neighbours of equal key
+        // (built here, extended by the fill-in edges of every pivot); the re-push after a pivot
+        // scans only these (stale entries are skipped by the edge test): the same pairs as a
+        // scan of all neighbours
+        let maxid = self.cx.objs.keys().next_back().map_or(0, |&m| m + 1);
+        let mut keyv: Vec<(Tid, i32)> = vec![(Tid::MAX, i32::MIN); maxid];
+        for (&id, o) in &self.cx.objs {
+            keyv[id] = (o.p, o.t);
+        }
+        let mut c_out: Vec<Vec<usize>> = vec![vec![]; maxid];
+        let mut c_in: Vec<Vec<usize>> = vec![vec![]; maxid];
+        for (&x, outs) in &self.cx.out {
+            for &y in outs.keys() {
+                if keyv[x] == keyv[y] {
+                    c_out[x].push(y);
+                    c_in[y].push(x);
+                }
+            }
+        }
+        self.track_new = true;
         let mut done = vec![];
         while let Some(Reverse((_, a, b, va, vb))) = heap.pop() {
             if !self.alive(a) || !self.alive(b) {
@@ -1158,25 +1211,41 @@ impl<F: Field> PEngine<F> {
             if self.cx.get(a, b).is_none() {
                 continue;
             }
-            let touched = self.apply_pivot(a, b)?;
+            self.new_edges.clear();
+            let touched = match self.apply_pivot(a, b) {
+                Ok(t) => t,
+                Err(e) => {
+                    self.track_new = false;
+                    return Err(e);
+                }
+            };
             done.push((a, b));
+            for &(x, y) in &self.new_edges {
+                if keyv[x] == keyv[y] {
+                    c_out[x].push(y);
+                    c_in[y].push(x);
+                }
+            }
             for &t in &touched {
                 *ver.entry(t).or_insert(0) += 1;
             }
             for &t in &touched {
                 let vt = ver[&t];
-                for &y in self.cx.out[&t].keys() {
+                c_out[t].retain(|y| self.cx.out[&t].contains_key(y));
+                c_in[t].retain(|x| self.cx.inn[&t].contains(x));
+                for &y in &c_out[t] {
                     if self.is_candidate(t, y, all) {
                         heap.push(Reverse((self.cost(t, y), t, y, vt, ver.get(&y).copied().unwrap_or(0))));
                     }
                 }
-                for &x in &self.cx.inn[&t] {
+                for &x in &c_in[t] {
                     if self.is_candidate(x, t, all) {
                         heap.push(Reverse((self.cost(x, t), x, t, ver.get(&x).copied().unwrap_or(0), vt)));
                     }
                 }
             }
         }
+        self.track_new = false;
         Ok(done)
     }
 
@@ -1184,6 +1253,12 @@ impl<F: Field> PEngine<F> {
     /// y ∈ out(a)∖b, blockwise per coset; a and b are removed. Returns the objects whose in- or
     /// out-set changed.
     fn apply_pivot(&mut self, a: usize, b: usize) -> Result<Vec<usize>, SErr> {
+        let tp = Instant::now();
+        let r = self.apply_pivot_inner(a, b);
+        self.prof.2 += tp.elapsed().as_secs_f64();
+        r
+    }
+    fn apply_pivot_inner(&mut self, a: usize, b: usize) -> Result<Vec<usize>, SErr> {
         let (oa, ob) = (self.cx.objs[&a], self.cx.objs[&b]);
         if ob.h != oa.h + 1 || oa.p != ob.p || oa.t != ob.t {
             return Err(SErr::Pivot(format!("{} → {} is not a degree-0 component between equal types", a, b)));
@@ -1216,12 +1291,17 @@ impl<F: Field> PEngine<F> {
                     let lay = self.reg.layout(px, self.cx.objs[y].p)?;
                     let existed = self.cx.out[&x].contains_key(y);
                     if !existed {
+                        if self.track_new {
+                            self.new_edges.push((x, *y));
+                        }
                         let z = LocMap::zeros(lay);
                         self.cx.bytes += z.bytes() as u64 + EDGE_BYTES;
                         self.cx.out.get_mut(&x).unwrap().insert(*y, z);
                         self.cx.inn.get_mut(y).unwrap().insert(x);
                     }
                     let dst = self.cx.out.get_mut(&x).unwrap().get_mut(y).unwrap();
+                    self.prof.0 += 1;
+                    self.prof.1 += compose_cost(dst, g, &dxb);
                     compose_acc(dst, g, &dxb, alpha.clone());
                     if dst.is_zero() {
                         self.cx.take_map(x, *y);
