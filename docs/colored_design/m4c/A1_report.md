@@ -195,7 +195,7 @@ rule. Their layer-A files contain the `K` (Kron) records. The production chain, 
 - 190 s on 1,2,0/0,0,3/2,1,0;
 - 181 s on 0,3,0/1,0,2/2,0,1.
 
-In both cases it is the Exact d = 13 whole-ladder call admitted by the M5c records, before it fails at d = 15/17. For
+Presumably this is the Exact d = 13 whole-ladder call, which the M5c records admit, before the chain fails at d = 15/17. The log does not separate the inner tiers, so this is not verified. For
 the A3 wiring, put product closure before Exact for product types, or skip the chain when a factorization exists.
 The maps are certified either way.
 
