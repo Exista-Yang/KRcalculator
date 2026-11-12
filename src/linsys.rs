@@ -239,54 +239,71 @@ pub fn kernel_lazy_traced<F: Field>(ncols: usize, eqs: &[SpVec<F>]) -> (Vec<SpVe
     let mut piv: Vec<Option<Vec<(u32, F)>>> = vec![None; ncols];
     let mut acc: Vec<F> = vec![F::zero(); ncols.max(1)];
     let mut rank = 0usize;
-    let insert = |v: &SpVec<F>, piv: &mut Vec<Option<Vec<(u32, F)>>>, acc: &mut Vec<F>| -> bool {
+    // M5c: sparse sweep. The accumulator's nonzero columns are visited in increasing order through
+    // a min-heap (a column enters it once, when first touched) instead of a dense scan of every
+    // column between the row's first and last entry: the same pivots are applied in the same
+    // order with the same arithmetic, so the stored pivot rows (and the kernel) are identical;
+    // the cost is O(touched · log) instead of O(span).
+    let mut mark: Vec<bool> = vec![false; ncols.max(1)];
+    let mut heap: std::collections::BinaryHeap<std::cmp::Reverse<u32>> = std::collections::BinaryHeap::new();
+    let mut touched: Vec<u32> = vec![];
+    let mut insert = |v: &SpVec<F>, piv: &mut Vec<Option<Vec<(u32, F)>>>, acc: &mut Vec<F>| -> bool {
         if v.is_empty() {
             return false;
         }
-        let mut lo = usize::MAX;
-        let mut hi = 0usize;
         for (i, x) in v {
-            let i = *i as usize;
-            acc[i].add_assign(x);
-            lo = lo.min(i);
-            hi = hi.max(i);
+            let iu = *i as usize;
+            acc[iu].add_assign(x);
+            if !mark[iu] {
+                mark[iu] = true;
+                heap.push(std::cmp::Reverse(*i));
+                touched.push(*i);
+            }
         }
         let mut lead: Option<usize> = None;
-        let mut col = lo;
-        while col <= hi {
-            if !acc[col].is_zero() {
-                if let Some(p) = &piv[col] {
-                    let c = acc[col].neg();
-                    acc[col] = F::zero();
-                    for (j, y) in p {
-                        let j = *j as usize;
-                        acc[j].fma(&c, y);
-                        if j > hi {
-                            hi = j;
-                        }
-                    }
-                } else if lead.is_none() {
-                    lead = Some(col);
-                }
+        let mut rest: Vec<u32> = vec![];
+        while let Some(std::cmp::Reverse(c32)) = heap.pop() {
+            let col = c32 as usize;
+            if acc[col].is_zero() {
+                continue;
             }
-            col += 1;
+            if let Some(p) = &piv[col] {
+                let c = acc[col].neg();
+                acc[col] = F::zero();
+                for (j, y) in p {
+                    let ju = *j as usize;
+                    acc[ju].fma(&c, y);
+                    if !mark[ju] {
+                        mark[ju] = true;
+                        heap.push(std::cmp::Reverse(*j));
+                        touched.push(*j);
+                    }
+                }
+            } else if lead.is_none() {
+                lead = Some(col);
+            } else {
+                // final value: every pivot left of col has been applied (columns pop in order)
+                rest.push(c32);
+            }
         }
         let r = match lead {
             None => false,
             Some(l) => {
                 let inv = acc[l].inv();
-                let mut row = vec![];
-                for c in (l + 1)..=hi {
-                    if !acc[c].is_zero() {
-                        row.push((c as u32, acc[c].mul(&inv)));
+                let mut row = Vec::with_capacity(rest.len());
+                for c in rest {
+                    let x = &acc[c as usize];
+                    if !x.is_zero() {
+                        row.push((c, x.mul(&inv)));
                     }
                 }
                 piv[l] = Some(row);
                 true
             }
         };
-        for c in lo..=hi {
-            acc[c] = F::zero();
+        for c in touched.drain(..) {
+            acc[c as usize] = F::zero();
+            mark[c as usize] = false;
         }
         r
     };

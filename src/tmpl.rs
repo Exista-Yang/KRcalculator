@@ -14,6 +14,7 @@ use crate::sbim::{hom_space, SBim};
 use crate::sexpr::{Expr, Flow, FlowIndex};
 use crate::web::{Dir, Rung};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -127,15 +128,22 @@ impl<F: Field> WinLoc<F> {
     }
 }
 
-/// per-template data for localization (window SBims, fixed points, fixed point -> sorted id)
+/// localization data of one window (its SBim, fixed points, fixed point -> sorted flow id);
+/// shared by every template with this window as source or target (M5c: a hom space of
+/// dimension k used to store k clones of both whole-ladder SBims, several GB for the (3,3,3)
+/// whole-ladder Exact pair calls of the Memory pairs)
+#[derive(Debug)]
+struct Side<F: Field> {
+    b: SBim<F>,
+    fp: Vec<FixedPoint>,
+    pos: Vec<u32>,
+}
+
+/// per-template data for localization (source and target window sides, shared)
 #[derive(Clone, Debug)]
 struct Aux<F: Field> {
-    src_b: SBim<F>,
-    tgt_b: SBim<F>,
-    src_fp: Vec<FixedPoint>,
-    tgt_fp: Vec<FixedPoint>,
-    src_pos: Vec<u32>,
-    tgt_pos: Vec<u32>,
+    src: Arc<Side<F>>,
+    tgt: Arc<Side<F>>,
 }
 
 fn positions(fps: &[FixedPoint], fi: &FlowIndex) -> Vec<u32> {
@@ -162,6 +170,8 @@ pub struct TmplLib<F: Field> {
     cache_dir: Option<PathBuf>,
     tmpls: Vec<Template<F>>,
     aux: Vec<Aux<F>>,
+    /// one localization side per window (shared by the templates' `Aux`)
+    sides: HashMap<Window, Arc<Side<F>>>,
     hom: HashMap<(Window, Window, i32), Vec<TmplId>>,
     rick: HashMap<(u8, u8, bool), (Vec<Window>, Vec<TmplId>)>,
     calls: Vec<Call>,
@@ -300,7 +310,7 @@ impl<F: Field> TmplLib<F> {
         if let Some(d) = &cache_dir {
             let _ = std::fs::create_dir_all(d);
         }
-        TmplLib { cache_dir, tmpls: vec![], aux: vec![], hom: HashMap::new(), rick: HashMap::new(), calls: vec![], stats: LibStats::default(), instance: LIB_INSTANCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
+        TmplLib { cache_dir, tmpls: vec![], aux: vec![], sides: HashMap::new(), hom: HashMap::new(), rick: HashMap::new(), calls: vec![], stats: LibStats::default(), instance: LIB_INSTANCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed) }
     }
     /// process-unique identity of this library (TmplIds are valid only here)
     pub fn instance(&self) -> u64 {
@@ -356,16 +366,24 @@ impl<F: Field> TmplLib<F> {
         }
         Ok(())
     }
+    /// the shared localization side of a window (built once; `b` = its SBim if the caller has it)
+    fn side(&mut self, w: &Window, b: Option<&SBim<F>>) -> Arc<Side<F>> {
+        if let Some(s) = self.sides.get(w) {
+            return s.clone();
+        }
+        let b = b.cloned().unwrap_or_else(|| w.expr().sbim());
+        let fp = fixed_points(&b);
+        let pos = positions(&fp, &FlowIndex::build(&w.expr()));
+        let s = Arc::new(Side { b, fp, pos });
+        self.sides.insert(w.clone(), s.clone());
+        s
+    }
     fn push(&mut self, t: Template<F>, sb: Option<&SBim<F>>, tb: Option<&SBim<F>>) -> TmplId {
-        let src_b = sb.cloned().unwrap_or_else(|| t.src.expr().sbim());
-        let tgt_b = tb.cloned().unwrap_or_else(|| t.tgt.expr().sbim());
-        assert_eq!(src_b.fsize(), t.phi.ncols);
-        assert_eq!(tgt_b.fsize(), t.phi.nrows);
-        let src_fp = fixed_points(&src_b);
-        let tgt_fp = fixed_points(&tgt_b);
-        let src_pos = positions(&src_fp, &FlowIndex::build(&t.src.expr()));
-        let tgt_pos = positions(&tgt_fp, &FlowIndex::build(&t.tgt.expr()));
-        self.aux.push(Aux { src_b, tgt_b, src_fp, tgt_fp, src_pos, tgt_pos });
+        let src = self.side(&t.src, sb);
+        let tgt = self.side(&t.tgt, tb);
+        assert_eq!(src.b.fsize(), t.phi.ncols);
+        assert_eq!(tgt.b.fsize(), t.phi.nrows);
+        self.aux.push(Aux { src, tgt });
         self.tmpls.push(t);
         (self.tmpls.len() - 1) as TmplId
     }
@@ -395,18 +413,18 @@ impl<F: Field> TmplLib<F> {
         }
         let tm = &self.tmpls[t as usize];
         let a = &self.aux[t as usize];
-        let u = tm.deg - a.tgt_b.shift + a.src_b.shift;
+        let u = tm.deg - a.tgt.b.shift + a.src.b.shift;
         for (b, col) in tm.phi.cols.iter().enumerate() {
             for (bp, p) in col {
                 for (mono, _) in &p.t {
-                    let want = u + a.src_b.fdeg[b] - a.tgt_b.fdeg[*bp as usize];
-                    if a.src_b.ring.deg(*mono) != want {
-                        return Err(format!("added template {}: entry ({}, {}) has a term of degree {} != {} (normalized degree {})", t, bp, b, a.src_b.ring.deg(*mono), want, tm.deg));
+                    let want = u + a.src.b.fdeg[b] - a.tgt.b.fdeg[*bp as usize];
+                    if a.src.b.ring.deg(*mono) != want {
+                        return Err(format!("added template {}: entry ({}, {}) has a term of degree {} != {} (normalized degree {})", t, bp, b, a.src.b.ring.deg(*mono), want, tm.deg));
                     }
                 }
             }
         }
-        for (up, (os, ot)) in a.src_b.top.iter().zip(&a.tgt_b.top).enumerate() {
+        for (up, (os, ot)) in a.src.b.top.iter().zip(&a.tgt.b.top).enumerate() {
             for (j, (ms, mt)) in os.iter().zip(ot).enumerate() {
                 if !tm.phi.matmul(ms).sub(&mt.matmul(&tm.phi)).is_zero() {
                     return Err(format!("added template {}: does not commute with the top operator e_{} of upright {} (not a bimodule map)", t, j + 1, up));
@@ -542,14 +560,14 @@ impl<F: Field> TmplLib<F> {
     pub fn localize(&self, t: TmplId, y: &[F]) -> WinLoc<F> {
         let tm = &self.tmpls[t as usize];
         let a = &self.aux[t as usize];
-        let ls = loc_matrix(&a.src_b, &a.src_fp, y);
-        let lt = loc_matrix(&a.tgt_b, &a.tgt_fp, y);
+        let ls = loc_matrix(&a.src.b, &a.src.fp, y);
+        let lt = loc_matrix(&a.tgt.b, &a.tgt.fp, y);
         let linv = inverse(&ls).expect("localization matrix singular at this point (roots not distinct?)");
-        let ph = eval_pmat(&a.src_b, &tm.phi, y);
+        let ph = eval_pmat(&a.src.b, &tm.phi, y);
         let f = matmul(&matmul(&lt, &ph), &linv); // rows tgt fixed points, cols src fixed points
-        let ns = a.src_fp.len();
+        let ns = a.src.fp.len();
         let mut src_of_sorted = vec![0usize; ns];
-        for (p, &j) in a.src_pos.iter().enumerate() {
+        for (p, &j) in a.src.pos.iter().enumerate() {
             src_of_sorted[j as usize] = p;
         }
         let mut col_start = Vec::with_capacity(ns + 1);
@@ -562,7 +580,7 @@ impl<F: Field> TmplLib<F> {
             col.clear();
             for (q, r) in f.iter().enumerate() {
                 if !r[p].is_zero() {
-                    col.push((a.tgt_pos[q], r[p].clone()));
+                    col.push((a.tgt.pos[q], r[p].clone()));
                 }
             }
             col.sort_unstable_by_key(|e| e.0);
@@ -572,7 +590,7 @@ impl<F: Field> TmplLib<F> {
             }
             col_start.push(rows.len() as u32);
         }
-        WinLoc { nrows: a.tgt_fp.len() as u32, col_start, rows, vals }
+        WinLoc { nrows: a.tgt.fp.len() as u32, col_start, rows, vals }
     }
     /// header "krhom-tmpl v1 field=.. "
     pub fn save(&self) -> std::io::Result<()> {
@@ -600,9 +618,9 @@ impl<F: Field> TmplLib<F> {
             b += pmat_bytes(&t.phi);
             b += t.src_flows.iter().chain(&t.tgt_flows).map(|f| f.0.capacity() * 8 + 24).sum::<usize>();
         }
-        for a in &self.aux {
-            b += a.src_b.top.iter().chain(&a.tgt_b.top).flat_map(|v| v.iter()).map(pmat_bytes).sum::<usize>();
-            b += (a.src_fp.len() + a.tgt_fp.len()) * 64 + (a.src_pos.len() + a.tgt_pos.len()) * 4;
+        for sd in self.sides.values() {
+            b += sd.b.top.iter().flat_map(|v| v.iter()).map(pmat_bytes).sum::<usize>();
+            b += sd.fp.len() * 64 + sd.pos.len() * 4;
         }
         b
     }
@@ -793,4 +811,36 @@ pub fn poly_certificate<F: Field>(src: &Window, tgt: &Window, deg: i32, f: &mut 
         return Ok(CertReport { points: npts, max_monos, distinct_degrees: by_d.len(), entries: ns * nt, redraws: attempt, secs: t0.elapsed().as_secs_f64() });
     }
     Err("certificate: Vandermonde singular after 3 redraws".into())
+}
+
+#[cfg(test)]
+mod m5c_tests {
+    use super::*;
+    use crate::field::F31;
+
+    /// M5c: the templates of one hom_basis call share the localization sides of their windows
+    /// (one SBim per window, not one clone per template); localizations are unchanged (A4 in
+    /// tests/m4a.rs compares them with the oracle)
+    #[test]
+    fn hom_basis_templates_share_window_sides() {
+        let a = Window::new(&[2, 2], &[Rung::e(0, 1), Rung::f(0, 1)]);
+        let b = Window::new(&[2, 2], &[Rung::f(0, 1), Rung::e(0, 1)]);
+        let mut lib: TmplLib<F31> = TmplLib::new(None);
+        let mut ids = vec![];
+        for d in 0..8 {
+            ids = lib.hom_basis(&a, &b, d);
+            if ids.len() >= 2 {
+                break;
+            }
+        }
+        assert!(ids.len() >= 2, "no degree with a hom space of dimension >= 2");
+        for &t in &ids[1..] {
+            assert!(Arc::ptr_eq(&lib.aux[t as usize].src, &lib.aux[ids[0] as usize].src));
+            assert!(Arc::ptr_eq(&lib.aux[t as usize].tgt, &lib.aux[ids[0] as usize].tgt));
+        }
+        assert_eq!(lib.sides.len(), 2);
+        // a second call on the same windows adds no side
+        let _ = lib.hom_basis(&b, &a, 1);
+        assert_eq!(lib.sides.len(), 2);
+    }
 }

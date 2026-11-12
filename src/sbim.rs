@@ -204,6 +204,7 @@ pub fn hom_space<F: Field>(b: &SBim<F>, bp: &SBim<F>, d: i32, mc: &mut MonoCache
     assert_eq!(b.bot_labels, bp.bot_labels, "hom_space: bottom labels differ");
     let f = b.fsize();
     let fp = bp.fsize();
+    let t_all = std::time::Instant::now();
     // unknowns
     let mut unk: Vec<(u32, u32, Mono)> = vec![]; // (row beta', col beta, mono)
     let mut uidx: HashMap<(u32, u32, Mono), u32> = HashMap::new();
@@ -294,7 +295,41 @@ pub fn hom_space<F: Field>(b: &SBim<F>, bp: &SBim<F>, d: i32, mc: &mut MonoCache
     let _ = by_entry;
     // equations in a deterministic order (the kernel basis does not depend on it)
     all_rows.sort_unstable_by(|x, y| x.len().cmp(&y.len()).then_with(|| x.iter().map(|e| e.0).cmp(y.iter().map(|e| e.0))));
+    // M5c: drop rows that are scalar multiples of an earlier row (normalized to a leading
+    // coefficient 1, then deduplicated). The row space is unchanged, and the reduced kernel basis
+    // returned by `kernel_lazy` depends only on the row space and the column order, so the result
+    // is identical (tests/hom_lazy.rs compares with `hom_space_reference`).
+    let nrows0 = all_rows.len();
+    for r in all_rows.iter_mut() {
+        let inv = r[0].1.inv();
+        if !inv.is_one() {
+            for e in r.iter_mut() {
+                e.1 = e.1.mul(&inv);
+            }
+        }
+    }
+    // equal rows have equal column patterns: dedup inside each run of equal patterns (the order
+    // of `all_rows` stays the deterministic (length, columns) order, first occurrence kept)
+    {
+        let mut out: Vec<SpVec<F>> = Vec::with_capacity(all_rows.len());
+        let mut start = 0usize;
+        for r in all_rows.drain(..) {
+            let same_pat = |a: &SpVec<F>, b: &SpVec<F>| a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.0 == y.0);
+            if start < out.len() && !same_pat(&out[start], &r) {
+                start = out.len();
+            }
+            if !out[start..].iter().any(|o| *o == r) {
+                out.push(r);
+            }
+        }
+        all_rows = out;
+    }
+    let t_eq = t_all.elapsed().as_secs_f64();
     let ker = crate::linsys::kernel_lazy(unk.len(), &all_rows);
+    if std::env::var("KRHOM_HS_TIMING").is_ok() {
+        let nnz: usize = all_rows.iter().map(|r| r.len()).sum();
+        eprintln!("[hom_space] {} x {} unknowns {} rows {} (of {}) nnz {} ops {}: equations {:.2}s, kernel {:.2}s, dim {}", fp, f, unk.len(), all_rows.len(), nrows0, nnz, tp_t.len(), t_eq, t_all.elapsed().as_secs_f64() - t_eq, ker.len());
+    }
     ker.into_iter()
         .map(|v| {
             let mut cols: Vec<HashMap<u32, Vec<(Mono, F)>>> = vec![HashMap::new(); f];

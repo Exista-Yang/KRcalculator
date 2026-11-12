@@ -976,3 +976,38 @@ fn closure_with_idempotent_313() {
     // (3,1,3): type 2,0,1/0,1,0/1,0,2 has minimal-flow ladder character b_p + b_r (48 flows)
     closure_with_idempotent(&[3, 1, 3]);
 }
+
+/// M5c (M5b open problem 3): Exact cost buckets are keyed by call kind (one-sided closure calls
+/// vs two-sided pair/window calls) and the exact-shape record is used first, so a censored
+/// closure call no longer vetoes pair calls of the same fibre product and degree.
+#[test]
+fn m5c_exact_admission_by_call_kind() {
+    let rec = |labels: Vec<u8>, fs, ft, unknowns, deg, secs, censored| CostRec { labels, fs, ft, unknowns, deg, secs, rss_mb: 0.0, censored };
+    assert_eq!((call_kind(1, 4320), call_kind(4320, 1), call_kind(60, 72)), (0, 0, 1));
+    let mut t = CostTable::new();
+    // a censored whole-ladder closure call Hom^6(R, L_p), fibre product 4 320 (bucket 13)
+    t.record(rec(vec![3, 3, 3], 1, 4320, 406_634, 6, 600.0, true));
+    // a completed pair call in the same (labels, bucket, degree)
+    t.record(rec(vec![3, 3, 3], 60, 72, 50_000, 6, 30.0, false));
+    // pre-M5c key (both kinds): the censored closure record closes the bucket
+    assert_eq!(t.predict(&[3, 3, 3], 4320, 6), Some(f64::INFINITY));
+    assert_eq!(t.predict_kind(&[3, 3, 3], 1, 4320, 6), Some(f64::INFINITY));
+    assert_eq!(t.predict_kind(&[3, 3, 3], 64, 70, 6), Some(30.0));
+    let ex = Exact { costs: Some(t.clone()), max_label: 3, max_call_s: 600.0, ..Exact::default() };
+    // a pair call of another shape in that bucket: admitted by its own kind's bucket
+    assert_eq!(ex.admit(&[3, 3, 3], 64, 70, 60_000, 6), Ok("cost-table"));
+    // the closure call itself stays refused (censored)
+    assert!(ex.admit(&[3, 3, 3], 1, 4320, 406_634, 6).is_err());
+    // the exact-shape record decides before the bucket: a fast measured shape in a censored bucket
+    let mut t2 = t.clone();
+    t2.record(rec(vec![3, 3, 3], 1, 4100, 300_000, 6, 120.0, false));
+    let ex2 = Exact { costs: Some(t2), max_label: 3, max_call_s: 600.0, ..Exact::default() };
+    assert_eq!(ex2.admit(&[3, 3, 3], 1, 4100, 300_000, 6), Ok("cost-table"));
+    assert!(ex2.admit(&[3, 3, 3], 1, 4200, 310_000, 6).is_err(), "unmeasured closure shape: bucket of its kind (inf)");
+    // a censored exact shape refuses even if the kind bucket were fast
+    let mut t3 = CostTable::new();
+    t3.record(rec(vec![3, 3, 3], 64, 64, 60_000, 6, 5.0, false));
+    t3.record(rec(vec![3, 3, 3], 60, 70, 70_000, 6, 600.0, true));
+    let ex3 = Exact { costs: Some(t3), max_label: 3, max_call_s: 600.0, ..Exact::default() };
+    assert!(ex3.admit(&[3, 3, 3], 60, 70, 70_000, 6).is_err());
+}
