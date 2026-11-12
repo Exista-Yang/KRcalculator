@@ -1,0 +1,224 @@
+# m4c census G-L0 (λ = [3, 3, 3], budget 100000 unknowns), 0.8 s
+
+| N | type p | L_p flows | n | product (Stage 0) | whole-ladder call at d0 (M5b) | junctions/level (max) | max W_t flows (len) | steps: Id / exact | max step unknowns | > 10⁴ | > budget | max window unknowns | max K-window unknowns (needs pad) | words: prefix/canonical/bfs | not reduced |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 5 | 1,1,1/1,1,1/1,1,1 | 4 320 | 54 | no | 224 249 | 2 | 36 (3) | 4 / 5 | 88 301 | 1 | 0 | 7 225 | 214 (2) | 4/4/0 | - |
+| 6 | 0,0,3/3,0,0/0,3,0 | 400 | 1 | 0,3,0/3,0,0/0,0,3 · 3,0,0/0,0,3/0,3,0 | 852 011 | 1 | 1 (1) | 2 / 2 | 3 184 | 0 | 0 | 750 | 750 (0) | 2/2/0 | - |
+| 6 | 0,3,0/0,0,3/3,0,0 | 400 | 1 | 3,0,0/0,0,3/0,3,0 · 0,3,0/3,0,0/0,0,3 (1 swap) | 852 011 | 1 | 1 (3) | 2 / 2 | 3 184 | 0 | 0 | 3 184 | 750 (1) | 2/2/0 | - |
+| 6 | 1,0,2/2,0,1/0,3,0 | 600 | 3 | 1,2,0/2,1,0/0,0,3 · 3,0,0/0,0,3/0,3,0 | 392 995 | 1 | 3 (1) | 2 / 2 | 3 184 | 0 | 0 | 787 | 787 (0) | 2/2/0 | - |
+| 6 | 1,2,0/0,0,3/2,1,0 | 600 | 3 | 3,0,0/0,0,3/0,3,0 · 1,2,0/2,1,0/0,0,3 (1 swap) | 392 995 | 1 | 3 (2) | 1 / 3 | 2 983 | 0 | 0 | 2 983 | 787 (1) | 1/3/0 | - |
+| 6 | 0,3,0/1,0,2/2,0,1 | 600 | 3 | 3,0,0/0,1,2/0,2,1 · 0,3,0/3,0,0/0,0,3 (1 swap) | 392 995 | 1 | 3 (2) | 1 / 3 | 5 104 | 0 | 0 | 5 104 | 750 (1) | 1/3/0 | - |
+| 6 | 1,0,2/1,2,0/1,1,1 | 2 700 | 18 | no | 701 771 | 1 | 9 (2) | 2 / 3 | 13 765 | 1 | 0 | 13 765 | 787 (1) | 2/3/0 | - |
+| 6 | 1,1,1/0,2,1/2,0,1 | 2 700 | 18 | no | 701 771 | 1 | 9 (2) | 2 / 3 | 101 507 | 1 | 1 | 2 401 | 787 (1) | 2/3/0 | - |
+| 6 | 0,2,1/2,0,1/1,1,1 | 2 880 | 18 | no | 735 960 | 2 | 12 (3) | 3 / 5 | 14 815 | 1 | 0 | 787 | 787 (3) | 3/4/0 | - |
+| 6 | 1,1,1/1,0,2/1,2,0 | 2 880 | 18 | no | 735 960 | 2 | 12 (3) | 4 / 5 | 14 815 | 1 | 0 | 1 220 | 127 (2) | 4/4/0 | - |
+| 6 | 0,1,2/2,0,1/1,2,0 | 7 200 | 27 | no | 2 815 899 | 2 | 12 (3) | 3 / 6 | 14 815 | 1 | 0 | 3 191 | 3 191 (2) | 3/5/0 | - |
+| 6 | 0,2,1/1,0,2/2,1,0 | 7 200 | 27 | no | 2 815 899 | 2 | 12 (3) | 4 / 5 | 111 497 | 1 | 1 | 111 497 | 787 (2) | 4/4/0 | - |
+| 6 | 1,1,1/1,1,1/1,1,1 | 4 320 | 54 | no | 224 249 | 2 | 36 (3) | 4 / 5 | 88 301 | 1 | 0 | 7 225 | 214 (2) | 4/4/0 | - |
+
+# G-L0 replica check (hu.py numbers of C_m4c)
+Hom^18(∅, E0.3 F0.3 E1.3 F1.3) = 852 011 unknowns, reverse 852 011 (hu.py: 852 011) OK
+Hom^13(∅, E0.2 F0.2 E1.3 F1.3) = 392 995 unknowns, reverse 392 995 (hu.py: 392 995) OK
+Hom^4(∅, E0.1 F0.1 E1.2 E0.1 F1.2 F0.1) = 224 249 unknowns, reverse 224 249 (hu.py: 224 249) OK
+Hom^6(∅, E0.1 F0.1 E1.2 E0.1 F1.2 F0.1) = 406 634 unknowns, reverse 406 634 (hu.py: 406 634) OK
+
+## N = 5 closure 1,1,1/1,1,1/1,1,1 (c_diag = v^4+4v^6+9v^8+13v^10+13v^12+9v^14+4v^16+v^18)
+  L_p = E0.1 F0.1 E1.2 E0.1 F1.2 F0.1 (4320 flows), junction types per level: [1, 1, 2, 2, 1, 1, 1]
+  level 1 (E0.1): t = 3,0,0/1,2,0/0,0,3 W_t = E0.1 [prefix; 3 flows; window deg 4..18]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/1,2,0/0,0,3: G = v^0: Id
+  level 2 (F0.1): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 6..18]
+    step 3,0,0/1,2,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^1+v^3+v^5: exact Hom^d(E0.1 F0.1 , ∅) d in [1, 3, 5]: 292 unknowns (window 116; K-window 116)
+  level 2 (F0.1): t = 2,1,0/1,2,0/0,0,3 W_t = E0.1 F0.1 [prefix; 12 flows; window deg 4..16]
+    step 3,0,0/1,2,0/0,0,3 -> 2,1,0/1,2,0/0,0,3: G = v^0: Id
+  level 3 (E1.2): t = 3,0,0/0,3,0/0,2,1 W_t = E1.2 [prefix; 3 flows; window deg 6..18]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/0,3,0/0,2,1: G = v^0: Id
+  level 3 (E1.2): t = 2,1,0/1,2,0/0,2,1 W_t = E0.1 F0.1 E1.2 [prefix; 36 flows; window deg 4..16]
+    step 2,1,0/1,2,0/0,0,3 -> 2,1,0/1,2,0/0,2,1: G = v^0: Id
+  level 4 (E0.1): t = 3,0,0/1,2,0/0,2,1 W_t = E0.1 E1.2 [canonical; 9 flows; window deg 4..18]
+    step 3,0,0/0,3,0/0,2,1 -> 3,0,0/1,2,0/0,2,1: G = v^2: exact Hom^d(E1.2 E0.1 , E0.1 E1.2) d in [2]: 1 725 unknowns (window 1 725; K-window needs pad)
+    step 2,1,0/1,2,0/0,2,1 -> 3,0,0/1,2,0/0,2,1: G = v^1+v^3+v^5: exact Hom^d(E0.1 F0.1 E1.2 E0.1 , E0.1 E1.2) d in [1, 3, 5]: 88 301 unknowns (window 7 225; K-window needs pad)
+  level 5 (F1.2): t = 3,0,0/1,2,0/0,0,3 W_t = E0.1 [canonical; 3 flows; window deg 4..18]
+    step 3,0,0/1,2,0/0,2,1 -> 3,0,0/1,2,0/0,0,3: G = v^2+v^4+v^6: exact Hom^d(E0.1 E1.2 F1.2 , E0.1) d in [2, 4, 6]: 8 201 unknowns (window 214; K-window 214)
+  level 6 (F0.1): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 4..18]
+    step 3,0,0/1,2,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^1+v^3+v^5: exact Hom^d(E0.1 F0.1 , ∅) d in [1, 3, 5]: 292 unknowns (window 116; K-window 116)
+
+## N = 6 closure 0,0,3/3,0,0/0,3,0 (c_diag = v^18)
+  L_p = E0.3 F0.3 E1.3 F1.3 (400 flows), junction types per level: [1, 1, 1, 1, 1]
+  level 1 (E0.3): t = 3,0,0/3,0,0/0,0,3 W_t = E0.3 [prefix; 1 flows; window deg 18..18]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/3,0,0/0,0,3: G = v^0: Id
+  level 2 (F0.3): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 18..18]
+    step 3,0,0/3,0,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^9: exact Hom^d(E0.3 F0.3 , ∅) d in [9]: 3 184 unknowns (window 750; K-window 750)
+  level 3 (E1.3): t = 3,0,0/0,3,0/0,3,0 W_t = E1.3 [prefix; 1 flows; window deg 18..18]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/0,3,0/0,3,0: G = v^0: Id
+  level 4 (F1.3): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 18..18]
+    step 3,0,0/0,3,0/0,3,0 -> 3,0,0/0,3,0/0,0,3: G = v^9: exact Hom^d(E1.3 F1.3 , ∅) d in [9]: 3 184 unknowns (window 750; K-window 750)
+
+## N = 6 closure 0,3,0/0,0,3/3,0,0 (c_diag = v^18)
+  L_p = E1.3 E0.3 F1.3 F0.3 (400 flows), junction types per level: [1, 1, 1, 1, 1]
+  level 1 (E1.3): t = 3,0,0/0,3,0/0,3,0 W_t = E1.3 [prefix; 1 flows; window deg 18..18]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/0,3,0/0,3,0: G = v^0: Id
+  level 2 (E0.3): t = 3,0,0/3,0,0/0,3,0 W_t = E0.3 E1.3 [canonical; 1 flows; window deg 18..18]
+    step 3,0,0/0,3,0/0,3,0 -> 3,0,0/3,0,0/0,3,0: G = v^9: exact Hom^d(E1.3 E0.3 , E0.3 E1.3) d in [9]: 3 184 unknowns (window 3 184; K-window needs pad)
+  level 3 (F1.3): t = 3,0,0/3,0,0/0,0,3 W_t = E0.3 E1.3 F1.3 [prefix; 1 flows; window deg 18..18]
+    step 3,0,0/3,0,0/0,3,0 -> 3,0,0/3,0,0/0,0,3: G = v^0: Id
+  level 4 (F0.3): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 18..18]
+    step 3,0,0/3,0,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^9: exact Hom^d(E0.3 E1.3 F1.3 F0.3 , ∅) d in [9]: 3 184 unknowns (window 3 184; K-window 750)
+
+## N = 6 closure 1,0,2/2,0,1/0,3,0 (c_diag = v^13+v^15+v^17)
+  L_p = E0.2 F0.2 E1.3 F1.3 (600 flows), junction types per level: [1, 1, 1, 1, 1]
+  level 1 (E0.2): t = 3,0,0/2,1,0/0,0,3 W_t = E0.2 [prefix; 3 flows; window deg 13..17]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/2,1,0/0,0,3: G = v^0: Id
+  level 2 (F0.2): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 13..17]
+    step 3,0,0/2,1,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^4+v^6+v^8: exact Hom^d(E0.2 F0.2 , ∅) d in [4, 6, 8]: 2 852 unknowns (window 787; K-window 787)
+  level 3 (E1.3): t = 3,0,0/0,3,0/0,3,0 W_t = E1.3 [prefix; 1 flows; window deg 13..17]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/0,3,0/0,3,0: G = v^0: Id
+  level 4 (F1.3): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 13..17]
+    step 3,0,0/0,3,0/0,3,0 -> 3,0,0/0,3,0/0,0,3: G = v^9: exact Hom^d(E1.3 F1.3 , ∅) d in [9]: 3 184 unknowns (window 750; K-window 750)
+
+## N = 6 closure 1,2,0/0,0,3/2,1,0 (c_diag = v^13+v^15+v^17)
+  L_p = E1.3 E0.2 F1.3 F0.2 (600 flows), junction types per level: [1, 1, 1, 1, 1]
+  level 1 (E1.3): t = 3,0,0/0,3,0/0,3,0 W_t = E1.3 [prefix; 1 flows; window deg 13..17]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/0,3,0/0,3,0: G = v^0: Id
+  level 2 (E0.2): t = 3,0,0/2,1,0/0,3,0 W_t = E0.2 E1.3 [canonical; 3 flows; window deg 13..17]
+    step 3,0,0/0,3,0/0,3,0 -> 3,0,0/2,1,0/0,3,0: G = v^6: exact Hom^d(E1.3 E0.2 , E0.2 E1.3) d in [6]: 2 983 unknowns (window 2 983; K-window needs pad)
+  level 3 (F1.3): t = 3,0,0/2,1,0/0,0,3 W_t = E0.2 [canonical; 3 flows; window deg 13..17]
+    step 3,0,0/2,1,0/0,3,0 -> 3,0,0/2,1,0/0,0,3: G = v^3: exact Hom^d(E0.2 E1.3 F1.3 , E0.2) d in [3]: 474 unknowns (window 14; K-window 14)
+  level 4 (F0.2): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 13..17]
+    step 3,0,0/2,1,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^4+v^6+v^8: exact Hom^d(E0.2 F0.2 , ∅) d in [4, 6, 8]: 2 852 unknowns (window 787; K-window 787)
+
+## N = 6 closure 0,3,0/1,0,2/2,0,1 (c_diag = v^13+v^15+v^17)
+  L_p = E1.2 E0.3 F1.2 F0.3 (600 flows), junction types per level: [1, 1, 1, 1, 1]
+  level 1 (E1.2): t = 3,0,0/0,3,0/0,2,1 W_t = E1.2 [prefix; 3 flows; window deg 13..17]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/0,3,0/0,2,1: G = v^0: Id
+  level 2 (E0.3): t = 3,0,0/3,0,0/0,2,1 W_t = E0.3 E1.2 [canonical; 3 flows; window deg 13..17]
+    step 3,0,0/0,3,0/0,2,1 -> 3,0,0/3,0,0/0,2,1: G = v^6: exact Hom^d(E1.2 E0.3 , E0.3 E1.2) d in [6]: 5 104 unknowns (window 5 104; K-window needs pad)
+  level 3 (F1.2): t = 3,0,0/3,0,0/0,0,3 W_t = E0.3 [canonical; 1 flows; window deg 13..17]
+    step 3,0,0/3,0,0/0,2,1 -> 3,0,0/3,0,0/0,0,3: G = v^-2+v^0+v^2: exact Hom^d(E0.3 E1.2 F1.2 , E0.3) d in [-2, 0, 2]: 13 unknowns (window 4; K-window 0)
+  level 4 (F0.3): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 13..17]
+    step 3,0,0/3,0,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^9: exact Hom^d(E0.3 F0.3 , ∅) d in [9]: 3 184 unknowns (window 750; K-window 750)
+
+## N = 6 closure 1,0,2/1,2,0/1,1,1 (c_diag = v^9+3v^11+5v^13+5v^15+3v^17+v^19)
+  L_p = F0.2 E0.1 E1.2 E0.1 F1.2 (2700 flows), junction types per level: [1, 1, 1, 1, 1, 1]
+  level 1 (F0.2): t = 1,2,0/0,3,0/0,0,3 W_t = F0.2 [prefix; 3 flows; window deg 9..19]
+    step 3,0,0/0,3,0/0,0,3 -> 1,2,0/0,3,0/0,0,3: G = v^0: Id
+  level 2 (E0.1): t = 2,1,0/0,3,0/0,0,3 W_t = F0.1 [canonical; 3 flows; window deg 9..19]
+    step 1,2,0/0,3,0/0,0,3 -> 2,1,0/0,3,0/0,0,3: G = v^2+v^4: exact Hom^d(F0.2 E0.1 , F0.1) d in [2, 4]: 1 045 unknowns (window 394; K-window 394)
+  level 3 (E1.2): t = 2,1,0/0,3,0/0,2,1 W_t = F0.1 E1.2 [prefix; 9 flows; window deg 9..19]
+    step 2,1,0/0,3,0/0,0,3 -> 2,1,0/0,3,0/0,2,1: G = v^0: Id
+  level 4 (E0.1): t = 3,0,0/0,3,0/0,2,1 W_t = E1.2 [canonical; 3 flows; window deg 9..19]
+    step 2,1,0/0,3,0/0,2,1 -> 3,0,0/0,3,0/0,2,1: G = v^3+v^5+v^7: exact Hom^d(F0.1 E1.2 E0.1 , E1.2) d in [3, 5, 7]: 13 765 unknowns (window 13 765; K-window needs pad)
+  level 5 (F1.2): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 9..19]
+    step 3,0,0/0,3,0/0,2,1 -> 3,0,0/0,3,0/0,0,3: G = v^4+v^6+v^8: exact Hom^d(E1.2 F1.2 , ∅) d in [4, 6, 8]: 2 852 unknowns (window 787; K-window 787)
+
+## N = 6 closure 1,1,1/0,2,1/2,0,1 (c_diag = v^9+3v^11+5v^13+5v^15+3v^17+v^19)
+  L_p = F0.1 E1.2 F1.2 F0.1 E0.2 (2700 flows), junction types per level: [1, 1, 1, 1, 1, 1]
+  level 1 (F0.1): t = 2,1,0/0,3,0/0,0,3 W_t = F0.1 [prefix; 3 flows; window deg 9..19]
+    step 3,0,0/0,3,0/0,0,3 -> 2,1,0/0,3,0/0,0,3: G = v^0: Id
+  level 2 (E1.2): t = 2,1,0/0,3,0/0,2,1 W_t = F0.1 E1.2 [prefix; 9 flows; window deg 9..19]
+    step 2,1,0/0,3,0/0,0,3 -> 2,1,0/0,3,0/0,2,1: G = v^0: Id
+  level 3 (F1.2): t = 2,1,0/0,3,0/0,0,3 W_t = F0.1 [canonical; 3 flows; window deg 9..19]
+    (alternatives: 1 reduced words of 2,1,0/0,3,0/0,0,3 with ≤ 5 rungs; cheapest for this step: F0.1 at 101 507 unknowns)
+    step 2,1,0/0,3,0/0,2,1 -> 2,1,0/0,3,0/0,0,3: G = v^6+v^8+v^10: exact Hom^d(F0.1 E1.2 F1.2 , F0.1) d in [6, 8, 10]: 101 507 unknowns (window 2 401; K-window needs pad)  ** OVER BUDGET **
+  level 4 (F0.1): t = 1,2,0/0,3,0/0,0,3 W_t = F0.2 [canonical; 3 flows; window deg 9..19]
+    step 2,1,0/0,3,0/0,0,3 -> 1,2,0/0,3,0/0,0,3: G = v^-1+v^1: exact Hom^d(F0.1 F0.1 , F0.2) d in [-1, 1]: 69 unknowns (window 40; K-window 40)
+  level 5 (E0.2): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 9..19]
+    step 1,2,0/0,3,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^4+v^6+v^8: exact Hom^d(F0.2 E0.2 , ∅) d in [4, 6, 8]: 2 852 unknowns (window 787; K-window 787)
+
+## N = 6 closure 0,2,1/2,0,1/1,1,1 (c_diag = v^9+3v^11+5v^13+5v^15+3v^17+v^19)
+  L_p = E0.2 E1.3 E0.1 F0.1 F1.3 F0.2 (2880 flows), junction types per level: [1, 1, 1, 2, 1, 1, 1]
+  level 1 (E0.2): t = 3,0,0/2,1,0/0,0,3 W_t = E0.2 [prefix; 3 flows; window deg 9..19]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/2,1,0/0,0,3: G = v^0: Id
+  level 2 (E1.3): t = 3,0,0/2,1,0/0,3,0 W_t = E0.2 E1.3 [prefix; 3 flows; window deg 9..19]
+    step 3,0,0/2,1,0/0,0,3 -> 3,0,0/2,1,0/0,3,0: G = v^0: Id
+  level 3 (E0.1): t = 3,0,0/3,0,0/0,3,0 W_t = E0.3 E1.3 [canonical; 1 flows; window deg 11..19]
+    step 3,0,0/2,1,0/0,3,0 -> 3,0,0/3,0,0/0,3,0: G = v^1+v^3+v^5: exact Hom^d(E0.2 E1.3 E0.1 , E0.3 E1.3) d in [1, 3, 5]: 292 unknowns (window 292; K-window needs pad)
+  level 3 (E0.1): t = 3,0,0/2,1,0/1,2,0 W_t = E0.2 E1.3 E0.1 [prefix; 12 flows; window deg 9..17]
+    step 3,0,0/2,1,0/0,3,0 -> 3,0,0/2,1,0/1,2,0: G = v^0: Id
+  level 4 (F0.1): t = 3,0,0/2,1,0/0,3,0 W_t = E0.2 E1.3 [canonical; 3 flows; window deg 9..19]
+    step 3,0,0/3,0,0/0,3,0 -> 3,0,0/2,1,0/0,3,0: G = v^3: exact Hom^d(E0.3 E1.3 F0.1 , E0.2 E1.3) d in [3]: 297 unknowns (window 297; K-window needs pad)
+    step 3,0,0/2,1,0/1,2,0 -> 3,0,0/2,1,0/0,3,0: G = v^2+v^4+v^6: exact Hom^d(E0.2 E1.3 E0.1 F0.1 , E0.2 E1.3) d in [2, 4, 6]: 14 815 unknowns (window 474; K-window needs pad)
+  level 5 (F1.3): t = 3,0,0/2,1,0/0,0,3 W_t = E0.2 [canonical; 3 flows; window deg 9..19]
+    step 3,0,0/2,1,0/0,3,0 -> 3,0,0/2,1,0/0,0,3: G = v^3: exact Hom^d(E0.2 E1.3 F1.3 , E0.2) d in [3]: 474 unknowns (window 14; K-window 14)
+  level 6 (F0.2): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 9..19]
+    step 3,0,0/2,1,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^4+v^6+v^8: exact Hom^d(E0.2 F0.2 , ∅) d in [4, 6, 8]: 2 852 unknowns (window 787; K-window 787)
+
+## N = 6 closure 1,1,1/1,0,2/1,2,0 (c_diag = v^9+3v^11+5v^13+5v^15+3v^17+v^19)
+  L_p = E0.1 F0.1 E1.3 E0.1 F1.3 F0.1 (2880 flows), junction types per level: [1, 1, 2, 2, 1, 1, 1]
+  level 1 (E0.1): t = 3,0,0/1,2,0/0,0,3 W_t = E0.1 [prefix; 3 flows; window deg 9..19]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/1,2,0/0,0,3: G = v^0: Id
+  level 2 (F0.1): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 11..19]
+    step 3,0,0/1,2,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^1+v^3+v^5: exact Hom^d(E0.1 F0.1 , ∅) d in [1, 3, 5]: 292 unknowns (window 116; K-window 116)
+  level 2 (F0.1): t = 2,1,0/1,2,0/0,0,3 W_t = E0.1 F0.1 [prefix; 12 flows; window deg 9..17]
+    step 3,0,0/1,2,0/0,0,3 -> 2,1,0/1,2,0/0,0,3: G = v^0: Id
+  level 3 (E1.3): t = 3,0,0/0,3,0/0,3,0 W_t = E1.3 [prefix; 1 flows; window deg 11..19]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/0,3,0/0,3,0: G = v^0: Id
+  level 3 (E1.3): t = 2,1,0/1,2,0/0,3,0 W_t = E0.1 F0.1 E1.3 [prefix; 12 flows; window deg 9..17]
+    step 2,1,0/1,2,0/0,0,3 -> 2,1,0/1,2,0/0,3,0: G = v^0: Id
+  level 4 (E0.1): t = 3,0,0/1,2,0/0,3,0 W_t = E0.1 E1.3 [canonical; 3 flows; window deg 9..19]
+    step 3,0,0/0,3,0/0,3,0 -> 3,0,0/1,2,0/0,3,0: G = v^3: exact Hom^d(E1.3 E0.1 , E0.1 E1.3) d in [3]: 297 unknowns (window 297; K-window needs pad)
+    step 2,1,0/1,2,0/0,3,0 -> 3,0,0/1,2,0/0,3,0: G = v^2+v^4+v^6: exact Hom^d(E0.1 F0.1 E1.3 E0.1 , E0.1 E1.3) d in [2, 4, 6]: 14 815 unknowns (window 1 220; K-window needs pad)
+  level 5 (F1.3): t = 3,0,0/1,2,0/0,0,3 W_t = E0.1 [canonical; 3 flows; window deg 9..19]
+    step 3,0,0/1,2,0/0,3,0 -> 3,0,0/1,2,0/0,0,3: G = v^6: exact Hom^d(E0.1 E1.3 F1.3 , E0.1) d in [6]: 5 104 unknowns (window 127; K-window 127)
+  level 6 (F0.1): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 9..19]
+    step 3,0,0/1,2,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^1+v^3+v^5: exact Hom^d(E0.1 F0.1 , ∅) d in [1, 3, 5]: 292 unknowns (window 116; K-window 116)
+
+## N = 6 closure 0,1,2/2,0,1/1,2,0 (c_diag = v^10+3v^12+6v^14+7v^16+6v^18+3v^20+v^22)
+  L_p = E0.2 F0.2 E1.3 E0.1 F1.3 F0.1 (7200 flows), junction types per level: [1, 1, 2, 2, 1, 1, 1]
+  level 1 (E0.2): t = 3,0,0/2,1,0/0,0,3 W_t = E0.2 [prefix; 3 flows; window deg 10..22]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/2,1,0/0,0,3: G = v^0: Id
+  level 2 (F0.2): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 14..22]
+    step 3,0,0/2,1,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^4+v^6+v^8: exact Hom^d(E0.2 F0.2 , ∅) d in [4, 6, 8]: 2 852 unknowns (window 787; K-window 787)
+  level 2 (F0.2): t = 2,1,0/1,2,0/0,0,3 W_t = E0.1 F0.1 [canonical; 12 flows; window deg 10..20]
+    step 3,0,0/2,1,0/0,0,3 -> 2,1,0/1,2,0/0,0,3: G = v^1+v^3: exact Hom^d(E0.2 F0.2 , E0.1 F0.1) d in [1, 3]: 9 504 unknowns (window 3 191; K-window 3 191)
+  level 3 (E1.3): t = 3,0,0/0,3,0/0,3,0 W_t = E1.3 [prefix; 1 flows; window deg 14..22]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/0,3,0/0,3,0: G = v^0: Id
+  level 3 (E1.3): t = 2,1,0/1,2,0/0,3,0 W_t = E0.1 F0.1 E1.3 [prefix; 12 flows; window deg 10..20]
+    step 2,1,0/1,2,0/0,0,3 -> 2,1,0/1,2,0/0,3,0: G = v^0: Id
+  level 4 (E0.1): t = 3,0,0/1,2,0/0,3,0 W_t = E0.1 E1.3 [canonical; 3 flows; window deg 10..22]
+    step 3,0,0/0,3,0/0,3,0 -> 3,0,0/1,2,0/0,3,0: G = v^3: exact Hom^d(E1.3 E0.1 , E0.1 E1.3) d in [3]: 297 unknowns (window 297; K-window needs pad)
+    step 2,1,0/1,2,0/0,3,0 -> 3,0,0/1,2,0/0,3,0: G = v^2+v^4+v^6: exact Hom^d(E0.1 F0.1 E1.3 E0.1 , E0.1 E1.3) d in [2, 4, 6]: 14 815 unknowns (window 1 220; K-window needs pad)
+  level 5 (F1.3): t = 3,0,0/1,2,0/0,0,3 W_t = E0.1 [canonical; 3 flows; window deg 10..22]
+    step 3,0,0/1,2,0/0,3,0 -> 3,0,0/1,2,0/0,0,3: G = v^6: exact Hom^d(E0.1 E1.3 F1.3 , E0.1) d in [6]: 5 104 unknowns (window 127; K-window 127)
+  level 6 (F0.1): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 10..22]
+    step 3,0,0/1,2,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^1+v^3+v^5: exact Hom^d(E0.1 F0.1 , ∅) d in [1, 3, 5]: 292 unknowns (window 116; K-window 116)
+
+## N = 6 closure 0,2,1/1,0,2/2,1,0 (c_diag = v^10+3v^12+6v^14+7v^16+6v^18+3v^20+v^22)
+  L_p = E0.1 F0.1 E1.3 E0.2 F1.3 F0.2 (7200 flows), junction types per level: [1, 1, 2, 2, 1, 1, 1]
+  level 1 (E0.1): t = 3,0,0/1,2,0/0,0,3 W_t = E0.1 [prefix; 3 flows; window deg 10..22]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/1,2,0/0,0,3: G = v^0: Id
+  level 2 (F0.1): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 14..22]
+    step 3,0,0/1,2,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^1+v^3+v^5: exact Hom^d(E0.1 F0.1 , ∅) d in [1, 3, 5]: 292 unknowns (window 116; K-window 116)
+  level 2 (F0.1): t = 2,1,0/1,2,0/0,0,3 W_t = E0.1 F0.1 [prefix; 12 flows; window deg 10..20]
+    step 3,0,0/1,2,0/0,0,3 -> 2,1,0/1,2,0/0,0,3: G = v^0: Id
+  level 3 (E1.3): t = 3,0,0/0,3,0/0,3,0 W_t = E1.3 [prefix; 1 flows; window deg 14..22]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/0,3,0/0,3,0: G = v^0: Id
+  level 3 (E1.3): t = 2,1,0/1,2,0/0,3,0 W_t = E0.1 F0.1 E1.3 [prefix; 12 flows; window deg 10..20]
+    step 2,1,0/1,2,0/0,0,3 -> 2,1,0/1,2,0/0,3,0: G = v^0: Id
+  level 4 (E0.2): t = 3,0,0/2,1,0/0,3,0 W_t = E0.2 E1.3 [canonical; 3 flows; window deg 10..22]
+    step 3,0,0/0,3,0/0,3,0 -> 3,0,0/2,1,0/0,3,0: G = v^6: exact Hom^d(E1.3 E0.2 , E0.2 E1.3) d in [6]: 2 983 unknowns (window 2 983; K-window needs pad)
+    (alternatives: 9 reduced words of 3,0,0/2,1,0/0,3,0 with ≤ 5 rungs; cheapest for this step: E0.2 E1.3 at 111 497 unknowns)
+    step 2,1,0/1,2,0/0,3,0 -> 3,0,0/2,1,0/0,3,0: G = v^3+2v^5+2v^7+v^9: exact Hom^d(E0.1 F0.1 E1.3 E0.2 , E0.2 E1.3) d in [3, 5, 7, 9]: 111 497 unknowns (window 111 497; K-window needs pad)  ** OVER BUDGET **
+  level 5 (F1.3): t = 3,0,0/2,1,0/0,0,3 W_t = E0.2 [canonical; 3 flows; window deg 10..22]
+    step 3,0,0/2,1,0/0,3,0 -> 3,0,0/2,1,0/0,0,3: G = v^3: exact Hom^d(E0.2 E1.3 F1.3 , E0.2) d in [3]: 474 unknowns (window 14; K-window 14)
+  level 6 (F0.2): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 10..22]
+    step 3,0,0/2,1,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^4+v^6+v^8: exact Hom^d(E0.2 F0.2 , ∅) d in [4, 6, 8]: 2 852 unknowns (window 787; K-window 787)
+
+## N = 6 closure 1,1,1/1,1,1/1,1,1 (c_diag = v^4+4v^6+9v^8+13v^10+13v^12+9v^14+4v^16+v^18)
+  L_p = E0.1 F0.1 E1.2 E0.1 F1.2 F0.1 (4320 flows), junction types per level: [1, 1, 2, 2, 1, 1, 1]
+  level 1 (E0.1): t = 3,0,0/1,2,0/0,0,3 W_t = E0.1 [prefix; 3 flows; window deg 4..18]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/1,2,0/0,0,3: G = v^0: Id
+  level 2 (F0.1): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 6..18]
+    step 3,0,0/1,2,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^1+v^3+v^5: exact Hom^d(E0.1 F0.1 , ∅) d in [1, 3, 5]: 292 unknowns (window 116; K-window 116)
+  level 2 (F0.1): t = 2,1,0/1,2,0/0,0,3 W_t = E0.1 F0.1 [prefix; 12 flows; window deg 4..16]
+    step 3,0,0/1,2,0/0,0,3 -> 2,1,0/1,2,0/0,0,3: G = v^0: Id
+  level 3 (E1.2): t = 3,0,0/0,3,0/0,2,1 W_t = E1.2 [prefix; 3 flows; window deg 6..18]
+    step 3,0,0/0,3,0/0,0,3 -> 3,0,0/0,3,0/0,2,1: G = v^0: Id
+  level 3 (E1.2): t = 2,1,0/1,2,0/0,2,1 W_t = E0.1 F0.1 E1.2 [prefix; 36 flows; window deg 4..16]
+    step 2,1,0/1,2,0/0,0,3 -> 2,1,0/1,2,0/0,2,1: G = v^0: Id
+  level 4 (E0.1): t = 3,0,0/1,2,0/0,2,1 W_t = E0.1 E1.2 [canonical; 9 flows; window deg 4..18]
+    step 3,0,0/0,3,0/0,2,1 -> 3,0,0/1,2,0/0,2,1: G = v^2: exact Hom^d(E1.2 E0.1 , E0.1 E1.2) d in [2]: 1 725 unknowns (window 1 725; K-window needs pad)
+    step 2,1,0/1,2,0/0,2,1 -> 3,0,0/1,2,0/0,2,1: G = v^1+v^3+v^5: exact Hom^d(E0.1 F0.1 E1.2 E0.1 , E0.1 E1.2) d in [1, 3, 5]: 88 301 unknowns (window 7 225; K-window needs pad)
+  level 5 (F1.2): t = 3,0,0/1,2,0/0,0,3 W_t = E0.1 [canonical; 3 flows; window deg 4..18]
+    step 3,0,0/1,2,0/0,2,1 -> 3,0,0/1,2,0/0,0,3: G = v^2+v^4+v^6: exact Hom^d(E0.1 E1.2 F1.2 , E0.1) d in [2, 4, 6]: 8 201 unknowns (window 214; K-window 214)
+  level 6 (F0.1): t = 3,0,0/0,3,0/0,0,3 W_t = ∅ [canonical; 1 flows; window deg 4..18]
+    step 3,0,0/1,2,0/0,0,3 -> 3,0,0/0,3,0/0,0,3: G = v^1+v^3+v^5: exact Hom^d(E0.1 F0.1 , ∅) d in [1, 3, 5]: 292 unknowns (window 116; K-window 116)
