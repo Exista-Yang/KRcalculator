@@ -1,0 +1,513 @@
+{
+ "lam": [
+  3,
+  3,
+  3
+ ],
+ "prune": 4,
+ "box_N": 4,
+ "closures": [
+  3,
+  4
+ ],
+ "comparison": "uncolored gl_4 of the reversed braid (engine2), via duality (expected)",
+ "knots": [
+  {
+   "knot": "4_1",
+   "word": [
+    1,
+    -2,
+    1,
+    -2
+   ],
+   "length": 4,
+   "primes": [
+    "31",
+    "32b"
+   ],
+   "primes_identical": true,
+   "chi_ok": true,
+   "secs_f31": 4.17,
+   "points": 64,
+   "unreduced": {
+    "N4": "t^-2q^7 + t^-2q^9 + t^-2q^11 + t^-1q^-1 + t^-1q^1 + t^-1q^3 + t^0q^-3 + t^0q^-1 + t^0q^1 + t^0q^3 + t^1q^-3 + t^1q^-1 + t^1q^1 + t^2q^-11 + t^2q^-9 + t^2q^-7",
+    "rank4": 16,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 16,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "reduced": {
+    "N4": "t^-2q^8 + t^-1q^2 + t^0q^0 + t^1q^-2 + t^2q^-8",
+    "rank4": 5,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 5,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "status": "PASS"
+  },
+  {
+   "knot": "5_2",
+   "word": [
+    1,
+    1,
+    1,
+    2,
+    -1,
+    2
+   ],
+   "length": 6,
+   "primes": [
+    "31",
+    "32b"
+   ],
+   "primes_identical": true,
+   "chi_ok": true,
+   "secs_f31": 4.95,
+   "points": 64,
+   "unreduced": {
+    "N4": "t^0q^-9 + t^0q^-7 + t^0q^-5 + t^0q^-3 + t^1q^-9 + t^1q^-7 + t^1q^-5 + t^2q^-17 + t^2q^-15 + t^2q^-13 + t^2q^-11 + t^2q^-9 + t^2q^-7 + t^3q^-19 + t^3q^-17 + t^3q^-15 + t^4q^-19 + t^4q^-17 + t^4q^-15 + t^5q^-27 + t^5q^-25 + t^5q^-23",
+    "rank4": 22,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 22,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "reduced": {
+    "N4": "t^0q^-6 + t^1q^-8 + t^2q^-14 + t^2q^-10 + t^3q^-16 + t^4q^-18 + t^5q^-24",
+    "rank4": 7,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 7,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "status": "PASS"
+  },
+  {
+   "knot": "6_2",
+   "word": [
+    1,
+    1,
+    1,
+    -2,
+    1,
+    -2
+   ],
+   "length": 6,
+   "primes": [
+    "31",
+    "32b"
+   ],
+   "primes_identical": true,
+   "chi_ok": true,
+   "secs_f31": 4.59,
+   "points": 64,
+   "unreduced": {
+    "N4": "t^-2q^1 + t^-2q^3 + t^-2q^5 + t^-1q^-7 + t^-1q^-5 + t^-1q^-3 + t^0q^-9 + t^0q^-7 + t^0q^-5 + 2t^0q^-3 + t^0q^-1 + t^0q^1 + t^1q^-11 + 2t^1q^-9 + 2t^1q^-7 + t^1q^-5 + t^2q^-17 + t^2q^-15 + t^2q^-13 + t^2q^-11 + t^2q^-9 + t^2q^-7 + t^3q^-19 + t^3q^-17 + t^3q^-15 + t^3q^-13 + t^3q^-11 + t^3q^-9 + t^4q^-21 + t^4q^-19 + t^4q^-17",
+    "rank4": 34,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 34,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "reduced": {
+    "N4": "t^-2q^2 + t^-1q^-4 + t^0q^-6 + t^0q^-2 + 2t^1q^-8 + t^2q^-14 + t^2q^-10 + t^3q^-16 + t^3q^-12 + t^4q^-18",
+    "rank4": 11,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 11,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "status": "PASS"
+  },
+  {
+   "knot": "6_3",
+   "word": [
+    1,
+    1,
+    -2,
+    1,
+    -2,
+    -2
+   ],
+   "length": 6,
+   "primes": [
+    "31",
+    "32b"
+   ],
+   "primes_identical": true,
+   "chi_ok": true,
+   "secs_f31": 4.58,
+   "points": 64,
+   "unreduced": {
+    "N4": "t^-3q^9 + t^-3q^11 + t^-3q^13 + t^-2q^1 + t^-2q^3 + t^-2q^5 + t^-2q^7 + t^-2q^9 + t^-2q^11 + t^-1q^-1 + t^-1q^1 + t^-1q^3 + t^-1q^5 + t^-1q^7 + t^-1q^9 + 2t^0q^-3 + 3t^0q^-1 + 3t^0q^1 + 2t^0q^3 + t^1q^-9 + t^1q^-7 + t^1q^-5 + t^1q^-3 + t^1q^-1 + t^1q^1 + t^2q^-11 + t^2q^-9 + t^2q^-7 + t^2q^-5 + t^2q^-3 + t^2q^-1 + t^3q^-13 + t^3q^-11 + t^3q^-9",
+    "rank4": 40,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 40,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "reduced": {
+    "N4": "t^-3q^10 + t^-2q^4 + t^-2q^8 + t^-1q^2 + t^-1q^6 + 3t^0q^0 + t^1q^-6 + t^1q^-2 + t^2q^-8 + t^2q^-4 + t^3q^-10",
+    "rank4": 13,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 13,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "status": "PASS"
+  },
+  {
+   "knot": "7_3",
+   "word": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2,
+    -1,
+    2
+   ],
+   "length": 8,
+   "primes": [
+    "31",
+    "32b"
+   ],
+   "primes_identical": true,
+   "chi_ok": true,
+   "secs_f31": 5.08,
+   "points": 64,
+   "unreduced": {
+    "N4": "t^0q^-15 + t^0q^-13 + t^0q^-11 + t^0q^-9 + t^1q^-15 + t^1q^-13 + t^1q^-11 + t^2q^-23 + t^2q^-21 + t^2q^-19 + t^2q^-17 + t^2q^-15 + t^2q^-13 + t^3q^-25 + t^3q^-23 + t^3q^-21 + t^3q^-19 + t^3q^-17 + t^3q^-15 + t^4q^-27 + 2t^4q^-25 + 2t^4q^-23 + 2t^4q^-21 + t^4q^-19 + t^4q^-17 + t^5q^-33 + t^5q^-31 + 2t^5q^-29 + t^5q^-27 + t^5q^-25 + t^6q^-29 + t^6q^-27 + t^6q^-25 + t^7q^-37 + t^7q^-35 + t^7q^-33",
+    "rank4": 40,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 40,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "reduced": {
+    "N4": "t^0q^-12 + t^1q^-14 + t^2q^-20 + t^2q^-16 + t^3q^-22 + t^3q^-18 + 2t^4q^-24 + t^4q^-20 + t^5q^-30 + t^5q^-26 + t^6q^-28 + t^7q^-34",
+    "rank4": 13,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 13,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "status": "PASS"
+  },
+  {
+   "knot": "7_5",
+   "word": [
+    1,
+    1,
+    1,
+    1,
+    2,
+    -1,
+    2,
+    2
+   ],
+   "length": 8,
+   "primes": [
+    "31",
+    "32b"
+   ],
+   "primes_identical": true,
+   "chi_ok": true,
+   "secs_f31": 4.91,
+   "points": 64,
+   "unreduced": {
+    "N4": "t^0q^-15 + t^0q^-13 + t^0q^-11 + t^0q^-9 + t^1q^-15 + t^1q^-13 + t^1q^-11 + t^2q^-23 + t^2q^-21 + t^2q^-19 + 2t^2q^-17 + 2t^2q^-15 + 2t^2q^-13 + 2t^3q^-25 + 2t^3q^-23 + 2t^3q^-21 + t^3q^-19 + t^3q^-17 + t^3q^-15 + t^4q^-27 + 2t^4q^-25 + 2t^4q^-23 + 2t^4q^-21 + t^4q^-19 + t^4q^-17 + t^5q^-33 + t^5q^-31 + 2t^5q^-29 + 2t^5q^-27 + 2t^5q^-25 + t^5q^-23 + t^6q^-35 + t^6q^-33 + t^6q^-31 + t^6q^-29 + t^6q^-27 + t^6q^-25 + t^7q^-37 + t^7q^-35 + t^7q^-33",
+    "rank4": 52,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 52,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "reduced": {
+    "N4": "t^0q^-12 + t^1q^-14 + t^2q^-20 + 2t^2q^-16 + 2t^3q^-22 + t^3q^-18 + 2t^4q^-24 + t^4q^-20 + t^5q^-30 + 2t^5q^-26 + t^6q^-32 + t^6q^-28 + t^7q^-34",
+    "rank4": 17,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 17,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "status": "PASS"
+  },
+  {
+   "knot": "8_2",
+   "word": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    -2,
+    1,
+    -2
+   ],
+   "length": 8,
+   "primes": [
+    "31",
+    "32b"
+   ],
+   "primes_identical": true,
+   "chi_ok": true,
+   "secs_f31": 5.14,
+   "points": 64,
+   "unreduced": {
+    "N4": "t^-2q^-5 + t^-2q^-3 + t^-2q^-1 + t^-1q^-13 + t^-1q^-11 + t^-1q^-9 + t^0q^-15 + t^0q^-13 + t^0q^-11 + 2t^0q^-9 + t^0q^-7 + t^0q^-5 + t^1q^-17 + 2t^1q^-15 + 2t^1q^-13 + t^1q^-11 + t^2q^-23 + t^2q^-21 + t^2q^-19 + t^2q^-17 + t^2q^-15 + 2t^2q^-13 + t^2q^-11 + t^2q^-9 + t^3q^-25 + t^3q^-23 + 2t^3q^-21 + 2t^3q^-19 + 2t^3q^-17 + t^3q^-15 + t^4q^-27 + t^4q^-25 + t^4q^-23 + t^4q^-21 + t^4q^-19 + t^4q^-17 + t^5q^-29 + t^5q^-27 + t^5q^-25 + t^5q^-23 + t^5q^-21 + t^5q^-19 + t^6q^-31 + t^6q^-29 + t^6q^-27",
+    "rank4": 52,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 52,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "reduced": {
+    "N4": "t^-2q^-4 + t^-1q^-10 + t^0q^-12 + t^0q^-8 + 2t^1q^-14 + t^2q^-20 + t^2q^-16 + t^2q^-12 + t^3q^-22 + 2t^3q^-18 + t^4q^-24 + t^4q^-20 + t^5q^-26 + t^5q^-22 + t^6q^-28",
+    "rank4": 17,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 17,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "status": "PASS"
+  },
+  {
+   "knot": "8_5",
+   "word": [
+    1,
+    1,
+    1,
+    -2,
+    1,
+    1,
+    1,
+    -2
+   ],
+   "length": 8,
+   "primes": [
+    "31",
+    "32b"
+   ],
+   "primes_identical": true,
+   "chi_ok": true,
+   "secs_f31": 5.79,
+   "points": 64,
+   "unreduced": {
+    "N4": "t^-2q^-5 + t^-2q^-3 + t^-2q^-1 + t^-1q^-13 + t^-1q^-11 + t^-1q^-9 + t^0q^-15 + t^0q^-13 + t^0q^-11 + 3t^0q^-9 + 2t^0q^-7 + 2t^0q^-5 + 2t^1q^-17 + 3t^1q^-15 + 3t^1q^-13 + t^1q^-11 + t^2q^-23 + t^2q^-21 + t^2q^-19 + t^2q^-17 + t^2q^-15 + 2t^2q^-13 + t^2q^-11 + t^2q^-9 + t^3q^-25 + t^3q^-23 + 2t^3q^-21 + 3t^3q^-19 + 3t^3q^-17 + 2t^3q^-15 + 2t^4q^-27 + 2t^4q^-25 + 2t^4q^-23 + t^4q^-21 + t^4q^-19 + t^4q^-17 + t^5q^-29 + t^5q^-27 + t^5q^-25 + t^5q^-23 + t^5q^-21 + t^5q^-19 + t^6q^-31 + t^6q^-29 + t^6q^-27",
+    "rank4": 64,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 64,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "reduced": {
+    "N4": "t^-2q^-4 + t^-1q^-10 + t^0q^-12 + 2t^0q^-8 + 3t^1q^-14 + t^2q^-20 + t^2q^-16 + t^2q^-12 + t^3q^-22 + 3t^3q^-18 + 2t^4q^-24 + t^4q^-20 + t^5q^-26 + t^5q^-22 + t^6q^-28",
+    "rank4": 21,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 21,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "status": "PASS"
+  },
+  {
+   "knot": "8_7",
+   "word": [
+    -1,
+    -1,
+    -1,
+    -1,
+    2,
+    -1,
+    2,
+    2
+   ],
+   "length": 8,
+   "primes": [
+    "31",
+    "32b"
+   ],
+   "primes_identical": true,
+   "chi_ok": true,
+   "secs_f31": 5.15,
+   "points": 64,
+   "unreduced": {
+    "N4": "t^-5q^19 + t^-5q^21 + t^-5q^23 + t^-4q^11 + t^-4q^13 + t^-4q^15 + t^-4q^17 + t^-4q^19 + t^-4q^21 + t^-3q^9 + t^-3q^11 + t^-3q^13 + 2t^-3q^15 + 2t^-3q^17 + 2t^-3q^19 + 2t^-2q^7 + 3t^-2q^9 + 3t^-2q^11 + 2t^-2q^13 + t^-2q^15 + t^-2q^17 + t^-1q^1 + t^-1q^3 + 2t^-1q^5 + 2t^-1q^7 + 2t^-1q^9 + 2t^-1q^11 + t^-1q^13 + t^-1q^15 + t^0q^-1 + t^0q^1 + 3t^0q^3 + 3t^0q^5 + 3t^0q^7 + 2t^0q^9 + t^1q^-3 + t^1q^-1 + t^1q^1 + t^1q^3 + t^1q^5 + t^1q^7 + t^2q^-5 + t^2q^-3 + t^2q^-1 + t^2q^1 + t^2q^3 + t^2q^5 + t^3q^-7 + t^3q^-5 + t^3q^-3",
+    "rank4": 70,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 70,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "reduced": {
+    "N4": "t^-5q^20 + t^-4q^14 + t^-4q^18 + t^-3q^12 + 2t^-3q^16 + 3t^-2q^10 + t^-2q^14 + t^-1q^4 + 2t^-1q^8 + t^-1q^12 + t^0q^2 + 3t^0q^6 + t^1q^0 + t^1q^4 + t^2q^-2 + t^2q^2 + t^3q^-4",
+    "rank4": 23,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 23,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "status": "PASS"
+  },
+  {
+   "knot": "8_9",
+   "word": [
+    1,
+    1,
+    1,
+    -2,
+    1,
+    -2,
+    -2,
+    -2
+   ],
+   "length": 8,
+   "primes": [
+    "31",
+    "32b"
+   ],
+   "primes_identical": true,
+   "chi_ok": true,
+   "secs_f31": 5.51,
+   "points": 64,
+   "unreduced": {
+    "N4": "t^-4q^11 + t^-4q^13 + t^-4q^15 + t^-3q^3 + t^-3q^5 + t^-3q^7 + t^-3q^9 + t^-3q^11 + t^-3q^13 + t^-2q^1 + t^-2q^3 + t^-2q^5 + 2t^-2q^7 + 2t^-2q^9 + 2t^-2q^11 + 2t^-1q^-1 + 3t^-1q^1 + 3t^-1q^3 + 2t^-1q^5 + t^-1q^7 + t^-1q^9 + t^0q^-7 + t^0q^-5 + 3t^0q^-3 + 3t^0q^-1 + 3t^0q^1 + 3t^0q^3 + t^0q^5 + t^0q^7 + t^1q^-9 + t^1q^-7 + 2t^1q^-5 + 3t^1q^-3 + 3t^1q^-1 + 2t^1q^1 + 2t^2q^-11 + 2t^2q^-9 + 2t^2q^-7 + t^2q^-5 + t^2q^-3 + t^2q^-1 + t^3q^-13 + t^3q^-11 + t^3q^-9 + t^3q^-7 + t^3q^-5 + t^3q^-3 + t^4q^-15 + t^4q^-13 + t^4q^-11",
+    "rank4": 76,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 76,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "reduced": {
+    "N4": "t^-4q^12 + t^-3q^6 + t^-3q^10 + t^-2q^4 + 2t^-2q^8 + 3t^-1q^2 + t^-1q^6 + t^0q^-4 + 3t^0q^0 + t^0q^4 + t^1q^-6 + 3t^1q^-2 + 2t^2q^-8 + t^2q^-4 + t^3q^-10 + t^3q^-6 + t^4q^-12",
+    "rank4": 25,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 25,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "status": "PASS"
+  },
+  {
+   "knot": "8_10",
+   "word": [
+    -1,
+    -1,
+    -1,
+    2,
+    -1,
+    -1,
+    2,
+    2
+   ],
+   "length": 8,
+   "primes": [
+    "31",
+    "32b"
+   ],
+   "primes_identical": true,
+   "chi_ok": true,
+   "secs_f31": 6.3,
+   "points": 64,
+   "unreduced": {
+    "N4": "t^-5q^19 + t^-5q^21 + t^-5q^23 + t^-4q^11 + t^-4q^13 + t^-4q^15 + t^-4q^17 + t^-4q^19 + t^-4q^21 + t^-3q^9 + t^-3q^11 + t^-3q^13 + 3t^-3q^15 + 3t^-3q^17 + 3t^-3q^19 + 3t^-2q^7 + 4t^-2q^9 + 4t^-2q^11 + 2t^-2q^13 + t^-2q^15 + t^-2q^17 + t^-1q^1 + t^-1q^3 + 2t^-1q^5 + 2t^-1q^7 + 2t^-1q^9 + 2t^-1q^11 + t^-1q^13 + t^-1q^15 + t^0q^-1 + t^0q^1 + 3t^0q^3 + 4t^0q^5 + 4t^0q^7 + 3t^0q^9 + 2t^1q^-3 + 2t^1q^-1 + 2t^1q^1 + t^1q^3 + t^1q^5 + t^1q^7 + t^2q^-5 + t^2q^-3 + t^2q^-1 + t^2q^1 + t^2q^3 + t^2q^5 + t^3q^-7 + t^3q^-5 + t^3q^-3",
+    "rank4": 82,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 82,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "reduced": {
+    "N4": "t^-5q^20 + t^-4q^14 + t^-4q^18 + t^-3q^12 + 3t^-3q^16 + 4t^-2q^10 + t^-2q^14 + t^-1q^4 + 2t^-1q^8 + t^-1q^12 + t^0q^2 + 4t^0q^6 + 2t^1q^0 + t^1q^4 + t^2q^-2 + t^2q^2 + t^3q^-4",
+    "rank4": 27,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 27,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "status": "PASS"
+  },
+  {
+   "knot": "8_16",
+   "word": [
+    -1,
+    -1,
+    2,
+    -1,
+    -1,
+    2,
+    -1,
+    2
+   ],
+   "length": 8,
+   "primes": [
+    "31",
+    "32b"
+   ],
+   "primes_identical": true,
+   "chi_ok": true,
+   "secs_f31": 6.67,
+   "points": 64,
+   "unreduced": {
+    "N4": "t^-5q^19 + t^-5q^21 + t^-5q^23 + t^-4q^11 + t^-4q^13 + t^-4q^15 + 2t^-4q^17 + 2t^-4q^19 + 2t^-4q^21 + 2t^-3q^9 + 2t^-3q^11 + 2t^-3q^13 + 3t^-3q^15 + 3t^-3q^17 + 3t^-3q^19 + 3t^-2q^7 + 4t^-2q^9 + 4t^-2q^11 + 3t^-2q^13 + 2t^-2q^15 + 2t^-2q^17 + t^-1q^1 + t^-1q^3 + 3t^-1q^5 + 4t^-1q^7 + 4t^-1q^9 + 3t^-1q^11 + t^-1q^13 + t^-1q^15 + 2t^0q^-1 + 2t^0q^1 + 4t^0q^3 + 4t^0q^5 + 4t^0q^7 + 3t^0q^9 + 2t^1q^-3 + 2t^1q^-1 + 2t^1q^1 + 2t^1q^3 + 2t^1q^5 + 2t^1q^7 + 2t^2q^-5 + 2t^2q^-3 + 2t^2q^-1 + t^2q^1 + t^2q^3 + t^2q^5 + t^3q^-7 + t^3q^-5 + t^3q^-3",
+    "rank4": 106,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 106,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "reduced": {
+    "N4": "t^-5q^20 + t^-4q^14 + 2t^-4q^18 + 2t^-3q^12 + 3t^-3q^16 + 4t^-2q^10 + 2t^-2q^14 + t^-1q^4 + 4t^-1q^8 + t^-1q^12 + 2t^0q^2 + 4t^0q^6 + 2t^1q^0 + 2t^1q^4 + 2t^2q^-2 + t^2q^2 + t^3q^-4",
+    "rank4": 35,
+    "N3": "t^0q^0",
+    "rank3": 1,
+    "gl4_reversed_rank": 35,
+    "duality": "equal",
+    "n3_rank1": true
+   },
+   "status": "PASS"
+  },
+  {
+   "knot": "8_17",
+   "word": [
+    1,
+    1,
+    -2,
+    1,
+    -2,
+    1,
+    -2,
+    -2
+   ],
+   "status": "not computed",
+   "reason": ""
+  }
+ ]
+}
