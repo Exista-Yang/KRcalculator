@@ -1,0 +1,13 @@
+closure 0,0,3/3,0,0/0,3,0 OK: ins 1 outs 1 degrees [18] (0.40 s; layer A loaded 0 saved 2 rejected 0)
+closure 0,3,0/0,0,3/3,0,0 OK: ins 1 outs 1 degrees [18] (0.30 s; layer A loaded 0 saved 4 rejected 0)
+closure 1,0,2/2,0,1/0,3,0 OK: ins 3 outs 3 degrees [13, 15, 17] (0.17 s; layer A loaded 0 saved 6 rejected 0)
+closure 1,2,0/0,0,3/2,1,0 OK: ins 3 outs 3 degrees [13, 15, 17] (0.29 s; layer A loaded 0 saved 8 rejected 0)
+closure 0,3,0/1,0,2/2,0,1 OK: ins 3 outs 3 degrees [13, 15, 17] (0.56 s; layer A loaded 0 saved 10 rejected 0)
+closure 1,0,2/1,2,0/1,1,1 OK: ins 18 outs 18 degrees [9, 11, 11, 11, 13, 13, 13, 13, 13, 15, 15, 15, 15, 15, 17, 17, 17, 19] (3.52 s; layer A loaded 0 saved 12 rejected 0)
+closure 1,1,1/0,2,1/2,0,1 OK: ins 18 outs 18 degrees [9, 11, 11, 11, 13, 13, 13, 13, 13, 15, 15, 15, 15, 15, 17, 17, 17, 19] (0.75 s; layer A loaded 0 saved 14 rejected 0)
+closure 0,2,1/2,0,1/1,1,1 OK: ins 18 outs 18 degrees [9, 11, 11, 11, 13, 13, 13, 13, 13, 15, 15, 15, 15, 15, 17, 17, 17, 19] (0.18 s; layer A loaded 0 saved 16 rejected 0)
+closure 1,1,1/1,0,2/1,2,0 OK: ins 18 outs 18 degrees [9, 11, 11, 11, 13, 13, 13, 13, 13, 15, 15, 15, 15, 15, 17, 17, 17, 19] (0.27 s; layer A loaded 0 saved 18 rejected 0)
+closure 0,1,2/2,0,1/1,2,0 OK: ins 27 outs 27 degrees [10, 12, 12, 12, 14, 14, 14, 14, 14, 14, 16, 16, 16, 16, 16, 16, 16, 18, 18, 18, 18, 18, 18, 20, 20, 20, 22] (0.88 s; layer A loaded 0 saved 20 rejected 0)
+closure 0,2,1/1,0,2/2,1,0 OK: ins 27 outs 27 degrees [10, 12, 12, 12, 14, 14, 14, 14, 14, 14, 16, 16, 16, 16, 16, 16, 16, 18, 18, 18, 18, 18, 18, 20, 20, 20, 22] (134.10 s; layer A loaded 0 saved 22 rejected 0)
+closure 1,1,1/1,1,1/1,1,1 OK: ins 54 outs 54 degrees [4, 6, 6, 6, 6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 14, 14, 14, 14, 14, 14, 14, 16, 16, 16, 16, 18] (1.56 s; layer A loaded 0 saved 24 rejected 0)
+LEAVES sindec field=F_4294967291 replay=false certified 12/12 types, wall 143.1s, arena bytes 24006276

@@ -1,0 +1,2 @@
+closure 1,1,1/1,1,1/1,1,1 OK: ins 54 outs 54 degrees [4, 6, 6, 6, 6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 14, 14, 14, 14, 14, 14, 14, 14, 14, 16, 16, 16, 16, 18] (0.15 s; layer A loaded 2 saved 0 rejected 0)
+LEAVES sindec field=F_2147483647 replay=true certified 1/1 types, wall 0.2s, arena bytes 1217383
