@@ -329,3 +329,443 @@ impl<F: Field> HomProvider<F> for ProductClosure<F> {
         self.last_fail.clone()
     }
 }
+
+// =============================================================================================
+// M4c A2: localized light leaves (Lemma A, D1 §1.3; M4C_PLAN §3.1-§3.2)
+// =============================================================================================
+//
+// **Lemma A.** X = X'·ρ. For every junction type t' at the top level of X' a family
+// LL_{t'} ⊂ Hom(X', W_{t'}) (Out) with an invertible block at rep(t'), and for every step t' -> t
+// a family S_{t'->t} ⊂ Hom(W_{t'}·ρ, W_t) with degree multiset G_{t'->t} and an invertible
+// top-to-top matrix at rep(t) (rows = maps, columns = the flows of W_{t'}·ρ at rep(t) whose
+// configuration after |W_{t'}| rungs has type t'). Then LL_t = { S ∘ Kron(ℓ, [ρ]) } has an
+// invertible block at rep(t) and the degrees add. In: the dual families (columns), maps
+// W_t -> X built as Kron(ℓ, [ρ]) ∘ S with S ⊂ Hom(W_t, W_{t'}·ρ).
+//
+// **Step families** (D1 §2.3, M4C_PLAN §3.2), in order: `Id` when W_t = W_{t'}·ρ; then exact
+// `hom_space` bases on the differing window (common prefix and suffix stripped: id_P ⊗ s ⊗ id_Q,
+// not a priori complete, A1 report §5 (a)); then exact bases of the whole words. Selection is
+// greedy by ascending degree over every degree of supp G (C_m4c m4) on the top-to-top columns;
+// a family is accepted only with degree multiset exactly G and full top-to-top rank.
+// The budget rule (M4C_PLAN §0.3): no exact call above `budget` (10⁵) unknowns; up to `hard_cap`
+// (4·10⁵) only with an uncensored exact-shape cost record. Otherwise the step is Refused.
+//
+// Internal rank tests are diagnostics; acceptance is `certify_closure` only.
+
+use crate::coset::CosetSpace;
+use crate::dcoset::{junction_types, junction_word, StepCache, WordKind};
+use crate::smap::{points, Eval};
+
+/// direction of a leaf family: Out = maps X -> W_t, In = maps W_t -> X
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum LeafDir {
+    Out,
+    In,
+}
+
+/// how a step family was realized
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum StepKind {
+    Id,
+    Window,
+    Whole,
+}
+
+/// one leaf family at the top level of X: the junction type, its junction word, the maps
+#[derive(Clone, Debug)]
+pub struct LeafFamily {
+    pub t: Tid,
+    pub word: Vec<Rung>,
+    pub wid: ExprId,
+    pub maps: Vec<MapId>,
+}
+
+/// record of one step family (for reports and the census comparison)
+#[derive(Clone, Debug)]
+pub struct StepRec {
+    pub level: usize,
+    pub from: Tid,
+    pub to: Tid,
+    pub kind: StepKind,
+    pub degs: Vec<i32>,
+    /// max unknowns over the exact calls made for this step (0 for Id)
+    pub unknowns: u128,
+    pub secs: f64,
+}
+
+/// one leaves-stage failure
+#[derive(Clone, Debug)]
+pub struct LeafFail {
+    pub kind: MissKind,
+    pub what: String,
+}
+fn lfail(kind: MissKind, what: String) -> LeafFail {
+    LeafFail { kind, what }
+}
+
+/// cost counters of a Leaves call
+#[derive(Clone, Debug, Default)]
+pub struct LeafStats {
+    pub steps: Vec<StepRec>,
+    pub exact_calls: usize,
+    pub exact_secs: f64,
+    pub max_unknowns: u128,
+    pub max_word_flows: u128,
+    pub maps_built: usize,
+}
+
+/// the M4c Leaves provider (A2: closure only; `full`, `pairs`, `end0` refuse)
+pub struct Leaves {
+    /// no exact call above this many unknowns (M4C_PLAN §0.3)
+    pub budget: u128,
+    /// calls in (budget, hard_cap] only with an uncensored exact-shape cost record
+    pub hard_cap: u128,
+    pub costs: Option<CostTable>,
+    /// try the differing window before the whole words
+    pub use_window: bool,
+    /// BFS limits of `junction_word`
+    pub bfs_len: usize,
+    pub bfs_cap: usize,
+    pub seed: u64,
+    /// counters of the last call
+    pub last: LeafStats,
+    /// a log line per step when set (also with KRHOM_TRACE)
+    pub verbose: bool,
+    last_fail: Option<SearchStats>,
+}
+
+/// provider stamp suffix of the Leaves backend (layer-A headers)
+pub const LEAVES_STAMP: &str = "leaves=Leaves(v1,closure,threeup,prefix-ext,window-then-whole,budget=1e5/4e5)";
+
+impl Default for Leaves {
+    fn default() -> Self {
+        Leaves { budget: 100_000, hard_cap: 400_000, costs: None, use_window: true, bfs_len: 6, bfs_cap: 20_000, seed: 0x1ea7e5, last: LeafStats::default(), verbose: false, last_fail: None }
+    }
+}
+
+/// identity coset of the block (λ, λ) (as homprov's private helper `identity_coset`)
+pub fn identity_coset(lam: &[u8]) -> u64 {
+    let cs = CosetSpace::new(lam, lam);
+    cs.rank(&cs.roots.bottom())
+}
+
+/// coset rank of rep(t) of an interned table in its block (as homprov's private `rep_rank`)
+pub fn rep_rank_of(s: &Schur, lam: &[u8], t: Tid) -> u64 {
+    let tab = s.table(t).clone();
+    let cs = CosetSpace::new(lam, &tab.cols());
+    cs.rank(&cs.rep(&tab))
+}
+
+fn degs_of(g: &Lp) -> Vec<(i32, usize)> {
+    (0..g.c.len()).filter(|&i| g.c[i] != 0).map(|i| (g.lo + i as i32, g.c[i] as usize)).collect()
+}
+
+impl Leaves {
+    pub fn new() -> Leaves {
+        Leaves::default()
+    }
+
+    fn trace(&self) -> bool {
+        self.verbose || std::env::var("KRHOM_TRACE").is_ok()
+    }
+
+    /// budget rule: Ok(()) if the exact call may be made
+    fn admit(&self, labels: &[u8], a: &[Rung], b: &[Rung], d: i32, unknowns: u128) -> Result<(), String> {
+        if unknowns <= self.budget {
+            return Ok(());
+        }
+        if unknowns <= self.hard_cap {
+            if let Some(c) = &self.costs {
+                let (fs, ft) = (crate::schur::flows(labels, a), crate::schur::flows(labels, b));
+                if let Some(t) = c.predict_exact(labels, fs, ft, unknowns, d) {
+                    if t.is_finite() {
+                        return Ok(());
+                    }
+                }
+            }
+            return Err(format!("step call {:?} [{}] -> [{}] d={}: {} unknowns > budget {} and no uncensored exact-shape cost record", labels, wstr(a), wstr(b), d, unknowns, self.budget));
+        }
+        Err(format!("step call {:?} [{}] -> [{}] d={}: {} unknowns > hard cap {}", labels, wstr(a), wstr(b), d, unknowns, self.hard_cap))
+    }
+
+    /// exact basis of Hom^d on a window (labels, a -> b) as Local nodes src -> tgt at (at, first)
+    #[allow(clippy::too_many_arguments)]
+    fn exact_local<F: Field>(&self, ar: &mut Arena<F>, labels: &[u8], a: &[Rung], b: &[Rung], d: i32, src: ExprId, tgt: ExprId, at: usize, first: usize, st: &mut LeafStats) -> Result<(Vec<MapId>, u128), LeafFail> {
+        let u = hom_unknowns(labels, a, b, d);
+        self.admit(labels, a, b, d, u).map_err(|e| lfail(MissKind::Refused, e))?;
+        let (wa, wb) = (Window::new(labels, a), Window::new(labels, b));
+        let cached = ar.lib_ref().has_hom(&wa, &wb, d);
+        let t0 = Instant::now();
+        let ids = ar.lib().try_hom_basis_cap(&wa, &wb, d, u128::MAX).map_err(|e| lfail(MissKind::Refused, format!("step call: {}", e)))?;
+        if !cached {
+            st.exact_calls += 1;
+            st.exact_secs += t0.elapsed().as_secs_f64();
+        }
+        st.max_unknowns = st.max_unknowns.max(u);
+        let mut out = vec![];
+        for t in ids {
+            out.push(ar.add(MapNode::Local { src, tgt, at, first, tmpl: t }, "leaves step").map_err(|e| lfail(MissKind::Exhausted, e))?);
+        }
+        Ok((out, u))
+    }
+
+    /// The step family S_{t'->t} (Out: W_{t'}·ρ -> W_t; In: W_t -> W_{t'}·ρ) with degree multiset
+    /// G and an invertible top-to-top matrix at rep(t). `wfrom` = W_{t'}, `wto` = W_t.
+    #[allow(clippy::too_many_arguments)]
+    pub fn step_family<F: Field>(&self, ar: &mut Arena<F>, s: &mut Schur, wfrom: &[Rung], rho: &Rung, wto: &[Rung], tp: Tid, t: Tid, g: &Lp, dir: LeafDir, level: usize, st: &mut LeafStats) -> Result<Vec<MapId>, LeafFail> {
+        let lam = ar.lam().to_vec();
+        let t0 = Instant::now();
+        let mut a = wfrom.to_vec();
+        a.push(*rho);
+        let ea = ar.expr(Expr::new(&lam, &a).map_err(|e| lfail(MissKind::Exhausted, e))?);
+        let eb = ar.expr(Expr::new(&lam, wto).map_err(|e| lfail(MissKind::Exhausted, e))?);
+        if a == wto {
+            if *g != Lp::one() {
+                return Err(lfail(MissKind::Exhausted, format!("step {} -> {}: W_t = W_t'·ρ but G = {:?} != 1", s.table(tp).fmt(), s.table(t).fmt(), g)));
+            }
+            let m = ar.add(MapNode::Id(ea), "leaves step id").map_err(|e| lfail(MissKind::Exhausted, e))?;
+            st.steps.push(StepRec { level, from: tp, to: t, kind: StepKind::Id, degs: vec![0], unknowns: 0, secs: 0.0 });
+            return Ok(vec![m]);
+        }
+        let need = degs_of(g);
+        let n: usize = need.iter().map(|x| x.1).sum();
+        // top-to-top columns: flows of W_{t'}·ρ at rep(t) whose configuration after |W_{t'}|
+        // rungs has type t'
+        let c = rep_rank_of(s, &lam, t);
+        let cols: Vec<usize> = {
+            let fi = ar.index(ea);
+            let lv = level_of(&lam, &a, wfrom.len());
+            let cs = CosetSpace::new(&lam, &lv);
+            let tpt = s.table(tp).clone();
+            fi.range(c).enumerate().filter(|(_, f)| cs.table(&fi.conf_at(*f, wfrom.len())) == tpt).map(|(j, _)| j).collect()
+        };
+        if cols.len() != n {
+            return Err(lfail(MissKind::Exhausted, format!("step {} -> {}: {} top-to-top columns at rep(t), G(1) = {}", s.table(tp).fmt(), s.table(t).fmt(), cols.len(), n)));
+        }
+        let (src, tgt) = match dir {
+            LeafDir::Out => (ea, eb),
+            LeafDir::In => (eb, ea),
+        };
+        let ws = win_split(&lam, &a, wto);
+        let whole_is_window = ws.at == 0 && ws.suffix == 0;
+        let mut kinds: Vec<StepKind> = vec![];
+        if self.use_window && !whole_is_window {
+            kinds.push(StepKind::Window);
+        }
+        kinds.push(StepKind::Whole);
+        let pt = points::<F>(ar.k(), self.seed ^ 0x57e9, 1, 0).remove(0);
+        let mut cands: Vec<(i32, MapId)> = vec![];
+        let mut maxu = 0u128;
+        let mut last_err = String::new();
+        for kind in kinds {
+            for &(d, _) in &need {
+                let r = match kind {
+                    StepKind::Window => {
+                        let (la, lb) = match dir {
+                            LeafDir::Out => (&ws.a, &ws.b),
+                            LeafDir::In => (&ws.b, &ws.a),
+                        };
+                        self.exact_local(ar, &ws.labels, la, lb, d, src, tgt, ws.at, ws.first, st)
+                    }
+                    _ => {
+                        let (la, lb) = match dir {
+                            LeafDir::Out => (&a, &wto.to_vec()),
+                            LeafDir::In => (&wto.to_vec(), &a),
+                        };
+                        self.exact_local(ar, &lam, la, lb, d, src, tgt, 0, 0, st)
+                    }
+                };
+                match r {
+                    Ok((ms, u)) => {
+                        maxu = maxu.max(u);
+                        cands.extend(ms.into_iter().map(|m| (d, m)));
+                    }
+                    Err(e) => {
+                        if kind == StepKind::Whole {
+                            return Err(e);
+                        }
+                        last_err = e.what;
+                    }
+                }
+            }
+            // greedy by ascending degree on the top-to-top columns
+            let mut ev = Eval::new(ar, pt.clone());
+            let mut rows: Vec<Vec<F>> = vec![];
+            let mut chosen: Vec<MapId> = vec![];
+            let mut ok = true;
+            for &(d, k) in &need {
+                let mut got = 0;
+                for &(dd, m) in &cands {
+                    if dd != d || got >= k {
+                        continue;
+                    }
+                    let blk = ev.block(m, c);
+                    let v: Vec<F> = cols.iter().map(|&j| blk.a[j].clone()).collect();
+                    rows.push(v);
+                    if crate::dense::rank(&rows, n) == rows.len() {
+                        chosen.push(m);
+                        got += 1;
+                    } else {
+                        rows.pop();
+                    }
+                }
+                if got < k {
+                    ok = false;
+                    last_err = format!("{:?}: degree {}: {} of {} top-to-top generators", kind, d, got, k);
+                    break;
+                }
+            }
+            if ok {
+                let degs: Vec<i32> = need.iter().flat_map(|&(d, k)| std::iter::repeat(d).take(k)).collect();
+                let secs = t0.elapsed().as_secs_f64();
+                if self.trace() {
+                    eprintln!("[leaves] level {} step {} -> {} ({:?}, {:?}): {:?} degs {:?} max unknowns {} ({:.2}s)", level, s.table(tp).fmt(), s.table(t).fmt(), dir, kind, wstr(&a), degs, maxu, secs);
+                }
+                st.steps.push(StepRec { level, from: tp, to: t, kind, degs, unknowns: maxu, secs });
+                return Ok(chosen);
+            }
+        }
+        Err(lfail(MissKind::Exhausted, format!("step {} -> {} ([{}] -> [{}]): {}", s.table(tp).fmt(), s.table(t).fmt(), wstr(&a), wstr(wto), last_err)))
+    }
+
+    /// Lemma A, level by level (D1 §1.3/§2.3): the leaf families of X for the junction types at
+    /// its top level that lie on paths to `targets`. Final words: ∅ for the identity type,
+    /// otherwise `junction_word` (prefix extension, canonical ladder, BFS). Intermediate
+    /// families are checked (diagnostic) to be square with an invertible block at rep(t).
+    pub fn build_leaves<F: Field>(&self, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, targets: &[Tid], dir: LeafDir, st: &mut LeafStats) -> Result<Vec<LeafFamily>, LeafFail> {
+        let lam = ar.lam().to_vec();
+        let w = ar.expr_of(x).rungs.clone();
+        let id = s.intern(Table::identity(&lam));
+        let mut sc = StepCache::new();
+        let js = junction_types(s, &mut sc, &w, targets);
+        if js[w.len()].is_empty() {
+            return Err(lfail(MissKind::Exhausted, "build_leaves: no target type is reached".into()));
+        }
+        let e0 = ar.expr(Expr::new(&lam, &[]).map_err(|e| lfail(MissKind::Exhausted, e))?);
+        let id0 = ar.add(MapNode::Id(e0), "leaves base").map_err(|e| lfail(MissKind::Exhausted, e))?;
+        let mut cur: Vec<LeafFamily> = vec![LeafFamily { t: id, word: vec![], wid: e0, maps: vec![id0] }];
+        let pt = points::<F>(ar.k(), self.seed ^ 0xd1a9, 1, 0).remove(0);
+        for k in 1..=w.len() {
+            let rho = w[k - 1];
+            let prev: Vec<(Tid, Vec<Rung>)> = cur.iter().map(|f| (f.t, f.word.clone())).collect();
+            let mut next: Vec<LeafFamily> = vec![];
+            for j in &js[k] {
+                let t = j.t;
+                let (wt, _kind) = if k == w.len() && t == id { (vec![], WordKind::Canonical) } else { junction_word(s, t, &prev, Some(&rho), self.bfs_len, self.bfs_cap) };
+                if !crate::dcoset::reduced_for(s, &wt, t).ok() {
+                    return Err(lfail(MissKind::Exhausted, format!("build_leaves: no reduced junction word for {} at level {}", s.table(t).fmt(), k)));
+                }
+                st.max_word_flows = st.max_word_flows.max(crate::schur::flows(&lam, &wt));
+                let wid = ar.expr(Expr::new(&lam, &wt).map_err(|e| lfail(MissKind::Exhausted, e))?);
+                let mut maps = vec![];
+                for f in &cur {
+                    let Some(g) = sc.step(s, f.t, &rho).into_iter().find(|x| x.0 == t).map(|x| x.1) else { continue };
+                    let fam = self.step_family(ar, s, &f.word, &rho, &wt, f.t, t, &g, dir, k, st)?;
+                    for &l in &f.maps {
+                        let kr = ar.add(MapNode::Kron(l, vec![rho]), "leaves kron").map_err(|e| lfail(MissKind::Exhausted, e))?;
+                        for &sm in &fam {
+                            let is_id = matches!(ar.node(sm), MapNode::Id(_));
+                            let m = if is_id {
+                                kr
+                            } else {
+                                let n = match dir {
+                                    LeafDir::Out => MapNode::Comp(sm, kr),
+                                    LeafDir::In => MapNode::Comp(kr, sm),
+                                };
+                                ar.add(n, "leaves leaf").map_err(|e| lfail(MissKind::Exhausted, e))?
+                            };
+                            maps.push(m);
+                        }
+                    }
+                }
+                // diagnostic: square and invertible at rep(t)
+                let c = rep_rank_of(s, &lam, t);
+                let want = j.fwd.at1() as usize;
+                if maps.len() != want {
+                    return Err(lfail(MissKind::Exhausted, format!("build_leaves: level {} type {}: {} leaves, c_t(X)(1) = {}", k, s.table(t).fmt(), maps.len(), want)));
+                }
+                {
+                    let mut ev = Eval::new(ar, pt.clone());
+                    let rows: Vec<Vec<F>> = maps.iter().map(|&m| ev.block(m, c).a.clone()).collect();
+                    if rows.iter().any(|r| r.len() != want) || crate::dense::rank(&rows, want) != want {
+                        return Err(lfail(MissKind::Exhausted, format!("build_leaves: level {} type {}: block at rep(t) not invertible ({} leaves)", k, s.table(t).fmt(), want)));
+                    }
+                }
+                st.maps_built += maps.len();
+                next.push(LeafFamily { t, word: wt, wid, maps });
+            }
+            cur = next;
+        }
+        Ok(cur)
+    }
+
+    /// closure generators (outs: L_p -> R, ins: R -> L_p) through Lemma A to the identity type,
+    /// certified by `certify_closure`
+    pub fn closure_leaves<F: Field>(&mut self, ar: &mut Arena<F>, s: &mut Schur, lp: ExprId, p: Tid, outs: bool) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
+        let t0 = Instant::now();
+        let lam = ar.lam().to_vec();
+        let want = cdiag_degrees(s, p);
+        let mut st = LeafStats::default();
+        let mark = ar.mark();
+        let mk = |kind: MissKind, what: String| vec![Missing { what, degree: 0, stratum: None, got: 0, want: want.len(), kind }];
+        let r = (|| -> Result<Vec<MapId>, LeafFail> {
+            closure_precheck(ar, s, lp, p, None).map_err(|e| lfail(MissKind::Refused, e))?;
+            let id = s.intern(Table::identity(&lam));
+            let fams = self.build_leaves(ar, s, lp, &[id], if outs { LeafDir::Out } else { LeafDir::In }, &mut st)?;
+            let f = fams.into_iter().find(|f| f.t == id).ok_or_else(|| lfail(MissKind::Exhausted, "no identity family".into()))?;
+            Ok(f.maps)
+        })();
+        let ms = match r {
+            Ok(ms) => ms,
+            Err(e) => {
+                ar.commit(mark, &[]);
+                self.last = st;
+                let ss = SearchStats { secs: t0.elapsed().as_secs_f64(), exact_calls: self.last.exact_calls, exact_secs: self.last.exact_secs, ..SearchStats::default() };
+                self.last_fail = Some(ss);
+                return Err(mk(e.kind, format!("Leaves closure {} ({}): {}", s.table(p).fmt(), if outs { "outs" } else { "ins" }, e.what)));
+            }
+        };
+        let kept = ar.commit(mark, &ms);
+        let r0 = ar.expr(Expr::new(&lam, &[]).expect("empty word"));
+        if let Err(e) = certify_closure(ar, &lam, r0, lp, None, &kept, &want, outs, self.seed ^ 0xce57) {
+            self.last = st;
+            self.last_fail = Some(SearchStats { secs: t0.elapsed().as_secs_f64(), ..SearchStats::default() });
+            return Err(mk(MissKind::Exhausted, format!("Leaves closure {}: certify_closure: {}", s.table(p).fmt(), e)));
+        }
+        let ss = SearchStats { candidates: kept.len(), evaluated: kept.len(), secs: t0.elapsed().as_secs_f64(), exact_calls: st.exact_calls, exact_secs: st.exact_secs, max_flows: st.max_word_flows as u64, detect: "leaves", ..SearchStats::default() };
+        self.last = st;
+        Ok((kept, ss))
+    }
+}
+
+fn refuse_leaves(what: &str) -> Vec<Missing> {
+    vec![Missing { what: format!("Leaves: {} not implemented (M4c A4/A5)", what), degree: 0, stratum: None, got: 0, want: 1, kind: MissKind::Refused }]
+}
+
+impl<F: Field> HomProvider<F> for Leaves {
+    fn name(&self) -> &'static str {
+        "Leaves"
+    }
+    fn full(&mut self, _: &mut Arena<F>, _: &mut Schur, _: ExprId, _: ExprId, _: i32, _: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
+        self.last_fail = None;
+        Err(refuse_leaves("full"))
+    }
+    fn pairs(&mut self, _: &mut Arena<F>, _: &mut Schur, _: ExprId, _: Tid, _: ExprId, _: Option<MapId>, _: i32, _: usize, _: &Budget) -> Result<(Pairs<F>, SearchStats), Vec<Missing>> {
+        self.last_fail = None;
+        Err(refuse_leaves("pairs"))
+    }
+    fn closure(&mut self, ar: &mut Arena<F>, s: &mut Schur, lp: ExprId, p: Tid, ep: Option<MapId>, outs: bool, _b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
+        self.last_fail = None;
+        if ep.is_some() {
+            return Err(refuse_leaves("closure with e_p"));
+        }
+        self.closure_leaves(ar, s, lp, p, outs)
+    }
+    fn end0(&mut self, _: &mut Arena<F>, _: &mut Schur, _: ExprId, _: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
+        self.last_fail = None;
+        Err(refuse_leaves("end0"))
+    }
+    fn failed_stats(&self) -> Option<SearchStats> {
+        self.last_fail.clone()
+    }
+}
