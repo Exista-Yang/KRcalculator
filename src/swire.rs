@@ -336,6 +336,10 @@ pub struct ScanOut<F> {
     /// seconds: construction of C ⊗ W (Kron, π K ι, Rickard), engine (insertion + elimination)
     pub t_build: f64,
     pub t_engine: f64,
+    /// profile (seconds): [dec_word + add_obj, d_C ⊗ id (Kron + π K ι), Rickard id ⊗ d, closure extraction, K_0 check]
+    pub prof: [f64; 5],
+    /// engine profile: (apply_pivot secs, pattern-hash secs, pivot updates, multiply-adds)
+    pub eprof: (f64, f64, u64, u64),
 }
 
 /// Point-independent flow map of f ⊗ id_W at a coset c of X_a = L_a ⊗ W: per source flow g of
@@ -411,6 +415,11 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
     let (mut t_build, mut t_engine) = (0.0f64, 0.0f64);
     let one = F::one();
     let mone = F::zero().sub(&one);
+    let mut prof = [0.0f64; 5];
+    // counters of the d_C ⊗ id construction: [edge×coset visits, KI fma, πKI fma, Σ kr, Σ nzr, T-estimate fma, (ia,it) pairs, nnz f referenced]
+    let mut cnt = [0u64; 8];
+    let use_ref = std::env::var("KRHOM_DCID_REF").is_ok();
+    let mut asm: HashMap<(Tid, u64), Arc<Asm<F>>> = HashMap::new();
     for (st, &g) in word.iter().enumerate() {
         let (i, pos) = letter(g);
         let (c, d) = (labels[i], labels[i + 1]);
@@ -422,120 +431,150 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
         for (si, &k) in order.iter().enumerate() {
             let rs = &terms[k].rungs;
             eng.begin_step().map_err(String::from)?;
+            let tp0 = Instant::now();
             let mut decs = HashMap::new();
+            asm.clear();
             for (&o, ob) in prev.objs() {
                 let dec = dd.dec_word(ob.p, rs).map_err(String::from)?;
                 let ids = dec.summands.iter().map(|sm| eng.add_obj(SObj { p: sm.q, h: ob.h + terms[k].hdeg, t: ob.t + terms[k].dq + sm.s })).collect::<Result<Vec<_>, _>>().map_err(String::from)?;
                 place.insert((o, k), ids);
                 decs.insert(ob.p, dec);
             }
+            prof[0] += tp0.elapsed().as_secs_f64();
+            let tp1 = Instant::now();
             // d_C ⊗ id inside the term
-            for (&a, aouts) in prev.out() {
-                let pa = prev.objs()[&a].p;
-                let da = decs[&pa].clone();
-                if da.summands.is_empty() {
-                    continue;
-                }
-                for (&b, f) in aouts {
-                    let pb = prev.objs()[&b].p;
-                    let db = decs[&pb].clone();
-                    if db.summands.is_empty() {
+            if use_ref {
+                for (&a, aouts) in prev.out() {
+                    let pa = prev.objs()[&a].p;
+                    let da = decs[&pa].clone();
+                    if da.summands.is_empty() {
                         continue;
                     }
-                    let (la, lb) = (dd.ty(pa).map_err(String::from)?.lad, dd.ty(pb).map_err(String::from)?.lad);
-                    // per coset of X_a ∩ X_b: K_c, then π K ι per summand pair
-                    let (sa, sb) = (ar.flows(da.x).support().to_vec(), ar.flows(db.x).support().to_vec());
-                    let mut per: Vec<Vec<BTreeMap<u64, (usize, usize, Vec<F>)>>> = vec![vec![BTreeMap::new(); db.summands.len()]; da.summands.len()];
-                    for &cc in sa.iter().filter(|cc| sb.binary_search(cc).is_ok()) {
-                        let ki_ = lib.kron_idx(la, lb, da.x, db.x, cc);
-                        let kr = ki_.rows;
-                        // nonzero test of the f blocks this coset reads
-                        if !ki_.colinfo.iter().any(|&(cp, _, _)| f.lay.index(cp).is_some_and(|i| f.block(i).iter().any(|v| !v.is_zero()))) {
+                    for (&b, f) in aouts {
+                        let pb = prev.objs()[&b].p;
+                        let db = decs[&pb].clone();
+                        if db.summands.is_empty() {
                             continue;
                         }
-                        for (ia, sg) in da.summands.iter().enumerate() {
-                            let ib = ev.block(sg.iota, cc);
-                            if ib.cols == 0 {
+                        let (la, lb) = (dd.ty(pa).map_err(String::from)?.lad, dd.ty(pb).map_err(String::from)?.lad);
+                        // per coset of X_a ∩ X_b: K_c, then π K ι per summand pair
+                        let (sa, sb) = (ar.flows(da.x).support().to_vec(), ar.flows(db.x).support().to_vec());
+                        let mut per: Vec<Vec<BTreeMap<u64, (usize, usize, Vec<F>)>>> = vec![vec![BTreeMap::new(); db.summands.len()]; da.summands.len()];
+                        for &cc in sa.iter().filter(|cc| sb.binary_search(cc).is_ok()) {
+                            let ki_ = lib.kron_idx(la, lb, da.x, db.x, cc);
+                            let kr = ki_.rows;
+                            // nonzero test of the f blocks this coset reads
+                            if !ki_.colinfo.iter().any(|&(cp, _, _)| f.lay.index(cp).is_some_and(|i| f.block(i).iter().any(|v| !v.is_zero()))) {
                                 continue;
                             }
-                            let m_s = ib.cols as usize;
-                            // KI = (f ⊗ id) ι, sparse in f: row(rp) += f[rp, colp] · ι[g, :]
-                            let mut ki = vec![F::zero(); kr * m_s];
-                            let mut any = false;
-                            for (g, &(cp, colp, off)) in ki_.colinfo.iter().enumerate() {
-                                let Some(fi) = f.lay.index(cp) else { continue };
-                                let irow = &ib.a[g * m_s..(g + 1) * m_s];
-                                if irow.iter().all(|v| v.is_zero()) {
+                            cnt[0] += 1;
+                            cnt[3] += kr as u64;
+                            let mut nnzf = 0u64;
+                            {
+                                let mut seen = std::collections::HashSet::new();
+                                for &(cp, colp, _) in &ki_.colinfo {
+                                    if !seen.insert((cp, colp)) { continue; }
+                                    if let Some(fi) = f.lay.index(cp) {
+                                        let (fr, fc) = (f.lay.rows[fi] as usize, f.lay.cols[fi] as usize);
+                                        let blk = f.block(fi);
+                                        nnzf += (0..fr).filter(|&rp| !blk[rp * fc + colp as usize].is_zero()).count() as u64;
+                                    }
+                                }
+                            }
+                            cnt[7] += nnzf;
+                            for (ia, sg) in da.summands.iter().enumerate() {
+                                let ib = ev.block(sg.iota, cc);
+                                if ib.cols == 0 {
                                     continue;
                                 }
-                                let (fr, fc) = (f.lay.rows[fi] as usize, f.lay.cols[fi] as usize);
-                                let blk = f.block(fi);
-                                for rp in 0..fr {
-                                    let v = &blk[rp * fc + colp as usize];
-                                    if v.is_zero() {
+                                let m_s = ib.cols as usize;
+                                // KI = (f ⊗ id) ι, sparse in f: row(rp) += f[rp, colp] · ι[g, :]
+                                let mut ki = vec![F::zero(); kr * m_s];
+                                let mut any = false;
+                                for (g, &(cp, colp, off)) in ki_.colinfo.iter().enumerate() {
+                                    let Some(fi) = f.lay.index(cp) else { continue };
+                                    let irow = &ib.a[g * m_s..(g + 1) * m_s];
+                                    if irow.iter().all(|v| v.is_zero()) {
                                         continue;
                                     }
-                                    any = true;
-                                    let row = ki_.rowmap[off as usize + rp] as usize;
-                                    for (d, x) in ki[row * m_s..(row + 1) * m_s].iter_mut().zip(irow) {
-                                        if !x.is_zero() {
-                                            d.fma(v, x);
-                                        }
-                                    }
-                                }
-                            }
-                            if !any {
-                                continue;
-                            }
-                            let nzr: Vec<usize> = (0..kr).filter(|&r| ki[r * m_s..(r + 1) * m_s].iter().any(|v| !v.is_zero())).collect();
-                            for (it, tu) in db.summands.iter().enumerate() {
-                                let pb_ = ev.block(tu.pi, cc);
-                                if pb_.rows == 0 {
-                                    continue;
-                                }
-                                let mt = pb_.rows as usize;
-                                let mut m = vec![F::zero(); mt * m_s];
-                                // m = π · KI over the nonzero rows of KI only
-                                for &r in &nzr {
-                                    let kir = &ki[r * m_s..(r + 1) * m_s];
-                                    for i in 0..mt {
-                                        let pv = &pb_.a[i * kr + r];
-                                        if pv.is_zero() {
+                                    let (fr, fc) = (f.lay.rows[fi] as usize, f.lay.cols[fi] as usize);
+                                    let blk = f.block(fi);
+                                    for rp in 0..fr {
+                                        let v = &blk[rp * fc + colp as usize];
+                                        if v.is_zero() {
                                             continue;
                                         }
-                                        for (d, x) in m[i * m_s..(i + 1) * m_s].iter_mut().zip(kir) {
+                                        any = true;
+                                        cnt[1] += m_s as u64;
+                                        let row = ki_.rowmap[off as usize + rp] as usize;
+                                        for (d, x) in ki[row * m_s..(row + 1) * m_s].iter_mut().zip(irow) {
                                             if !x.is_zero() {
-                                                d.fma(pv, x);
+                                                d.fma(v, x);
                                             }
                                         }
                                     }
                                 }
-                                if m.iter().any(|v| !v.is_zero()) {
-                                    per[ia][it].insert(cc, (pb_.rows as usize, m_s, m));
+                                if !any {
+                                    continue;
+                                }
+                                let nzr: Vec<usize> = (0..kr).filter(|&r| ki[r * m_s..(r + 1) * m_s].iter().any(|v| !v.is_zero())).collect();
+                                cnt[4] += nzr.len() as u64;
+                                for (it, tu) in db.summands.iter().enumerate() {
+                                    let pb_ = ev.block(tu.pi, cc);
+                                    if pb_.rows == 0 {
+                                        continue;
+                                    }
+                                    let mt = pb_.rows as usize;
+                                    cnt[2] += (nzr.len() * mt * m_s) as u64;
+                                    cnt[5] += nnzf * (mt * m_s) as u64;
+                                    cnt[6] += 1;
+                                    let mut m = vec![F::zero(); mt * m_s];
+                                    // m = π · KI over the nonzero rows of KI only
+                                    for &r in &nzr {
+                                        let kir = &ki[r * m_s..(r + 1) * m_s];
+                                        for i in 0..mt {
+                                            let pv = &pb_.a[i * kr + r];
+                                            if pv.is_zero() {
+                                                continue;
+                                            }
+                                            for (d, x) in m[i * m_s..(i + 1) * m_s].iter_mut().zip(kir) {
+                                                if !x.is_zero() {
+                                                    d.fma(pv, x);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if m.iter().any(|v| !v.is_zero()) {
+                                        per[ia][it].insert(cc, (pb_.rows as usize, m_s, m));
+                                    }
                                 }
                             }
                         }
-                    }
-                    for (ia, sg) in da.summands.iter().enumerate() {
-                        for (it, tu) in db.summands.iter().enumerate() {
-                            if per[ia][it].is_empty() {
-                                continue;
-                            }
-                            let lay = eng.layout(sg.q, tu.q).map_err(String::from)?;
-                            let mut lm = LocMap::zeros(lay.clone());
-                            for (cc, (r, cl, m)) in std::mem::take(&mut per[ia][it]) {
-                                let li = lay.index(cc).ok_or_else(|| format!("coset {} of π K ι outside the layout of the summand types", cc))?;
-                                if lay.rows[li] as usize != r || lay.cols[li] as usize != cl {
-                                    return Err(format!("π K ι block at coset {}: {}x{} vs layout {}x{}", cc, r, cl, lay.rows[li], lay.cols[li]));
+                        for (ia, sg) in da.summands.iter().enumerate() {
+                            for (it, tu) in db.summands.iter().enumerate() {
+                                if per[ia][it].is_empty() {
+                                    continue;
                                 }
-                                lm.block_mut(li).clone_from_slice(&m);
+                                let lay = eng.layout(sg.q, tu.q).map_err(String::from)?;
+                                let mut lm = LocMap::zeros(lay.clone());
+                                for (cc, (r, cl, m)) in std::mem::take(&mut per[ia][it]) {
+                                    let li = lay.index(cc).ok_or_else(|| format!("coset {} of π K ι outside the layout of the summand types", cc))?;
+                                    if lay.rows[li] as usize != r || lay.cols[li] as usize != cl {
+                                        return Err(format!("π K ι block at coset {}: {}x{} vs layout {}x{}", cc, r, cl, lay.rows[li], lay.cols[li]));
+                                    }
+                                    lm.block_mut(li).clone_from_slice(&m);
+                                }
+                                let (x, y) = (place[&(a, k)][ia], place[&(b, k)][it]);
+                                eng.add_map(x, y, lm).map_err(String::from)?;
                             }
-                            let (x, y) = (place[&(a, k)][ia], place[&(b, k)][it]);
-                            eng.add_map(x, y, lm).map_err(String::from)?;
                         }
                     }
                 }
+            } else {
+                dcid_step(lib, &mut ev, &mut eng, &prev, &decs, &place, k, &mut asm, &mut cnt)?;
             }
+            prof[1] += tp1.elapsed().as_secs_f64();
+            let tp2 = Instant::now();
             // (−1)^h id ⊗ d from the previously inserted term
             if si > 0 {
                 let kp = order[si - 1];
@@ -555,6 +594,7 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
                     }
                 }
             }
+            prof[2] += tp2.elapsed().as_secs_f64();
             eng.set_extern_bytes(ev.memo_bytes() as u64);
             let te = Instant::now();
             eng.end_step().map_err(String::from)?;
@@ -566,6 +606,7 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
         t_engine += te.elapsed().as_secs_f64();
         labels.swap(i, i + 1);
         crossings.push((pos, c.min(d)));
+        let tk = Instant::now();
         if let Some(dc) = decat.as_mut() {
             dc.step(c, d, pos, i);
             let want = dc.k0(lib.prune_n);
@@ -580,17 +621,237 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
             }
             lbs.push((n, lb));
         }
+        prof[4] += tk.elapsed().as_secs_f64();
         if opts.close_stages.contains(&(st + 1)) {
             if labels != lib.lam {
                 return Err(format!("stage {} is not closable (labels {:?})", st + 1, labels));
             }
+            let tx = Instant::now();
             outs.push(extract_stage(lib, &mut ev, eng.cx(), st + 1, &crossings)?);
+            prof[3] += tx.elapsed().as_secs_f64();
         }
     }
+    if std::env::var("KRHOM_SPROF").is_ok() {
+        eprintln!("[dcid] visits {} KI-fma {:.3e} πKI-fma(bound) {:.3e} Σkr {} Σnzr {} T-est {:.3e} pairs {} nnzf {}", cnt[0], cnt[1] as f64, cnt[2] as f64, cnt[3], cnt[4], cnt[5] as f64, cnt[6], cnt[7]);
+    }
     let eval_bytes = ev.memo_bytes();
+    let eprof = (eng.tprof.0, eng.tprof.1, eng.tprof.2, eng.tprof.3);
     let (ps, _) = eng.finish(point_id).map_err(String::from)?;
     t_build = t0s.elapsed().as_secs_f64() - t_engine;
-    Ok(ScanOut { ps, stages: outs, lb: lbs, eval_bytes, t_build, t_engine })
+    Ok(ScanOut { ps, stages: outs, lb: lbs, eval_bytes, t_build, t_engine, prof, eprof })
+}
+
+/// ι and π of every summand of one decomposition X ≅ ⊕ L_q, at one coset of X, assembled:
+/// `iota` = [ι_1 | ι_2 | ...] (kr × ncol, row-major; summand s at columns coff[s]..coff[s]+m_s),
+/// `pi` = [π_1; π_2; ...] by columns of X (CSC: per row r of X the (row, value) pairs of the
+/// stacked π, summand s at rows roff[s]..roff[s]+m_s). Point dependent; cached per step.
+pub struct Asm<F> {
+    pub kr: usize,
+    pub ncol: usize,
+    pub coff: Vec<usize>,
+    pub iota: Vec<F>,
+    pub nrow: usize,
+    pub roff: Vec<usize>,
+    pub pi_csc: Vec<Vec<(u32, F)>>,
+}
+
+fn assemble<F: Field>(ev: &mut Eval<F>, ar: &crate::smap::Arena<F>, dec: &crate::sindec::Decomp, cc: u64) -> Asm<F> {
+    let kr = ar.flows(dec.x).range(cc).len();
+    let mut coff = Vec::with_capacity(dec.summands.len() + 1);
+    let mut ib = vec![];
+    let mut ncol = 0;
+    for sg in &dec.summands {
+        coff.push(ncol);
+        let b = ev.block(sg.iota, cc);
+        ncol += b.cols as usize;
+        ib.push(b);
+    }
+    coff.push(ncol);
+    let mut iota = vec![F::zero(); kr * ncol];
+    for (si, b) in ib.iter().enumerate() {
+        let m = b.cols as usize;
+        if m == 0 {
+            continue;
+        }
+        debug_assert_eq!(b.rows as usize, kr);
+        for g in 0..kr {
+            iota[g * ncol + coff[si]..g * ncol + coff[si] + m].clone_from_slice(&b.a[g * m..(g + 1) * m]);
+        }
+    }
+    let mut roff = Vec::with_capacity(dec.summands.len() + 1);
+    let mut nrow = 0;
+    let mut pi_csc: Vec<Vec<(u32, F)>> = vec![vec![]; kr];
+    for sg in &dec.summands {
+        roff.push(nrow);
+        let b = ev.block(sg.pi, cc);
+        let mt = b.rows as usize;
+        if mt > 0 {
+            debug_assert_eq!(b.cols as usize, kr);
+            for i in 0..mt {
+                for r in 0..kr {
+                    let v = &b.a[i * kr + r];
+                    if !v.is_zero() {
+                        pi_csc[r].push(((nrow + i) as u32, v.clone()));
+                    }
+                }
+            }
+        }
+        nrow += mt;
+    }
+    roff.push(nrow);
+    Asm { kr, ncol, coff, iota, nrow, roff, pi_csc }
+}
+
+/// d_C ⊗ id of one insertion step: for every component f: a → b of the previous complex and
+/// every coset c of X_a ∩ X_b, the stacked π_b (f ⊗ id_W) ι_a, cut into the summand pairs.
+/// Exact arithmetic: the same maps as the per-pair construction (KRHOM_DCID_REF).
+#[allow(clippy::too_many_arguments)]
+fn dcid_step<F: Field>(
+    lib: &WLib<F>,
+    ev: &mut Eval<F>,
+    eng: &mut PEngine<F>,
+    prev: &SCx<F>,
+    decs: &HashMap<Tid, Arc<crate::sindec::Decomp>>,
+    place: &HashMap<(usize, usize), Vec<usize>>,
+    k: usize,
+    asm: &mut HashMap<(Tid, u64), Arc<Asm<F>>>,
+    cnt: &mut [u64; 8],
+) -> Result<(), String> {
+    let dd = &*lib.dd;
+    let ar = dd.ar();
+    let mut ki: Vec<F> = vec![];
+    let mut out: Vec<F> = vec![];
+    let mut nzr: Vec<usize> = vec![];
+    for (&a, aouts) in prev.out() {
+        let pa = prev.objs()[&a].p;
+        let da = decs[&pa].clone();
+        if da.summands.is_empty() {
+            continue;
+        }
+        let la = dd.ty(pa).map_err(String::from)?.lad;
+        let sa = ar.flows(da.x).support();
+        for (&b, f) in aouts {
+            let pb = prev.objs()[&b].p;
+            let db = decs[&pb].clone();
+            if db.summands.is_empty() {
+                continue;
+            }
+            let lb = dd.ty(pb).map_err(String::from)?.lad;
+            let sb = ar.flows(db.x).support();
+            let (na, nb) = (da.summands.len(), db.summands.len());
+            let mut maps: Vec<Option<LocMap<F>>> = (0..na * nb).map(|_| None).collect();
+            for &cc in sa.iter().filter(|cc| sb.binary_search(cc).is_ok()) {
+                let ki_ = lib.kron_idx(la, lb, da.x, db.x, cc);
+                let kr = ki_.rows;
+                if !ki_.colinfo.iter().any(|&(cp, _, _)| f.lay.index(cp).is_some_and(|i| f.block(i).iter().any(|v| !v.is_zero()))) {
+                    continue;
+                }
+                cnt[0] += 1;
+                let aa = asm.entry((pa, cc)).or_insert_with(|| Arc::new(assemble(ev, ar, &da, cc))).clone();
+                let ab = asm.entry((pb, cc)).or_insert_with(|| Arc::new(assemble(ev, ar, &db, cc))).clone();
+                let nc = aa.ncol;
+                if nc == 0 || ab.nrow == 0 {
+                    continue;
+                }
+                debug_assert_eq!(ab.kr, kr);
+                // KI = (f ⊗ id) ι_all (kr × nc), sparse in f
+                ki.clear();
+                ki.resize(kr * nc, F::zero());
+                let mut any = false;
+                let mut last_f: Option<(u64, usize)> = None;
+                for (g, &(cp, colp, off)) in ki_.colinfo.iter().enumerate() {
+                    let fi = match last_f {
+                        Some((c0, i0)) if c0 == cp => i0,
+                        _ => {
+                            let Some(fi) = f.lay.index(cp) else { continue };
+                            last_f = Some((cp, fi));
+                            fi
+                        }
+                    };
+                    let irow = &aa.iota[g * nc..(g + 1) * nc];
+                    let (fr, fc) = (f.lay.rows[fi] as usize, f.lay.cols[fi] as usize);
+                    let blk = f.block(fi);
+                    for rp in 0..fr {
+                        let v = &blk[rp * fc + colp as usize];
+                        if v.is_zero() {
+                            continue;
+                        }
+                        any = true;
+                        cnt[1] += nc as u64;
+                        let row = ki_.rowmap[off as usize + rp] as usize;
+                        for (d, x) in ki[row * nc..(row + 1) * nc].iter_mut().zip(irow) {
+                            if !x.is_zero() {
+                                d.fma(v, x);
+                            }
+                        }
+                    }
+                }
+                if !any {
+                    continue;
+                }
+                nzr.clear();
+                nzr.extend((0..kr).filter(|&r| ki[r * nc..(r + 1) * nc].iter().any(|v| !v.is_zero())));
+                cnt[4] += nzr.len() as u64;
+                // out = π_all · KI over the nonzero rows of KI (nrow × nc)
+                let nr = ab.nrow;
+                out.clear();
+                out.resize(nr * nc, F::zero());
+                for &r in &nzr {
+                    let kir = &ki[r * nc..(r + 1) * nc];
+                    for (i, pv) in &ab.pi_csc[r] {
+                        cnt[2] += nc as u64;
+                        let i = *i as usize;
+                        for (d, x) in out[i * nc..(i + 1) * nc].iter_mut().zip(kir) {
+                            if !x.is_zero() {
+                                d.fma(pv, x);
+                            }
+                        }
+                    }
+                }
+                // cut into summand pairs
+                for ia in 0..na {
+                    let (c0, ms) = (aa.coff[ia], aa.coff[ia + 1] - aa.coff[ia]);
+                    if ms == 0 {
+                        continue;
+                    }
+                    for it in 0..nb {
+                        let (r0, mt) = (ab.roff[it], ab.roff[it + 1] - ab.roff[it]);
+                        if mt == 0 {
+                            continue;
+                        }
+                        let nz = (0..mt).any(|i| out[(r0 + i) * nc + c0..(r0 + i) * nc + c0 + ms].iter().any(|v| !v.is_zero()));
+                        if !nz {
+                            continue;
+                        }
+                        cnt[6] += 1;
+                        let slot = &mut maps[ia * nb + it];
+                        if slot.is_none() {
+                            let lay = eng.layout(da.summands[ia].q, db.summands[it].q).map_err(String::from)?;
+                            *slot = Some(LocMap::zeros(lay));
+                        }
+                        let lm = slot.as_mut().unwrap();
+                        let li = lm.lay.index(cc).ok_or_else(|| format!("coset {} of π K ι outside the layout of the summand types", cc))?;
+                        if lm.lay.rows[li] as usize != mt || lm.lay.cols[li] as usize != ms {
+                            return Err(format!("π K ι block at coset {}: {}x{} vs layout {}x{}", cc, mt, ms, lm.lay.rows[li], lm.lay.cols[li]));
+                        }
+                        let dst = lm.block_mut(li);
+                        for i in 0..mt {
+                            dst[i * ms..(i + 1) * ms].clone_from_slice(&out[(r0 + i) * nc + c0..(r0 + i) * nc + c0 + ms]);
+                        }
+                    }
+                }
+            }
+            for ia in 0..na {
+                for it in 0..nb {
+                    if let Some(lm) = maps[ia * nb + it].take() {
+                        let (x, y) = (place[&(a, k)][ia], place[&(b, k)][it]);
+                        eng.add_map(x, y, lm).map_err(String::from)?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Closure skeleton and entry values of the current complex at the identity coset.
