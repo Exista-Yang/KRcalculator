@@ -345,10 +345,25 @@ fn b4<F: krhom::field::Field>(lam: &[u8], n: u8, pairs: &[usize], args: &[String
         let mut x = canonical_ladder(&mut s, pp.p);
         x.push(pp.rung);
         for tg in &pp.kept {
+            let lq = canonical_ladder(&mut s, tg.q);
             if !reduced_for(&mut s, &x, tg.q).ok() {
+                if !args.iter().any(|a| a == "--lemma-a") {
+                    continue;
+                }
+                // general target: Lemma A leaves + exit/entry chains
+                let mut ar: Arena<F> = Arena::new(lam, TmplLib::new(opt(args, "--tmpl-cache").map(std::path::PathBuf::from)));
+                let (xe, le) = (ar.expr(Expr::new(lam, &x).unwrap()), ar.expr(Expr::new(lam, &lq).unwrap()));
+                let mut lv = krhom::leaves::Leaves::default();
+                lv.costs = opt(args, "--costs").map(|p| CostTable::load(std::path::Path::new(&p)).expect("cost table"));
+                let opts = PlanOpts { exact_budget, max_len: 12, max_visit: 60_000, ..PlanOpts::default() };
+                let t0 = Instant::now();
+                let mut st = krhom::leaves::LeafStats::default();
+                match krhom::leaves::pairs_leaves(&lv, &mut ar, &mut s, xe, tg.q, le, tg.s, tg.mult, &opts, &mut st) {
+                    Ok((p, thm)) => println!("B4 {} pair {} q {} s {} mult {}: CERTIFIED by Lemma A (form {}x{}), exact calls {} ({:.1} s), max unknowns {}, theorem-Assoc {:?}, {:.1} s", F::name(), k, s.table(tg.q).fmt(), tg.s, tg.mult, p.form.len(), p.form.len(), st.exact_calls, st.exact_secs, st.max_unknowns, thm, t0.elapsed().as_secs_f64()),
+                    Err(e) => println!("B4 {} pair {} q {} s {}: FAILED: {}", F::name(), k, s.table(tg.q).fmt(), tg.s, e),
+                }
                 continue;
             }
-            let lq = canonical_ladder(&mut s, tg.q);
             let mut ar: Arena<F> = Arena::new(lam, TmplLib::new(None));
             let (xe, le) = (ar.expr(Expr::new(lam, &x).unwrap()), ar.expr(Expr::new(lam, &lq).unwrap()));
             let opts = PlanOpts { exact_budget, max_len: 12, max_visit: 60_000, ..PlanOpts::default() };

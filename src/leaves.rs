@@ -1169,3 +1169,41 @@ pub fn rex_class_pairs<F: Field>(ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q:
         },
     ))
 }
+
+/// M4c B2/B4: pairs through Lemma A (A4 form) with a rex-chain exit/entry: π = exit ∘ LL_q
+/// (Out leaves X → W_q of degree −s, then the chain W_q → L_q), ι = LL^∨_q ∘ entry (the chain
+/// L_q → W_q, then In leaves W_q → X of degree s); `certify_pairs` selects `mult` pairs with an
+/// invertible form at rep(q) (two points, genuine). W_q is the final junction word of
+/// `plan_words`; when it differs from L_q the chains come from src/rexplan.rs.
+#[allow(clippy::too_many_arguments)]
+pub fn pairs_leaves<F: Field>(lv: &Leaves, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, sdeg: i32, mult: usize, opts: &crate::rexplan::PlanOpts, st: &mut LeafStats) -> Result<(Pairs<F>, Vec<MapId>), String> {
+    let lam = ar.lam().to_vec();
+    let lw = ar.expr_of(lq).rungs.clone();
+    let fo = lv.build_leaves(ar, s, x, &[q], LeafDir::Out, st).map_err(|e| e.what)?;
+    let fi = lv.build_leaves(ar, s, x, &[q], LeafDir::In, st).map_err(|e| e.what)?;
+    let fo = fo.into_iter().find(|f| f.t == q).ok_or("pairs_leaves: no Out family at q")?;
+    let fi = fi.into_iter().find(|f| f.t == q).ok_or("pairs_leaves: no In family at q")?;
+    let mut pis: Vec<MapId> = fo.maps.iter().copied().filter(|&m| ar.info(m).deg == -sdeg).collect();
+    let mut ios: Vec<MapId> = fi.maps.iter().copied().filter(|&m| ar.info(m).deg == sdeg).collect();
+    if fo.word != lw || fi.word != lw {
+        let mut pl = crate::rexplan::Planner::new();
+        let mut cache = HashMap::new();
+        if fo.word != lw {
+            let ch = pl.plan(s, q, &fo.word, &lw, opts)?;
+            let (exit, _) = crate::leafgen::realize_chain(ar, &ch, &mut cache, lv.seed ^ 0xe1)?;
+            pis = pis.into_iter().map(|m| ar.add(MapNode::Comp(exit, m), "leaves pi exit")).collect::<Result<_, _>>()?;
+        }
+        if fi.word != lw {
+            let ch = pl.plan(s, q, &lw, &fi.word, opts)?;
+            let (entry, _) = crate::leafgen::realize_chain(ar, &ch, &mut cache, lv.seed ^ 0xe2)?;
+            ios = ios.into_iter().map(|m| ar.add(MapNode::Comp(m, entry), "leaves iota entry")).collect::<Result<_, _>>()?;
+        }
+    }
+    let c = rep_rank_of(s, &lam, q);
+    let p = certify_pairs(ar, x, lq, sdeg, &ios, &pis, c, mult, lv.seed ^ 0xa4)?;
+    let mut thm = vec![];
+    for &m in p.iotas.iter().chain(&p.pis) {
+        thm.extend(crate::leafgen::relies_on_theorem(ar, m));
+    }
+    Ok((p, thm))
+}
