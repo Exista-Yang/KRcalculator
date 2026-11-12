@@ -399,3 +399,28 @@ fn validate_elem_small() {
     eprintln!("[validate_elem] {} / {} closed forms validated (F31 / F32b)", a, b);
     assert!(a >= 30 && a == b);
 }
+
+/// A3 wiring: the production chain with Stage 0 and Leaves for closure (both orders) certifies
+/// every closure type of (2,2,2); non-closure calls go to the inner chain
+#[test]
+fn m4c_chain_closure_222() {
+    let lam = [2u8, 2, 2];
+    for lf in [true, false] {
+        let mut s = Schur::new(&lam);
+        let mut ar = Arena::<F31>::new(&lam, TmplLib::new(None));
+        let (mut prov, stamp) = provider_for_stamped_m4c::<F31>(&lam, None, 1.0, lf);
+        assert!(stamp.contains(LEAVES_STAMP) && stamp.contains(STAGE0_STAMP_PF));
+        let r0 = ar.expr(Expr::new(&lam, &[]).unwrap());
+        let order = s.canonical_basis(&lam).order.clone();
+        for p in order {
+            let w = canonical_ladder(&mut s, p);
+            let lp = ar.expr(Expr::new(&lam, &w).unwrap());
+            let want = cdiag_degrees(&mut s, p);
+            for outs in [false, true] {
+                let (ms, _) = prov.closure(&mut ar, &mut s, lp, p, None, outs, &Budget::default()).unwrap_or_else(|e| panic!("m4c chain {} lf={}: {:?}", s.table(p).fmt(), lf, e));
+                certify_closure(&ar, &lam, r0, lp, None, &ms, &want, outs, 0x3a).unwrap();
+            }
+        }
+        eprintln!("[m4c chain] (2,2,2) closure, leaves_first = {}: all types certified ({})", lf, stamp);
+    }
+}

@@ -989,3 +989,90 @@ impl<F: Field> HomProvider<F> for Leaves {
         self.last_fail.clone()
     }
 }
+
+// ------------------------------------------------------------------ production wiring (A3)
+
+/// The M4c production chain for closure (A3), built around the frozen production chain
+/// `sindec::provider_for_stamped` without editing sindec.rs: Stage 0 product closure first for
+/// product types (A1 report §4: before Exact), then the production chain, then Leaves for
+/// closure calls (`leaves_first = false`, M4C_PLAN §0.2 "Leaves last"), or Leaves first for
+/// closure calls (`leaves_first = true`; the G-L5 measurements of A2 show closure Leaves maps of
+/// ≤ 10² DAG nodes). Leaves refuses `full`, `pairs` and `end0`, which go to the chain. The stamp
+/// extends the chain stamp, so layer A built with it is separate from the M5c layer A.
+pub fn provider_for_stamped_m4c<F: Field>(lam: &[u8], costs: Option<&std::path::Path>, slowdown: f64, leaves_first: bool) -> (Box<dyn HomProvider<F>>, String) {
+    let (chain, stamp) = crate::sindec::provider_for_stamped::<F>(lam, costs, slowdown);
+    let mut pc = ProductClosure::new(chain);
+    pc.product_first = true;
+    let mut lv = Leaves::new();
+    lv.costs = costs.and_then(|p| CostTable::load(p).ok());
+    let order = if leaves_first { "leaves-first" } else { "leaves-last" };
+    (Box::new(ClosureLeaves { inner: Box::new(pc), leaves: lv, leaves_first, last_fail: None }), format!("{} {} {}({})", stamp, STAGE0_STAMP_PF, LEAVES_STAMP, order))
+}
+
+/// The inner provider plus Leaves for closure calls without e_p (before or after the inner
+/// provider); every other call goes to the inner provider alone, so its failure reports are
+/// unchanged.
+pub struct ClosureLeaves<F: Field> {
+    pub inner: Box<dyn HomProvider<F>>,
+    pub leaves: Leaves,
+    pub leaves_first: bool,
+    last_fail: Option<SearchStats>,
+}
+
+impl<F: Field> HomProvider<F> for ClosureLeaves<F> {
+    fn name(&self) -> &'static str {
+        "ClosureLeaves"
+    }
+    fn full(&mut self, ar: &mut Arena<F>, s: &mut Schur, src: ExprId, tgt: ExprId, d: i32, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
+        let r = self.inner.full(ar, s, src, tgt, d, b);
+        self.last_fail = if r.is_err() { self.inner.failed_stats() } else { None };
+        r
+    }
+    fn pairs(&mut self, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, eq: Option<MapId>, sdeg: i32, mult: usize, b: &Budget) -> Result<(Pairs<F>, SearchStats), Vec<Missing>> {
+        let r = self.inner.pairs(ar, s, x, q, lq, eq, sdeg, mult, b);
+        self.last_fail = if r.is_err() { self.inner.failed_stats() } else { None };
+        r
+    }
+    fn end0(&mut self, ar: &mut Arena<F>, s: &mut Schur, l: ExprId, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
+        let r = self.inner.end0(ar, s, l, b);
+        self.last_fail = if r.is_err() { self.inner.failed_stats() } else { None };
+        r
+    }
+    fn closure(&mut self, ar: &mut Arena<F>, s: &mut Schur, lp: ExprId, p: Tid, ep: Option<MapId>, outs: bool, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
+        self.last_fail = None;
+        if ep.is_some() {
+            let r = self.inner.closure(ar, s, lp, p, ep, outs, b);
+            self.last_fail = if r.is_err() { self.inner.failed_stats() } else { None };
+            return r;
+        }
+        let mut errs: Vec<Missing> = vec![];
+        let mut acc = SearchStats::default();
+        for k in 0..2 {
+            let use_leaves = (k == 0) == self.leaves_first;
+            let r = if use_leaves { self.leaves.closure_leaves(ar, s, lp, p, outs) } else { self.inner.closure(ar, s, lp, p, ep, outs, b) };
+            match r {
+                Ok((v, st)) => {
+                    let mut st2 = acc.clone();
+                    st2.absorb(&st);
+                    return Ok((v, st2));
+                }
+                Err(ms) => {
+                    let fs = if use_leaves { HomProvider::<F>::failed_stats(&self.leaves) } else { self.inner.failed_stats() };
+                    if let Some(st) = fs {
+                        acc.absorb(&st);
+                    }
+                    let name = if use_leaves { "Leaves" } else { "inner" };
+                    errs.extend(ms.into_iter().map(|mut m| {
+                        m.what = format!("[{}] {}", name, m.what);
+                        m
+                    }));
+                }
+            }
+        }
+        self.last_fail = Some(acc);
+        Err(errs)
+    }
+    fn failed_stats(&self) -> Option<SearchStats> {
+        self.last_fail.clone()
+    }
+}
