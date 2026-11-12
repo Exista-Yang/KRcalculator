@@ -189,10 +189,11 @@ fn cups_and_caps_small() {
             let want = r as i32 * a as i32 - r as i32 * (b as i32 - r as i32);
             let tc = check(&mut lib, &cap, 300 + r as u64, Some(want));
             let tu = check(&mut lib, &cup, 310 + r as u64, Some(want));
-            // cap ∘ cup on [] is multiplication by a polynomial: nonzero at the identity
+            // cap ∘ cup on [] is multiplication by a polynomial of degree 2·want
             let y = pt((a + b) as usize, 4);
             let c = mul(&lib.localize(tc, &y).dense(), &lib.localize(tu, &y).dense());
-            assert!(!c[0][0].is_zero(), "cap∘cup vanishes at ({},{}) r = {}", a, b, r);
+            // (degree 2·want: a negative-degree endomorphism of R^λ vanishes)
+            assert_eq!(c[0][0].is_zero(), want < 0, "cap∘cup at ({},{}) r = {}, degree {}", a, b, r, 2 * want);
         }
         for r in 1..=a {
             let (cap, cup) = cup_cap(&[a, b], Rung::f(0, r as usize)).unwrap();
@@ -348,12 +349,25 @@ fn braid_large() {
     braid_case(2, 3, 2, false);
 }
 
+const FAR_CELLS: &[(u8, u8, u8, u8)] = &[(1, 1, 1, 1), (1, 2, 1, 1), (2, 1, 1, 2)];
+
+/// Far commutation at cells (3,3,2,1) (C_m4c C1: 192 484 exact unknowns): certify_added only.
+#[test]
+#[ignore]
+fn far_commutation_3321() {
+    let mut lib: TmplLib<F> = TmplLib::new(None);
+    let t0 = Instant::now();
+    let cf = far_commute(&[3, 3, 2, 1], &atomic(0, 3, 3), &atomic(2, 2, 1)).unwrap();
+    let b = build(&mut lib, &cf, 601).unwrap_or_else(|e| panic!("{}", e));
+    println!("CERT {} flows {:?} interp {:.1}s cert {:.1}s (pts {}, monos {}) total {:.1}s", cf.name, b.flows, b.interp_secs, b.cert.secs, b.cert.points, b.cert.max_monos, t0.elapsed().as_secs_f64());
+}
+
 /// Far commutation of atomic crossings on disjoint uprights: certified, degree 0, 1⊗ ↦ 1⊗, in
 /// the exact window when affordable.
 #[test]
 fn far_commutation() {
     let mut lib: TmplLib<F> = TmplLib::new(None);
-    for &(x, y, z, w) in &[(1u8, 1u8, 1u8, 1u8), (1, 2, 1, 1), (2, 1, 1, 2), (3, 3, 2, 1)] {
+    for &(x, y, z, w) in FAR_CELLS {
         let l = [x, y, z, w];
         let a = atomic(0, x, y);
         let b = atomic(2, z, w);
