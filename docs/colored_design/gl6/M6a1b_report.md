@@ -12,7 +12,7 @@ to the result over Q unless both primes are torsion primes.
 | tests: sengine vs xengine at 2 points ((2,2), (3,2) default; (3,3) ignored), (1,1,1) vs engine2, box loop vs exact closure | **pass** |
 | **G2B as specified (σ^1..σ^9 at N = 6 by box)** | **not reached: σ^1..σ^5 PASS; σ^6..σ^9 not run unreduced** (cost, §4) |
 | G2B σ^1..σ^5 unreduced + reduced, N' = 3..6, both primes × two node sequences, scaling | **PASS** (Hopf 400, T(2,3) 136, T(2,4) 864, T(2,5) 396 and all reduced, full polynomials = m2s / Wang) |
-| σ^7 reduced (20 box points) | __S7__ |
+| σ^7 reduced (20 box points), stages 2-7 | **PASS** = m2s (T(2,6) 252, T(2,7) 343 at N = 6), F31 and F32b; second node sequences (seeds 103, 104) **PASS** too |
 | 4_1 type counts (C_feas m9) | **34** types in the final LB complex at N = 6 (276 objects); 40 over all stages; "38" is none of the counts (§5) |
 | stretch: (3,3,3) prune 4 at N = 4 through the localized path | **PASS**: 4_1 = engine2 gl_4 via duality (expected); Markov words σ_1^m σ_2 (m = 1..5) = 2-strand σ^m exactly; both primes × two node sequences; χ; scaling |
 
@@ -105,7 +105,13 @@ scaling check (3 724 entries checked at z and λz at 2 box points, all stages; 3
 Freivalds D2Cert (k = 3) recorded for every closure. Scan wall 940-1 174 s per run (399 points,
 4 threads), record point 21-22 s, closures ≈ 1 s, VmHWM 0.9-1.1 GB.
 
-Not run: σ^6..σ^9 unreduced (T(2,6) 1568, T(2,7) 848, T(2,8) 2560, T(2,9) 1540): the σ^9 attempt
+**σ^7 reduced** (`runs_g2b/runr.sh 7 FIELD SEED --modes r`: only the 20 μ^0 = ∅ points of the box are
+scanned; 3 threads): all 24 reduced closures of stages 2..7 at N' = 3..6 equal the m2s JSON of the
+prime as full polynomials, including the T(2,6) link (reduced 1/8/50/252) and T(2,7) (reduced
+1/7/49/343); χ 28/28; scaling check 20 726 entries (13 770 zero at both points). Per run: record
+322-337 s, scan 615-628 s (≈ 88-90 s per point), scaling scans 714 s, VmHWM 3.7-3.9 GB.
+
+Not run: σ^6..σ^9 unreduced, σ^8 and σ^9 reduced (T(2,6) 1568, T(2,7) 848, T(2,8) 2560, T(2,9) 1540): the σ^9 attempt
 (F31 seed 101) was refused by the per-point memory budget (2 GB) at crossing 8 of the record point
 after ≈ 25 min (runs_g2b/s9_f31_seed101.err) — see §4.
 
