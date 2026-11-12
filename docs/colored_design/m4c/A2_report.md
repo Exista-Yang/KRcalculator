@@ -191,7 +191,7 @@ Unknown counts alone are therefore not a reliable time budget; the per-call cost
 | 8e70c0c | Elem opt-in (layer A self-contained); one-sided admission; `--from` and progress |
 | 2e69309 | one-sided admission only for labels > 3 (measured) |
 | a1602d0 | layer A + templates of the 12 types, both primes, run/replay logs (N = 6 and N = 5) |
-| (this) | report, cost records of the 139 371 / 213 148 steps |
+| 1479aa0 | this report; cost records of the 139 371 / 213 148 / 434 787 steps |
 
 ## 7. Open problems
 
