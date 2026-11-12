@@ -1,0 +1,9 @@
+CERT braid (3, 1, 3) psi_A flows (80, 35) interp 4.5s cert 1.5s (monos 536) total 6.0s
+CERT braid (3, 1, 3) phi_B flows (35, 80) interp 7.5s cert 1.9s (monos 536) total 9.4s
+CERT braid (3, 1, 3): A 320 flows, M 140 flows, M->M' Assoc: Ok(244.737476653)
+CERT braid (2, 3, 2) psi_A flows (60, 21) interp 0.3s cert 0.2s (monos 219) total 0.5s
+CERT braid (2, 3, 2) phi_B flows (21, 60) interp 1.1s cert 0.2s (monos 219) total 1.3s
+CERT braid (2, 3, 2): A 600 flows, M 210 flows, M->M' Assoc: Ok(1508.519976868)
+CERT braid (3, 2, 3) psi_A flows (200, 56) interp 210.7s cert 31.7s (monos 1590) total 242.5s
+CERT braid (3, 2, 3) phi_B flows (56, 200) interp 372.8s cert 32.2s (monos 1590) total 405.1s
+CERT braid (3, 2, 3): A 2000 flows, M 560 flows, M->M' Assoc: Err("validate_assoc: 560 flows > 500 (refused: no certificate)")
