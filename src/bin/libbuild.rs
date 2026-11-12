@@ -4,6 +4,7 @@
 //! libbuild plan   --lam 3,3,3 --n 4|5|6 [--corner markov-ext] [--sample largex [--count 20]] [--json OUT]
 //! libbuild run    --lam 3,3,3 --n N [set flags] --field 31|32b --cache DIR [--costs PATH] [--jobs 4]
 //!                 [--wall 600] [--rss 2048] [--scale 1] [--json OUT] [--redo] [--max-jobs K] [--no-retry]
+//!                 [--stamp-route]  (accept layer-A files of another cost table: `SIndecOpts::layer_a_route_stamp`)
 //! libbuild replay --lam ... --n N [set flags] --field F --cache DIR [--costs PATH] [--jobs 4] [--json OUT]
 //! libbuild calib  --lam 3,3,3 --n N --field 31 --cache DIR [--base PATH] --out PATH [--per-class 12]
 //!                 [--limit 120] [--budget 1800] [--rss 4096]
@@ -324,7 +325,7 @@ fn child<F: Field>(args: &[String], job: &[String]) {
     let replay = flag(args, "--replay");
     let (prov, stamp) = provider_and_stamp::<F>(&lam, args);
     let prov: Box<dyn HomProvider<F>> = if replay { Box::new(NoProvider) } else { prov };
-    let opts = SIndecOpts { cache_dir: Some(cache.clone()), budget: scaled_budget(scale), prune_n: Some(n), ..SIndecOpts::default() };
+    let opts = SIndecOpts { cache_dir: Some(cache.clone()), budget: scaled_budget(scale), prune_n: Some(n), layer_a_route_stamp: flag(args, "--stamp-route"), ..SIndecOpts::default() };
     let mut sd: SIndec<F> = SIndec::with_stamp(&lam, prov, stamp, opts);
     sd.target_log_file = opt(args, "--tlog").map(PathBuf::from);
     let t0 = Instant::now();
@@ -382,8 +383,8 @@ fn child<F: Field>(args: &[String], job: &[String]) {
     let el: Vec<String> = errs.iter().map(|(w, k, t)| format!("{{\"what\":{},\"kind\":{},\"text\":{}}}", jstr(w), jstr(k), jstr(&t[..t.len().min(2000)]))).collect();
     let _ = sd.ar.lib_ref().save();
     println!(
-        "RESULT {{\"ok\":{},{}\"wall\":{:.3},\"errors\":[{}],\"stats\":{{\"decomps\":{},\"identity\":{},\"all_killed\":{},\"targets\":{},\"sum_mult\":{},\"provider_calls\":{},\"provider_secs\":{:.3},\"max_x_flows\":{},\"layer_a_loaded\":{},\"layer_a_saved\":{},\"layer_a_rejected\":{},\"rickard\":{},\"closure\":{},\"scaling_entries\":{},\"scaling_zero\":{},\"check_secs\":{:.3}}},\"arena_bytes\":{},\"fresh\":[{}]}}",
-        errs.is_empty(), info, t0.elapsed().as_secs_f64(), el.join(","), st.decomps, st.identity, st.all_killed, st.targets, st.sum_mult, st.provider_calls, st.provider_secs, st.max_x_flows, st.layer_a_loaded, st.layer_a_saved, st.layer_a_rejected, st.rickard, st.closure, st.scaling_entries, st.scaling_zero, st.check_secs, by.total(), tl.join(",")
+        "RESULT {{\"ok\":{},{}\"wall\":{:.3},\"errors\":[{}],\"stats\":{{\"decomps\":{},\"identity\":{},\"all_killed\":{},\"targets\":{},\"sum_mult\":{},\"provider_calls\":{},\"provider_secs\":{:.3},\"max_x_flows\":{},\"layer_a_loaded\":{},\"layer_a_route\":{},\"layer_a_saved\":{},\"layer_a_rejected\":{},\"rickard\":{},\"closure\":{},\"scaling_entries\":{},\"scaling_zero\":{},\"check_secs\":{:.3}}},\"arena_bytes\":{},\"fresh\":[{}]}}",
+        errs.is_empty(), info, t0.elapsed().as_secs_f64(), el.join(","), st.decomps, st.identity, st.all_killed, st.targets, st.sum_mult, st.provider_calls, st.provider_secs, st.max_x_flows, st.layer_a_loaded, st.layer_a_route, st.layer_a_saved, st.layer_a_rejected, st.rickard, st.closure, st.scaling_entries, st.scaling_zero, st.check_secs, by.total(), tl.join(",")
     );
 }
 
@@ -565,6 +566,9 @@ fn cmd_run(args: &[String], replay: bool) {
     }
     if replay {
         base.push("--replay".into());
+    }
+    if flag(args, "--stamp-route") {
+        base.push("--stamp-route".into());
     }
     let tlog = format!("{}.targets", out);
     let mut hs = vec![];
@@ -846,6 +850,102 @@ fn cmd_calib(args: &[String]) {
     println!("calibration: {} records in {} ({:?}); {} calls skipped by the time budget", table.len(), out, table.classes(), skipped);
 }
 
+// ------------------------------------------------------------------ knot coverage
+
+/// job key -> best outcome in a run file ("ok" if any attempt certified, else the last outcome)
+fn run_status(path: &str) -> BTreeMap<String, String> {
+    let mut m: BTreeMap<String, String> = BTreeMap::new();
+    for l in std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {}", path, e)).lines() {
+        if !l.starts_with("{\"attempt\"") {
+            continue;
+        }
+        let (Some(j), Some(o)) = (jfield(l, "job"), jfield(l, "outcome")) else { continue };
+        let e = m.entry(j.to_string()).or_default();
+        if e != "ok" {
+            *e = o.to_string();
+        }
+    }
+    m
+}
+
+/// libbuild cover --lam 3,3,3 --n N --knots FILE [--names a,b] [--max-cross C] --runs RUN.jsonl[,RUN2]
+/// [--md OUT]: per knot of FILE (lines "name;labels;word;..." with labels = --lam), the library
+/// jobs a pruned scan at N needs (`knot_jobs`) and their status in the run files (a job counts
+/// as certified only if it is certified in every run file).
+fn cmd_cover(args: &[String]) {
+    let lam = parse_lam(&opt(args, "--lam").expect("--lam"));
+    let n: u8 = opt(args, "--n").expect("--n").parse().unwrap();
+    let mut s = Schur::new(&lam);
+    let plan = pruned_plan(&mut s, Some(n));
+    let runs: Vec<BTreeMap<String, String>> = opt(args, "--runs").map(|r| r.split(',').map(run_status).collect()).unwrap_or_default();
+    let names: Option<BTreeSet<String>> = opt(args, "--names").map(|v| v.split(',').map(|x| x.to_string()).collect());
+    let maxc: usize = opt(args, "--max-cross").map(|v| v.parse().unwrap()).unwrap_or(usize::MAX);
+    let text = std::fs::read_to_string(opt(args, "--knots").expect("--knots")).unwrap();
+    let mut md = vec![format!("| knot | crossings | N | jobs UB pairs+closure (LB) | certified UB (LB) | blocking failures († = not in LB) |"), "|---|---|---|---|---|---|".to_string()];
+    let (mut full, mut full_lb, mut tot) = (0, 0, 0);
+    for line in text.lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')) {
+        let f: Vec<&str> = line.split(';').collect();
+        if f.len() < 3 || parse_lam(f[1]) != lam {
+            continue;
+        }
+        if names.as_ref().is_some_and(|ns| !ns.contains(f[0])) {
+            continue;
+        }
+        let word: Vec<i32> = f[2].split_whitespace().map(|x| x.parse().unwrap()).collect();
+        if word.len() > maxc {
+            continue;
+        }
+        let kj = knot_jobs(&mut s, &plan, &word).unwrap_or_else(|e| panic!("{}: {}", f[0], e));
+        let status = |k: &String| -> (bool, String) {
+            let st: Vec<String> = runs.iter().map(|r| r.get(k).cloned().unwrap_or_else(|| "absent".into())).collect();
+            let mut u = st.clone();
+            u.dedup();
+            (!runs.is_empty() && st.iter().all(|x| x == "ok"), u.join("/"))
+        };
+        let keys_of = |s: &Schur, ps: &BTreeSet<usize>, cs: &BTreeSet<Tid>| -> Vec<String> {
+            let mut v: Vec<String> = ps.iter().map(|k| format!("pair {}", k)).collect();
+            v.extend(cs.iter().map(|&q| format!("closure {}", s.table(q).fmt())));
+            v
+        };
+        let keys = keys_of(&s, &kj.pairs, &kj.closure);
+        let keys_lb = keys_of(&s, &kj.pairs_lb, &kj.closure_lb);
+        let mut fails: Vec<String> = vec![];
+        let (mut cert, mut cert_lb, mut fail_lb) = (0, 0, 0);
+        for k in &keys {
+            let (ok, st) = status(k);
+            let in_lb = keys_lb.contains(k);
+            if ok {
+                cert += 1;
+                cert_lb += in_lb as usize;
+            } else {
+                fail_lb += in_lb as usize;
+                fails.push(format!("{}{} ({})", k.replace("closure ", "cl ").replace("pair ", "p"), if in_lb { "" } else { "†" }, st));
+            }
+        }
+        tot += 1;
+        if fails.is_empty() {
+            full += 1;
+        }
+        if fail_lb == 0 {
+            full_lb += 1;
+        }
+        let verdict = if fails.is_empty() { " **full**" } else if fail_lb == 0 { " full (LB)" } else { "" };
+        let row = format!("| {} | {} | {} | {}+{} ({}+{}) | {}/{} ({}/{}){} | {} |", f[0], word.len(), n, kj.pairs.len(), kj.closure.len(), kj.pairs_lb.len(), kj.closure_lb.len(), cert, keys.len(), cert_lb, keys_lb.len(), verdict, fails.join(", "));
+        println!("{}", row);
+        if flag(args, "--list") {
+            println!("  stage types (UB, LB) {:?}; jobs {}", kj.stage_types, keys.join(", "));
+        }
+        md.push(row);
+    }
+    let sumline = format!("N = {}: {} of {} knots fully covered (upper bound), {} if only the K_0 lower bound is needed", n, full, tot, full_lb);
+    println!("{}", sumline);
+    md.push(String::new());
+    md.push(sumline);
+    if let Some(o) = opt(args, "--md") {
+        std::fs::write(o, md.join("\n") + "\n").unwrap();
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let cmd = args.get(1).cloned().unwrap_or_default();
@@ -857,6 +957,7 @@ fn main() {
         "run" => cmd_run(&args, false),
         "replay" => cmd_run(&args, true),
         "calib" => cmd_calib(&args),
+        "cover" => cmd_cover(&args),
         "one" if field == "31" => child::<F31>(&args, &job),
         "one" => child::<F32b>(&args, &job),
         "calib-one" if field == "31" => calib_one::<F31>(&args, &job),

@@ -96,10 +96,18 @@ pub struct SIndecOpts {
     pub seed: u64,
     /// Foam_N pruning (None = unpruned), fixed for the life of the builder
     pub prune_n: Option<u8>,
+    /// M5c route stamp: a layer-A file is accepted if its header equals the current one up to
+    /// the cost-table token (`costs=ALG:RECSrecs:HASH`, compared as `costs=ALG`); the provider
+    /// route (chain, caps, slowdown, solver generation, ladder and template stamps, key) must still
+    /// match. Sound because every loaded map is re-certified (`target_pairs`: ends, degrees, D14
+    /// scaling, then Π∘Ι, form and genuineness in `dec_one`; `closure_gens`: `certify_closure`),
+    /// whichever table found it. Files are always written with the full stamp. Default false (the
+    /// M5b behaviour: exact header match).
+    pub layer_a_route_stamp: bool,
 }
 impl Default for SIndecOpts {
     fn default() -> Self {
-        SIndecOpts { cache_dir: None, budget: Budget::default(), check_points: 2, seed: 0x5d5e_c001, prune_n: None }
+        SIndecOpts { cache_dir: None, budget: Budget::default(), check_points: 2, seed: 0x5d5e_c001, prune_n: None, layer_a_route_stamp: false }
     }
 }
 
@@ -116,6 +124,8 @@ pub struct DecStats {
     pub max_x_flows: u64,
     pub idempotents: usize,
     pub layer_a_loaded: usize,
+    /// of the loaded: accepted by the route stamp only (another cost table, M5c)
+    pub layer_a_route: usize,
     pub layer_a_saved: usize,
     pub layer_a_rejected: usize,
     pub rickard: usize,
@@ -402,6 +412,18 @@ impl<F: Field, P: HomProvider<F> + ?Sized> DecHom<F> for P {
             Err(ms) => Err(prov_fail(ms)),
         }
     }
+}
+
+/// A layer-A header with the cost-table token reduced to its solver generation
+/// (`costs=hs-kl1:273recs:b8c4…` -> `costs=hs-kl1`), for `SIndecOpts::layer_a_route_stamp`.
+pub fn route_header(h: &str) -> String {
+    h.split(' ')
+        .map(|t| match t.strip_prefix("costs=") {
+            Some(v) => format!("costs={}", v.split(':').next().unwrap_or("")),
+            None => t.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 // ------------------------------------------------------------------ provider construction (D8)
@@ -1133,13 +1155,16 @@ impl<F: Field> SIndec<F> {
         let Some(path) = self.layer_a_path(key) else { return Ok(None) };
         let Ok(text) = std::fs::read_to_string(&path) else { return Ok(None) };
         let (h, body) = text.split_once('\n').unwrap_or((text.as_str(), ""));
-        if h != self.layer_a_header(key) {
+        let want_h = self.layer_a_header(key);
+        let by_route = h != want_h;
+        if by_route && !(self.opts.layer_a_route_stamp && route_header(h) == route_header(&want_h)) {
             self.stats.layer_a_rejected += 1;
             return Ok(None);
         }
         match crate::smapio::import(&mut self.ar, body) {
             Ok(v) if v.len() == want => {
                 self.stats.layer_a_loaded += 1;
+                self.stats.layer_a_route += by_route as usize;
                 Ok(Some(v))
             }
             Ok(v) => {
@@ -1453,4 +1478,106 @@ pub fn decomposable_ladders(s: &mut Schur) -> Vec<IdemCase> {
 
 pub fn idem_needed(s: &mut Schur, n: Option<u8>) -> Vec<IdemCase> {
     decomposable_ladders(s).into_iter().filter(|c| n.is_none_or(|nn| c.kill_level <= nn as usize)).collect()
+}
+
+// ------------------------------------------------------------------ knot coverage (schur only)
+
+/// Library jobs a pruned localized scan of a braid word needs (M5c): the kept-source pairs of
+/// `pruned_plan` visited rung by rung and the closure types of the final chain objects, as an
+/// upper bound (no cancellation) and a lower bound (types with a nonzero K_0 class).
+#[derive(Clone, Debug, Default)]
+pub struct KnotJobs {
+    /// upper bound: indices into `plan.pairs`
+    pub pairs: std::collections::BTreeSet<usize>,
+    /// upper bound: non-identity kept types of (λ, λ) present after the last crossing
+    pub closure: std::collections::BTreeSet<Tid>,
+    /// lower bound: pairs visited from types whose signed K_0 class is nonzero
+    pub pairs_lb: std::collections::BTreeSet<usize>,
+    /// lower bound: non-identity final types with a nonzero K_0 class
+    pub closure_lb: std::collections::BTreeSet<Tid>,
+    /// (upper, lower) number of kept types after each crossing
+    pub stage_types: Vec<(usize, usize)>,
+}
+
+/// Jobs a pruned scan (`plan.n`) of the braid word (generators ±i, 1-based, positive =
+/// positive crossing) visits, starting from the identity type of (λ, λ): for every type p present
+/// before a crossing at strands (i, i+1) and every Rickard term W_k that is not killed by the cell
+/// rule (max(c, d) + k ≤ N), the rungs of W_k are applied one at a time; each (type, rung) step
+/// is a plan pair, its kept summand types (`term_mult`, killed types dropped) feed the next rung.
+///
+/// Upper bound: types are united over all homological degrees (no cancellation). Lower bound:
+/// only types whose signed class Σ_h (−1)^h [object] in K_0 (with q-shifts, as `decat_scan`) is
+/// nonzero, which every complex homotopy equivalent to the stage contains (Gaussian elimination
+/// cannot remove them); the steps of a crossing from those types are needed whatever the scan
+/// cancels. Err if a visited step is not a plan pair (e.g. unequal labels: `g1_work` only has the
+/// blocks reached by one crossing from λ).
+pub fn knot_jobs(s: &mut Schur, plan: &Plan, word: &[i32]) -> Result<KnotJobs, String> {
+    use std::collections::BTreeSet;
+    let lam = plan.lam.clone();
+    let idx: HashMap<(Tid, Rung), usize> = plan.pairs.iter().enumerate().map(|(k, pp)| ((pp.p, pp.rung), k)).collect();
+    let killed = |s: &Schur, q: Tid| plan.n.is_some_and(|n| s.killed_at(q, n as usize));
+    let id = s.intern(crate::schur::Table::identity(&lam));
+    let mut cur: BTreeSet<Tid> = [id].into_iter().collect();
+    let mut cls: BTreeMap<Tid, Lp> = [(id, Lp::one())].into_iter().collect();
+    let mut out = KnotJobs::default();
+    for &g in word {
+        if g == 0 || g.unsigned_abs() as usize >= lam.len() {
+            return Err(format!("generator {} out of range for {} strands", g, lam.len()));
+        }
+        let i = g.unsigned_abs() as usize - 1;
+        let positive = g > 0;
+        let mut next: BTreeSet<Tid> = BTreeSet::new();
+        let mut ncls: BTreeMap<Tid, Lp> = BTreeMap::new();
+        for &p in &cur {
+            let cp = cls.get(&p).cloned().unwrap_or_else(Lp::zero);
+            let mu = s.table(p).cols();
+            let (c, d) = (mu[i], mu[i + 1]);
+            for (k, t) in crossing_terms(c, d, positive, i).iter().enumerate() {
+                if plan.n.is_some_and(|n| c.max(d) as usize + k > n as usize) {
+                    continue;
+                }
+                let mut layer: BTreeSet<Tid> = [p].into_iter().collect();
+                for r in &t.rungs {
+                    let mut nl = BTreeSet::new();
+                    for &q in &layer {
+                        let k = *idx.get(&(q, *r)).ok_or_else(|| format!("step {} ⊗ {} is not a plan pair", s.table(q).fmt(), crate::smapio::rung_str(r)))?;
+                        out.pairs.insert(k);
+                        if !cp.is_zero() {
+                            out.pairs_lb.insert(k);
+                        }
+                        for (q2, _) in s.term_mult(q, &[*r]) {
+                            if !killed(s, q2) {
+                                nl.insert(q2);
+                            }
+                        }
+                    }
+                    layer = nl;
+                }
+                next.extend(layer);
+                if !cp.is_zero() {
+                    let sign = if t.hdeg.rem_euclid(2) == 0 { 1 } else { -1 };
+                    let tm = if t.rungs.is_empty() { vec![(p, Lp::one())] } else { s.term_mult(p, &t.rungs) };
+                    for (q2, m) in tm {
+                        if !killed(s, q2) {
+                            let e = ncls.entry(q2).or_insert_with(Lp::zero);
+                            e.add_scaled(&cp.mul(&m), sign, t.dq);
+                        }
+                    }
+                }
+            }
+        }
+        ncls.retain(|_, v| !v.is_zero());
+        out.stage_types.push((next.len(), ncls.len()));
+        cur = next;
+        cls = ncls;
+    }
+    for q in cur {
+        if !canonical_ladder(s, q).is_empty() {
+            out.closure.insert(q);
+            if cls.contains_key(&q) {
+                out.closure_lb.insert(q);
+            }
+        }
+    }
+    Ok(out)
 }
