@@ -727,3 +727,49 @@ fn gate_plan_333() {
         eprintln!("[gate] idem_needed(3,3,3; N = {}) = {:?}", n, v.iter().map(|c| c.table.clone()).collect::<Vec<_>>());
     }
 }
+
+/// M5c route stamp (M5b open problem 4): a layer-A file written under another cost table is
+/// rejected by default and accepted with `layer_a_route_stamp` (no provider call, maps
+/// re-certified on load); a file of another route (chain token) is rejected in both modes.
+#[test]
+fn m5c_layer_a_route_stamp() {
+    assert_eq!(route_header("v2 prov=homprov[hs-kl1] maxl=3 costs=hs-kl1:273recs:b8c4807fa14298b4 slowdown=1 chain=X key=k"), "v2 prov=homprov[hs-kl1] maxl=3 costs=hs-kl1 slowdown=1 chain=X key=k");
+    assert_eq!(route_header("a costs=none b"), "a costs=none b");
+    let lam = [3u8, 2];
+    let dir = cache_dir("m5c_route");
+    let mut a = builder(&lam, None, Some(dir.clone()));
+    build_terms(&mut a);
+    let sa = a.stats();
+    assert!(sa.layer_a_saved > 0 && sa.provider_calls > 0);
+    let la = dir.join("layer_a");
+    let rewrite = |from: &str, to: &str| {
+        for f in std::fs::read_dir(&la).unwrap() {
+            let p = f.unwrap().path();
+            let t = std::fs::read_to_string(&p).unwrap();
+            let (h, body) = t.split_once('\n').unwrap();
+            let h2: Vec<String> = h.split(' ').map(|w| if w.starts_with(from) { to.to_string() } else { w.to_string() }).collect();
+            std::fs::write(&p, format!("{}\n{}", h2.join(" "), body)).unwrap();
+        }
+    };
+    // another cost table (records and hash)
+    rewrite("costs=", "costs=hs-kl1:999recs:00000000deadbeef");
+    let mut b = builder(&lam, None, Some(dir.clone()));
+    build_terms(&mut b);
+    let sb = b.stats();
+    assert_eq!((sb.layer_a_loaded, sb.layer_a_rejected), (0, sa.layer_a_saved), "default: exact stamp only");
+    // b recomputed and rewrote every file with the current stamp; make them foreign again
+    rewrite("costs=", "costs=hs-kl1:999recs:00000000deadbeef");
+    let (prov, stamp) = provider_for_stamped::<F>(&lam, Some(&costs()), 1.0);
+    let mut c = SIndec::<F>::with_stamp(&lam, prov, stamp, SIndecOpts { cache_dir: Some(dir.clone()), layer_a_route_stamp: true, ..Default::default() });
+    build_terms(&mut c);
+    let sc = c.stats();
+    assert_eq!(sc.provider_calls, 0, "route stamp: layer A used");
+    assert_eq!((sc.layer_a_loaded, sc.layer_a_route, sc.layer_a_rejected), (sa.layer_a_saved, sa.layer_a_saved, 0));
+    // another route (chain) is rejected even with the route stamp
+    rewrite("chain=", "chain=OTHER");
+    let (prov, stamp) = provider_for_stamped::<F>(&lam, Some(&costs()), 1.0);
+    let mut d = SIndec::<F>::with_stamp(&lam, prov, stamp, SIndecOpts { cache_dir: Some(dir.clone()), layer_a_route_stamp: true, ..Default::default() });
+    build_terms(&mut d);
+    let sd = d.stats();
+    assert_eq!((sd.layer_a_loaded, sd.layer_a_rejected), (0, sa.layer_a_saved));
+}

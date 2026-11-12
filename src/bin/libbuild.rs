@@ -4,6 +4,7 @@
 //! libbuild plan   --lam 3,3,3 --n 4|5|6 [--corner markov-ext] [--sample largex [--count 20]] [--json OUT]
 //! libbuild run    --lam 3,3,3 --n N [set flags] --field 31|32b --cache DIR [--costs PATH] [--jobs 4]
 //!                 [--wall 600] [--rss 2048] [--scale 1] [--json OUT] [--redo] [--max-jobs K] [--no-retry]
+//!                 [--stamp-route]  (accept layer-A files of another cost table: `SIndecOpts::layer_a_route_stamp`)
 //! libbuild replay --lam ... --n N [set flags] --field F --cache DIR [--costs PATH] [--jobs 4] [--json OUT]
 //! libbuild calib  --lam 3,3,3 --n N --field 31 --cache DIR [--base PATH] --out PATH [--per-class 12]
 //!                 [--limit 120] [--budget 1800] [--rss 4096]
@@ -324,7 +325,7 @@ fn child<F: Field>(args: &[String], job: &[String]) {
     let replay = flag(args, "--replay");
     let (prov, stamp) = provider_and_stamp::<F>(&lam, args);
     let prov: Box<dyn HomProvider<F>> = if replay { Box::new(NoProvider) } else { prov };
-    let opts = SIndecOpts { cache_dir: Some(cache.clone()), budget: scaled_budget(scale), prune_n: Some(n), ..SIndecOpts::default() };
+    let opts = SIndecOpts { cache_dir: Some(cache.clone()), budget: scaled_budget(scale), prune_n: Some(n), layer_a_route_stamp: flag(args, "--stamp-route"), ..SIndecOpts::default() };
     let mut sd: SIndec<F> = SIndec::with_stamp(&lam, prov, stamp, opts);
     sd.target_log_file = opt(args, "--tlog").map(PathBuf::from);
     let t0 = Instant::now();
@@ -382,8 +383,8 @@ fn child<F: Field>(args: &[String], job: &[String]) {
     let el: Vec<String> = errs.iter().map(|(w, k, t)| format!("{{\"what\":{},\"kind\":{},\"text\":{}}}", jstr(w), jstr(k), jstr(&t[..t.len().min(2000)]))).collect();
     let _ = sd.ar.lib_ref().save();
     println!(
-        "RESULT {{\"ok\":{},{}\"wall\":{:.3},\"errors\":[{}],\"stats\":{{\"decomps\":{},\"identity\":{},\"all_killed\":{},\"targets\":{},\"sum_mult\":{},\"provider_calls\":{},\"provider_secs\":{:.3},\"max_x_flows\":{},\"layer_a_loaded\":{},\"layer_a_saved\":{},\"layer_a_rejected\":{},\"rickard\":{},\"closure\":{},\"scaling_entries\":{},\"scaling_zero\":{},\"check_secs\":{:.3}}},\"arena_bytes\":{},\"fresh\":[{}]}}",
-        errs.is_empty(), info, t0.elapsed().as_secs_f64(), el.join(","), st.decomps, st.identity, st.all_killed, st.targets, st.sum_mult, st.provider_calls, st.provider_secs, st.max_x_flows, st.layer_a_loaded, st.layer_a_saved, st.layer_a_rejected, st.rickard, st.closure, st.scaling_entries, st.scaling_zero, st.check_secs, by.total(), tl.join(",")
+        "RESULT {{\"ok\":{},{}\"wall\":{:.3},\"errors\":[{}],\"stats\":{{\"decomps\":{},\"identity\":{},\"all_killed\":{},\"targets\":{},\"sum_mult\":{},\"provider_calls\":{},\"provider_secs\":{:.3},\"max_x_flows\":{},\"layer_a_loaded\":{},\"layer_a_route\":{},\"layer_a_saved\":{},\"layer_a_rejected\":{},\"rickard\":{},\"closure\":{},\"scaling_entries\":{},\"scaling_zero\":{},\"check_secs\":{:.3}}},\"arena_bytes\":{},\"fresh\":[{}]}}",
+        errs.is_empty(), info, t0.elapsed().as_secs_f64(), el.join(","), st.decomps, st.identity, st.all_killed, st.targets, st.sum_mult, st.provider_calls, st.provider_secs, st.max_x_flows, st.layer_a_loaded, st.layer_a_route, st.layer_a_saved, st.layer_a_rejected, st.rickard, st.closure, st.scaling_entries, st.scaling_zero, st.check_secs, by.total(), tl.join(",")
     );
 }
 
@@ -565,6 +566,9 @@ fn cmd_run(args: &[String], replay: bool) {
     }
     if replay {
         base.push("--replay".into());
+    }
+    if flag(args, "--stamp-route") {
+        base.push("--stamp-route".into());
     }
     let tlog = format!("{}.targets", out);
     let mut hs = vec![];

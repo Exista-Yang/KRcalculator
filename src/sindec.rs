@@ -96,10 +96,18 @@ pub struct SIndecOpts {
     pub seed: u64,
     /// Foam_N pruning (None = unpruned), fixed for the life of the builder
     pub prune_n: Option<u8>,
+    /// M5c route stamp: a layer-A file is accepted if its header equals the current one up to
+    /// the cost-table token (`costs=ALG:RECSrecs:HASH`, compared as `costs=ALG`); the provider
+    /// route (chain, caps, slowdown, solver generation, ladder and template stamps, key) must still
+    /// match. Sound because every loaded map is re-certified (`target_pairs`: ends, degrees, D14
+    /// scaling, then Π∘Ι, form and genuineness in `dec_one`; `closure_gens`: `certify_closure`),
+    /// whichever table found it. Files are always written with the full stamp. Default false (the
+    /// M5b behaviour: exact header match).
+    pub layer_a_route_stamp: bool,
 }
 impl Default for SIndecOpts {
     fn default() -> Self {
-        SIndecOpts { cache_dir: None, budget: Budget::default(), check_points: 2, seed: 0x5d5e_c001, prune_n: None }
+        SIndecOpts { cache_dir: None, budget: Budget::default(), check_points: 2, seed: 0x5d5e_c001, prune_n: None, layer_a_route_stamp: false }
     }
 }
 
@@ -116,6 +124,8 @@ pub struct DecStats {
     pub max_x_flows: u64,
     pub idempotents: usize,
     pub layer_a_loaded: usize,
+    /// of the loaded: accepted by the route stamp only (another cost table, M5c)
+    pub layer_a_route: usize,
     pub layer_a_saved: usize,
     pub layer_a_rejected: usize,
     pub rickard: usize,
@@ -402,6 +412,18 @@ impl<F: Field, P: HomProvider<F> + ?Sized> DecHom<F> for P {
             Err(ms) => Err(prov_fail(ms)),
         }
     }
+}
+
+/// A layer-A header with the cost-table token reduced to its solver generation
+/// (`costs=hs-kl1:273recs:b8c4…` -> `costs=hs-kl1`), for `SIndecOpts::layer_a_route_stamp`.
+pub fn route_header(h: &str) -> String {
+    h.split(' ')
+        .map(|t| match t.strip_prefix("costs=") {
+            Some(v) => format!("costs={}", v.split(':').next().unwrap_or("")),
+            None => t.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 // ------------------------------------------------------------------ provider construction (D8)
@@ -1133,13 +1155,16 @@ impl<F: Field> SIndec<F> {
         let Some(path) = self.layer_a_path(key) else { return Ok(None) };
         let Ok(text) = std::fs::read_to_string(&path) else { return Ok(None) };
         let (h, body) = text.split_once('\n').unwrap_or((text.as_str(), ""));
-        if h != self.layer_a_header(key) {
+        let want_h = self.layer_a_header(key);
+        let by_route = h != want_h;
+        if by_route && !(self.opts.layer_a_route_stamp && route_header(h) == route_header(&want_h)) {
             self.stats.layer_a_rejected += 1;
             return Ok(None);
         }
         match crate::smapio::import(&mut self.ar, body) {
             Ok(v) if v.len() == want => {
                 self.stats.layer_a_loaded += 1;
+                self.stats.layer_a_route += by_route as usize;
                 Ok(Some(v))
             }
             Ok(v) => {
