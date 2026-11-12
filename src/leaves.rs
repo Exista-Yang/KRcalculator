@@ -29,6 +29,8 @@ use std::time::Instant;
 
 /// provider stamp suffix of Stage 0 (layer-A headers)
 pub const STAGE0_STAMP: &str = "stage0=ProductClosure(v1,inner-first)";
+/// stamp suffix with `product_first`
+pub const STAGE0_STAMP_PF: &str = "stage0=ProductClosure(v1,product-first)";
 
 /// A product factorization of a closure word (Stage 0).
 #[derive(Clone, Debug)]
@@ -169,7 +171,6 @@ impl<F: Field> ProductClosure<F> {
     /// The product closure (Stage 0) of the word of `lp`, certified.
     pub fn product_closure(&mut self, ar: &mut Arena<F>, s: &mut Schur, lp: ExprId, p: Tid, outs: bool, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
         let t0 = Instant::now();
-        let lam = ar.lam().to_vec();
         let w = ar.expr_of(lp).rungs.clone();
         let Some(fac) = product_factorization(s, &w, p, 256) else {
             return Err(Self::miss(format!("stage0: {} is not a product type", s.table(p).fmt()), MissKind::Refused));

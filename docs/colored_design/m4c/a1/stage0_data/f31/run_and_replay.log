@@ -1,0 +1,12 @@
+closure 0,0,3/3,0,0/0,3,0 OK: ins 1 outs 1 (0.07 s; layer A loaded 0 saved 2 rejected 0)
+closure 0,3,0/0,0,3/3,0,0 OK: ins 1 outs 1 (0.29 s; layer A loaded 0 saved 4 rejected 0)
+closure 1,0,2/2,0,1/0,3,0 OK: ins 3 outs 3 (0.01 s; layer A loaded 0 saved 6 rejected 0)
+closure 1,2,0/0,0,3/2,1,0 OK: ins 3 outs 3 (4.14 s; layer A loaded 0 saved 8 rejected 0)
+closure 0,3,0/1,0,2/2,0,1 OK: ins 3 outs 3 (0.05 s; layer A loaded 0 saved 10 rejected 0)
+STAGE0 field=F_2147483647 replay=false certified 5/5
+closure 0,0,3/3,0,0/0,3,0 OK: ins 1 outs 1 (0.05 s; layer A loaded 2 saved 0 rejected 0)
+closure 0,3,0/0,0,3/3,0,0 OK: ins 1 outs 1 (0.00 s; layer A loaded 4 saved 0 rejected 0)
+closure 1,0,2/2,0,1/0,3,0 OK: ins 3 outs 3 (0.00 s; layer A loaded 6 saved 0 rejected 0)
+closure 1,2,0/0,0,3/2,1,0 OK: ins 3 outs 3 (0.03 s; layer A loaded 8 saved 0 rejected 0)
+closure 0,3,0/1,0,2/2,0,1 OK: ins 3 outs 3 (0.01 s; layer A loaded 10 saved 0 rejected 0)
+STAGE0 field=F_2147483647 replay=true certified 5/5

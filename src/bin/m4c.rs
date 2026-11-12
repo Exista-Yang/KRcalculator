@@ -7,7 +7,7 @@
 //!     word flows, and the exact step calls Hom^d(W_{t'}·ρ, W_t) for d in supp G_{t'->t} with
 //!     their unknown counts (`homprov::hom_unknowns`, the replica of hu.py), plus the M5b
 //!     whole-ladder calls for comparison. Also checks the four hu.py numbers of C_m4c.
-//! m4c stage0 --field 31|32b --cache DIR [--costs PATH] [--replay] [--types all|product]
+//! m4c stage0 --field 31|32b --cache DIR [--costs PATH] [--replay] [--types all|product] [--product-first]
 //!     Stage 0 (M4C_PLAN §3.2): closure generators of the product types through
 //!     `leaves::ProductClosure` around the production chain, in a SIndec with layer A in DIR;
 //!     `--replay` uses a provider that refuses every call (everything must load from layer A).
@@ -342,8 +342,15 @@ fn stage0<F: Field>(args: &[String]) {
     let replay = flag(args, "--replay");
     std::fs::create_dir_all(cache.join("layer_a")).unwrap();
     let (chain, stamp) = provider_for_stamped::<F>(&lam, costs.as_deref(), 1.0);
-    let stamp = format!("{} {}", stamp, krhom::leaves::STAGE0_STAMP);
-    let prov: Box<dyn HomProvider<F>> = if replay { Box::new(NoProvider) } else { Box::new(krhom::leaves::ProductClosure::new(chain)) };
+    let pf = flag(args, "--product-first");
+    let stamp = format!("{} {}", stamp, if pf { krhom::leaves::STAGE0_STAMP_PF } else { krhom::leaves::STAGE0_STAMP });
+    let prov: Box<dyn HomProvider<F>> = if replay {
+        Box::new(NoProvider)
+    } else {
+        let mut pc = krhom::leaves::ProductClosure::new(chain);
+        pc.product_first = pf;
+        Box::new(pc)
+    };
     let opts = SIndecOpts { cache_dir: Some(cache.clone()), prune_n: Some(n), ..SIndecOpts::default() };
     let mut sd: SIndec<F> = SIndec::with_stamp(&lam, prov, stamp, opts);
     let only_prod = opt(args, "--types").map_or(true, |v| v == "product");
