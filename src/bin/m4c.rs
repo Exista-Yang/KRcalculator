@@ -211,6 +211,20 @@ fn census_job(s: &mut Schur, sc: &mut StepCache, p: Tid, budget: u128, out: &mut
                 if mx > budget {
                     sum.over_budget += 1;
                 }
+                if mx > budget {
+                    // alternative reduced words of t (≤ 5 rungs): the cheapest word for this step
+                    let alts = reduced_words(s, *t, 5, 400_000);
+                    let mut best: Option<(u128, Vec<Rung>)> = None;
+                    for aw in &alts {
+                        let c = degs.iter().map(|&d| unk2(&lam, &src, aw, d)).max().unwrap_or(0);
+                        if best.as_ref().map_or(true, |b| c < b.0) {
+                            best = Some((c, aw.clone()));
+                        }
+                    }
+                    if let Some((c, aw)) = best {
+                        out.push(format!("    (alternatives: {} reduced words of {} with ≤ 5 rungs; cheapest for this step: {} at {} unknowns)", alts.len(), s.table(*t).fmt(), wstr(&aw), sep(c)));
+                    }
+                }
                 out.push(format!(
                     "    step {} -> {}: G = {}: exact Hom^d({} , {}) d in {:?}: {} unknowns (window {}; K-window {}){}",
                     s.table(*tp).fmt(),

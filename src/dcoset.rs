@@ -655,3 +655,40 @@ pub fn grass(t_from: &Table, t_to: &Table, r: &Rung) -> Grass {
     let local_lam: Vec<u8> = (0..q.nr as usize).map(|i| q.get(i, k)).filter(|&a| a > 0).collect();
     Grass { q, l, z, m_from, m_to, local_lam, k_uprights: (k, k + 1) }
 }
+
+/// All words of at most `max_len` rungs (at most `cap` words visited, breadth first) that are
+/// reduced for t (`reduced_for`), by ascending flows.
+pub fn reduced_words(s: &mut Schur, t: Tid, max_len: usize, cap: usize) -> Vec<Vec<Rung>> {
+    let lam = s.lam.clone();
+    let mu = s.table(t).cols();
+    let n = lam.len();
+    let mut q: VecDeque<Vec<Rung>> = VecDeque::new();
+    q.push_back(vec![]);
+    let mut seen = 0usize;
+    let mut out = vec![];
+    while let Some(w) = q.pop_front() {
+        seen += 1;
+        if seen > cap {
+            break;
+        }
+        let top = top_labels(&lam, &w);
+        if top == mu && reduced_for(s, &w, t).ok() {
+            out.push(w.clone());
+        }
+        if w.len() >= max_len {
+            continue;
+        }
+        for i in 0..n.saturating_sub(1) {
+            for dir in [Dir::E, Dir::F] {
+                let giver = if dir == Dir::E { top[i + 1] } else { top[i] } as usize;
+                for r in 1..=giver {
+                    let mut w2 = w.clone();
+                    w2.push(Rung { i, dir, r });
+                    q.push_back(w2);
+                }
+            }
+        }
+    }
+    out.sort_by_key(|w| crate::schur::flows(&lam, w));
+    out
+}
