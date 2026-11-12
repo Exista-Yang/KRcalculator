@@ -1,0 +1,10 @@
+lambda: 3,3,3
+field: F32b
+label: f32b
+code commit: f21e6e6 (branch colored-m5)
+layer-A stamps: krhom-sindec v2 ladfn=schur.ladder_minflow.v1 tmpl_alg=hs1.lcx1 prov=homprov[hs-kl1] maxl=3 costs=hs-kl1:273recs:b8c4807fa14298b4 slowdown=1 chain=S0-2,Exact(l3,600s),S3-6
+files: layer_a 1540, tmpl 1122
+restore: cat layerA_tmpl.tar.gz.part-* | tar -C CACHE_DIR -xzf -   (then KRHOM_COSTS_ANY_HOST=1 libbuild run/replay --cache CACHE_DIR --costs tests/data/homprov/costs_333_m5c.txt --stamp-route)
+note: layer A mixes files stamped with the M5b table (costs=hs-kl1:273recs:b8c4807fa14298b4) and the M5c table (costs_333_m5c.txt); load with --stamp-route (every loaded map is re-certified)
+sha256:
+fa2a1efb7a8792a692a92ae7ac29afd6141dcf8a292e342b89c254e336b81bbc  layerA_tmpl.tar.gz.part-000

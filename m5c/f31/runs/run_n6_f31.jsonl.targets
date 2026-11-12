@@ -1,3 +1,6 @@
 {"p":"0,3,0/1,0,2/2,0,1","q":"closure-ins","s":0,"mult":3,"secs":0.171,"summary":"Chain tiers [0, 1, 2, 0, 0, 0, 0]"}
 {"p":"1,0,2/2,0,1/0,3,0","q":"closure-ins","s":0,"mult":3,"secs":0.253,"summary":"Chain tiers [0, 1, 2, 0, 0, 0, 0]"}
 {"p":"1,2,0/0,0,3/2,1,0","q":"closure-ins","s":0,"mult":3,"secs":0.121,"summary":"Chain tiers [0, 1, 2, 0, 0, 0, 0]"}
+{"p":"0,3,0/1,0,2/2,0,1","q":"closure-outs","s":0,"mult":3,"secs":0.424,"summary":"Chain tiers [0, 1, 2, 0, 0, 0, 0]"}
+{"p":"1,0,2/2,0,1/0,3,0","q":"closure-outs","s":0,"mult":3,"secs":0.557,"summary":"Chain tiers [0, 1, 2, 0, 0, 0, 0]"}
+{"p":"1,2,0/0,0,3/2,1,0","q":"closure-outs","s":0,"mult":3,"secs":0.398,"summary":"Chain tiers [0, 1, 2, 0, 0, 0, 0]"}

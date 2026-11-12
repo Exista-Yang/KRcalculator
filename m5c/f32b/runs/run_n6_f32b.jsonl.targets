@@ -1,0 +1,70 @@
+{"p":"1,1,1/3,0,0/0,1,2","q":"0,2,1/3,0,0/0,1,2","s":-1,"mult":1,"secs":19.768,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,1,1/3,0,0/0,1,2","q":"0,2,1/3,0,0/0,1,2","s":1,"mult":1,"secs":0.021,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/3,0,0/0,2,1","q":"1,0,2/3,0,0/0,2,1","s":-1,"mult":1,"secs":43.617,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/3,0,0/0,2,1","q":"1,0,2/3,0,0/0,2,1","s":1,"mult":1,"secs":0.020,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/3,0,0/0,2,1","q":"1,1,1/3,0,0/0,1,2","s":-1,"mult":1,"secs":0.030,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/3,0,0/0,2,1","q":"1,1,1/3,0,0/0,1,2","s":1,"mult":1,"secs":0.029,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/1,1,1/1,0,2","q":"3,0,0/2,0,1/1,0,2","s":-4,"mult":4,"secs":1.301,"summary":"Chain tiers [0, 0, 0, 1, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/1,1,1/1,0,2","q":"3,0,0/2,0,1/1,0,2","s":-2,"mult":5,"secs":0.068,"summary":"Chain tiers [0, 0, 0, 1, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/1,1,1/1,0,2","q":"3,0,0/2,0,1/1,0,2","s":0,"mult":6,"secs":0.062,"summary":"Chain tiers [0, 0, 0, 1, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/1,1,1/1,0,2","q":"3,0,0/2,0,1/1,0,2","s":2,"mult":5,"secs":0.063,"summary":"Chain tiers [0, 0, 0, 1, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/1,1,1/1,0,2","q":"3,0,0/2,0,1/1,0,2","s":4,"mult":4,"secs":0.045,"summary":"Chain tiers [0, 0, 0, 1, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/1,1,1/1,0,2","q":"3,0,0/2,0,1/1,0,2","s":6,"mult":2,"secs":0.032,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/1,1,1/1,0,2","q":"3,0,0/2,0,1/1,0,2","s":8,"mult":1,"secs":0.006,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,1,1/2,1,0/0,1,2","q":"3,0,0/3,0,0/0,0,3","s":-1,"mult":8,"secs":1.091,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,1,1/2,1,0/0,1,2","q":"3,0,0/3,0,0/0,0,3","s":1,"mult":8,"secs":0.177,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,1,1/2,1,0/0,1,2","q":"3,0,0/3,0,0/0,0,3","s":3,"mult":6,"secs":3.187,"summary":"Chain tiers [0, 0, 0, 0, 0, 0, 0] exact 2 detect "}
+{"p":"1,1,1/2,1,0/0,1,2","q":"3,0,0/3,0,0/0,0,3","s":5,"mult":3,"secs":0.168,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,1,1/2,1,0/0,1,2","q":"3,0,0/3,0,0/0,0,3","s":7,"mult":1,"secs":0.040,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,2,1/3,0,0/0,1,2","q":"3,0,0/3,0,0/0,0,3","s":4,"mult":4,"secs":2.220,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,2,1/3,0,0/0,1,2","q":"3,0,0/3,0,0/0,0,3","s":6,"mult":2,"secs":0.198,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,2,1/3,0,0/0,1,2","q":"3,0,0/3,0,0/0,0,3","s":8,"mult":1,"secs":0.063,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"2,0,1/2,1,0/1,0,2","q":"1,1,1/1,2,0/1,0,2","s":0,"mult":1,"secs":112.001,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"2,0,1/2,1,0/1,0,2","q":"0,3,0/2,0,1/1,0,2","s":-1,"mult":1,"secs":0.008,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"2,0,1/2,1,0/1,0,2","q":"0,3,0/2,0,1/1,0,2","s":1,"mult":1,"secs":0.007,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,1,1/1,2,0/1,0,2","q":"1,1,1/1,2,0/1,1,1","s":0,"mult":1,"secs":83.091,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,1,1/1,2,0/1,0,2","q":"1,2,0/1,2,0/1,0,2","s":-1,"mult":1,"secs":0.002,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,1,1/1,2,0/1,0,2","q":"1,2,0/1,2,0/1,0,2","s":1,"mult":1,"secs":0.001,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,1,1/1,2,0/1,0,2","q":"1,2,0/1,2,0/1,1,1","s":-2,"mult":1,"secs":0.791,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,1,1/1,2,0/1,0,2","q":"1,2,0/1,2,0/1,1,1","s":0,"mult":1,"secs":0.023,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,1,1/1,2,0/1,0,2","q":"1,2,0/1,2,0/1,1,1","s":2,"mult":1,"secs":0.016,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,1,1/1,2,0/1,0,2","q":"1,1,1/2,1,0/0,3,0","s":0,"mult":1,"secs":2.263,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/1,1,1/1,0,2","q":"1,2,0/1,2,0/1,1,1","s":0,"mult":1,"secs":42.362,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/1,1,1/1,0,2","q":"2,1,0/0,3,0/1,1,1","s":0,"mult":1,"secs":0.378,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/0,2,1/2,0,1","q":"1,1,1/0,2,1/2,0,1","s":0,"mult":1,"secs":89.221,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"2,0,1/1,1,1/0,2,1","q":"2,1,0/1,2,0/0,3,0","s":-2,"mult":5,"secs":1.384,"summary":"Chain tiers [0, 0, 0, 1, 0, 0, 0] exact 0 detect "}
+{"p":"2,1,0/0,1,2/1,1,1","q":"3,0,0/0,3,0/0,3,0","s":5,"mult":3,"secs":0.742,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"2,1,0/0,1,2/1,1,1","q":"3,0,0/0,3,0/0,3,0","s":7,"mult":1,"secs":0.036,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"2,0,1/1,1,1/0,2,1","q":"2,1,0/1,2,0/0,3,0","s":0,"mult":6,"secs":0.406,"summary":"Chain tiers [0, 0, 0, 1, 0, 0, 0] exact 0 detect "}
+{"p":"2,0,1/1,1,1/0,2,1","q":"2,1,0/1,2,0/0,3,0","s":2,"mult":5,"secs":0.312,"summary":"Chain tiers [0, 0, 0, 1, 0, 0, 0] exact 0 detect "}
+{"p":"2,0,1/1,1,1/0,2,1","q":"2,1,0/1,2,0/0,3,0","s":4,"mult":4,"secs":0.242,"summary":"Chain tiers [0, 0, 0, 1, 0, 0, 0] exact 0 detect "}
+{"p":"2,0,1/1,1,1/0,2,1","q":"2,1,0/1,2,0/0,3,0","s":6,"mult":2,"secs":0.202,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"2,0,1/1,1,1/0,2,1","q":"2,1,0/1,2,0/0,3,0","s":8,"mult":1,"secs":0.101,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"2,1,0/1,1,1/0,3,0","q":"2,0,1/1,0,2/0,3,0","s":-1,"mult":1,"secs":60.569,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"2,1,0/1,1,1/0,3,0","q":"2,0,1/1,0,2/0,3,0","s":1,"mult":1,"secs":0.043,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/0,0,3/2,1,0","q":"3,0,0/0,3,0/0,3,0","s":3,"mult":2,"secs":2.995,"summary":"Chain tiers [0, 0, 0, 0, 0, 0, 0] exact 1 detect "}
+{"p":"1,2,0/0,0,3/2,1,0","q":"3,0,0/0,3,0/0,3,0","s":5,"mult":1,"secs":2.655,"summary":"Chain tiers [0, 0, 0, 0, 0, 0, 1] exact 0 detect "}
+{"p":"0,1,2/2,0,1/1,2,0","q":"0,3,0/2,0,1/1,2,0","s":-4,"mult":1,"secs":181.046,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/2,0,1/1,2,0","q":"0,3,0/2,0,1/1,2,0","s":-2,"mult":1,"secs":0.093,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/2,0,1/1,2,0","q":"0,3,0/2,0,1/1,2,0","s":0,"mult":2,"secs":0.091,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/2,0,1/1,2,0","q":"0,3,0/2,0,1/1,2,0","s":2,"mult":1,"secs":0.108,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/2,0,1/1,2,0","q":"0,3,0/2,0,1/1,2,0","s":4,"mult":1,"secs":0.054,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/2,0,1/1,2,0","q":"1,1,1/2,1,0/0,3,0","s":-5,"mult":1,"secs":0.026,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/2,0,1/1,2,0","q":"1,1,1/2,1,0/0,3,0","s":-3,"mult":2,"secs":0.084,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/2,0,1/1,2,0","q":"1,1,1/2,1,0/0,3,0","s":-1,"mult":3,"secs":0.094,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/2,0,1/1,2,0","q":"1,1,1/2,1,0/0,3,0","s":1,"mult":3,"secs":0.096,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/2,0,1/1,2,0","q":"1,1,1/2,1,0/0,3,0","s":3,"mult":2,"secs":0.085,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,1,2/2,0,1/1,2,0","q":"1,1,1/2,1,0/0,3,0","s":5,"mult":1,"secs":0.027,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"0,2,1/1,0,2/2,1,0","q":"2,1,0/1,2,0/0,3,0","s":3,"mult":2,"secs":7.354,"summary":"Chain tiers [0, 0, 0, 0, 0, 0, 1] exact 0 detect "}
+{"p":"0,2,1/1,0,2/2,1,0","q":"2,1,0/1,2,0/0,3,0","s":5,"mult":1,"secs":3.322,"summary":"Chain tiers [0, 0, 0, 0, 0, 0, 1] exact 0 detect "}
+{"p":"0,3,0/1,0,2/2,0,1","q":"closure-ins","s":0,"mult":3,"secs":0.165,"summary":"Chain tiers [0, 1, 2, 0, 0, 0, 0]"}
+{"p":"1,0,2/2,0,1/0,3,0","q":"closure-ins","s":0,"mult":3,"secs":0.165,"summary":"Chain tiers [0, 1, 2, 0, 0, 0, 0]"}
+{"p":"1,2,0/0,0,3/2,1,0","q":"closure-ins","s":0,"mult":3,"secs":0.119,"summary":"Chain tiers [0, 1, 2, 0, 0, 0, 0]"}
+{"p":"0,3,0/1,0,2/2,0,1","q":"closure-outs","s":0,"mult":3,"secs":0.375,"summary":"Chain tiers [0, 1, 2, 0, 0, 0, 0]"}
+{"p":"1,0,2/2,0,1/0,3,0","q":"closure-outs","s":0,"mult":3,"secs":0.417,"summary":"Chain tiers [0, 1, 2, 0, 0, 0, 0]"}
+{"p":"1,2,0/0,0,3/2,1,0","q":"closure-outs","s":0,"mult":3,"secs":0.387,"summary":"Chain tiers [0, 1, 2, 0, 0, 0, 0]"}
+{"p":"1,2,0/0,1,2/2,0,1","q":"3,0,0/0,3,0/0,3,0","s":-4,"mult":1,"secs":121.903,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/0,1,2/2,0,1","q":"3,0,0/0,3,0/0,3,0","s":-2,"mult":2,"secs":0.105,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/0,1,2/2,0,1","q":"3,0,0/0,3,0/0,3,0","s":0,"mult":3,"secs":0.062,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/0,1,2/2,0,1","q":"3,0,0/0,3,0/0,3,0","s":2,"mult":2,"secs":0.105,"summary":"Chain tiers [0, 0, 1, 0, 0, 0, 0] exact 0 detect "}
+{"p":"1,2,0/0,1,2/2,0,1","q":"3,0,0/0,3,0/0,3,0","s":4,"mult":1,"secs":0.026,"summary":"Chain tiers [0, 1, 0, 0, 0, 0, 0] exact 0 detect "}
