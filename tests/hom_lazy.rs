@@ -177,3 +177,18 @@ fn kernel_lazy_property() {
     assert!(early >= 10, "too few early stops: {}", early);
     assert!(reins >= 5, "too few reinsertions: {}", reins);
 }
+
+/// M5c: the deduplicated equations (rows normalized to leading coefficient 1, duplicates
+/// dropped) and the heap-driven sparse sweep of `kernel_lazy` give the reference bases on
+/// windows with a zero label and with label 4 (the shapes of the (3,3,3) intermediate blocks,
+/// where most rows are duplicates and rows span many columns), and on a both-sided 3-strand
+/// window
+#[test]
+fn m5c_dedup_sparse_sweep_equals_reference() {
+    let mut total = 0;
+    total += check(&[2, 3, 0], "E0.1,F1.1", "F1.1,E0.1", -1..=3);
+    total += check(&[4, 2, 0], "E0.1,F1.1", "F1.1,E0.1", -1..=2);
+    total += check(&[1, 2, 2], "E1.1,E0.2,E1.1", "E0.1,E1.2,E0.1", -1..=3);
+    total += check(&[1, 2, 2], "E0.1,E1.2,E0.1", "E1.1,E0.2,E1.1", -1..=3);
+    assert!(total >= 6, "too few maps compared: {}", total);
+}
