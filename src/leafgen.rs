@@ -1259,6 +1259,16 @@ pub struct ChainReport {
 /// the theorem-level certificate (`add_thm_assoc`, marked). Templates are cached per window pair
 /// within the arena's library by the caller's `cache` map.
 pub fn realize_chain<F: Field>(ar: &mut Arena<F>, ch: &crate::rexplan::Chain, cache: &mut std::collections::HashMap<(crate::rexplan::MoveKind, Vec<u8>, Vec<Rung>, Vec<Rung>), TmplId>, seed: u64) -> Result<(MapId, ChainReport), String> {
+    realize_chain_opts(ar, ch, cache, seed, false)
+}
+
+/// `realize_chain` with `persistable`: numerically certified Assoc moves (whose constants live
+/// in the arena only and are not part of layer A, A2 finding) are realized instead as the same
+/// identity matching written as a Pull closed-form template on the move's window, certified by
+/// `build_in` (`certify_added`; Added templates are re-certified by smapio on import). The
+/// theorem-level Assoc (marked, re-checked on import) is unchanged. Used by the production pair
+/// route (B4w), whose maps must survive a layer-A save and load.
+pub fn realize_chain_opts<F: Field>(ar: &mut Arena<F>, ch: &crate::rexplan::Chain, cache: &mut std::collections::HashMap<(crate::rexplan::MoveKind, Vec<u8>, Vec<Rung>, Vec<Rung>), TmplId>, seed: u64, persistable: bool) -> Result<(MapId, ChainReport), String> {
     use crate::rexplan::MoveKind;
     let lam = ar.lam().to_vec();
     let mut rep = ChainReport::default();
@@ -1268,6 +1278,25 @@ pub fn realize_chain<F: Field>(ar: &mut Arena<F>, ch: &crate::rexplan::Chain, ca
         let src = ar.expr(SExpr::new(&lam, &ch.words[k])?);
         let tgt = ar.expr(SExpr::new(&lam, &ch.words[k + 1])?);
         let step = match mv.kind {
+            MoveKind::Assoc if persistable && mv.labels.iter().map(|&a| a as u128).sum::<u128>() > 0 && SExpr::new(&mv.labels, &mv.src).map(|e| e.nflows() <= ASSOC_CERT_FLOWS as u128).unwrap_or(false) => {
+                let key = (MoveKind::FlagMatch, mv.labels.clone(), mv.src.clone(), mv.tgt.clone());
+                let t = match cache.get(&key) {
+                    Some(&t) => t,
+                    None => {
+                        let cf = ClosedForm::new("rex assoc (as Pull template)", CfKind::Pull, win(&mv.labels, &mv.src), win(&mv.labels, &mv.tgt))?;
+                        if cf.deg != 0 {
+                            return Err(format!("realize_chain: {} has degree {}", mv.fmt(), cf.deg));
+                        }
+                        let b = build_in(ar, &cf, seed + 200 + k as u64)?;
+                        rep.templates += 1;
+                        rep.template_secs += b.interp_secs + b.cert.secs;
+                        rep.lines.push(format!("{} as Pull template, certified ({:.2} s)", mv.fmt(), b.interp_secs + b.cert.secs));
+                        cache.insert(key, b.tmpl);
+                        b.tmpl
+                    }
+                };
+                ar.add(MapNode::Local { src, tgt, at: mv.at, first: mv.first, tmpl: t }, "rex chain assoc (template)")?
+            }
             MoveKind::Assoc => {
                 let m = ar.add(MapNode::Elem { kind: ElemKind::Assoc, src, tgt, at: mv.at, upright: mv.first, scalar: F::one() }, "rex chain assoc")?;
                 let (ws, wt) = {

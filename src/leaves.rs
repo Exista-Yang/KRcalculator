@@ -1015,13 +1015,18 @@ impl<F: Field> HomProvider<F> for Leaves {
 
 // ------------------------------------------------------------------ production wiring (A3)
 
-/// The M4c production chain for closure (A3), built around the frozen production chain
-/// `sindec::provider_for_stamped` without editing sindec.rs: Stage 0 product closure first for
-/// product types (A1 report §4: before Exact), then the production chain, then Leaves for
-/// closure calls (`leaves_first = false`, M4C_PLAN §0.2 "Leaves last"), or Leaves first for
-/// closure calls (`leaves_first = true`; the G-L5 measurements of A2 show closure Leaves maps of
-/// ≤ 10² DAG nodes). Leaves refuses `full`, `pairs` and `end0`, which go to the chain. The stamp
-/// extends the chain stamp, so layer A built with it is separate from the M5c layer A.
+/// The M4c production chain (A3 closure wiring + B4w pair wiring), built around the frozen
+/// production chain `sindec::provider_for_stamped` without editing sindec.rs:
+/// - closure calls: Stage 0 product closure first for product types (A1 report §4: before
+///   Exact), then the production chain, then Leaves (`leaves_first = false`, M4C_PLAN §0.2
+///   "Leaves last"), or Leaves first (`leaves_first = true`);
+/// - pair calls (B4w): the production chain first; on failure, `leaf_pairs` (rex-class targets:
+///   `rex_class_pairs`; other targets: `pairs_leaves`, Lemma A within the Leaves budget plus
+///   rex-chain exit/entry), Leaves last;
+/// - `full`, `end0` and closure with e_p: the chain alone.
+///
+/// The stamp extends the chain stamp (`STAGE0_STAMP_PF`, `LEAVES_STAMP(order)`,
+/// `LEAF_PAIRS_STAMP`), so layer A built with it is separate from the M5c layer A.
 pub fn provider_for_stamped_m4c<F: Field>(lam: &[u8], costs: Option<&std::path::Path>, slowdown: f64, leaves_first: bool) -> (Box<dyn HomProvider<F>>, String) {
     let (chain, stamp) = crate::sindec::provider_for_stamped::<F>(lam, costs, slowdown);
     let mut pc = ProductClosure::new(chain);
@@ -1029,7 +1034,110 @@ pub fn provider_for_stamped_m4c<F: Field>(lam: &[u8], costs: Option<&std::path::
     let mut lv = Leaves::new();
     lv.costs = costs.and_then(|p| CostTable::load(p).ok());
     let order = if leaves_first { "leaves-first" } else { "leaves-last" };
-    (Box::new(ClosureLeaves { inner: Box::new(pc), leaves: lv, leaves_first, last_fail: None }), format!("{} {} {}({})", stamp, STAGE0_STAMP_PF, LEAVES_STAMP, order))
+    (
+        Box::new(ClosureLeaves { inner: Box::new(pc), leaves: lv, leaves_first, leaf_pairs: true, last_fail: None }),
+        format!("{} {} {}({}) {}", stamp, STAGE0_STAMP_PF, LEAVES_STAMP, order, LEAF_PAIRS_STAMP),
+    )
+}
+
+/// The A3 constructor (closure wiring only, A3 stamp): Leaves is never asked for pairs.
+pub fn provider_for_stamped_m4c_a3<F: Field>(lam: &[u8], costs: Option<&std::path::Path>, slowdown: f64, leaves_first: bool) -> (Box<dyn HomProvider<F>>, String) {
+    let (chain, stamp) = crate::sindec::provider_for_stamped::<F>(lam, costs, slowdown);
+    let mut pc = ProductClosure::new(chain);
+    pc.product_first = true;
+    let mut lv = Leaves::new();
+    lv.costs = costs.and_then(|p| CostTable::load(p).ok());
+    let order = if leaves_first { "leaves-first" } else { "leaves-last" };
+    (Box::new(ClosureLeaves { inner: Box::new(pc), leaves: lv, leaves_first, leaf_pairs: false, last_fail: None }), format!("{} {} {}({})", stamp, STAGE0_STAMP_PF, LEAVES_STAMP, order))
+}
+
+/// provider stamp suffix of the B4w pair route (layer-A headers)
+pub const LEAF_PAIRS_STAMP: &str = "leafpairs=LeafPairs(v1,last,rex-chain|lemmaA+exit-entry,plan=exact1e5/len12/visit6e4,assoc-as-template,persistable-only)";
+
+/// Planner options of the production pair route (those of the B2 `gp0 --b4` runs).
+pub fn leaf_pair_plan_opts() -> crate::rexplan::PlanOpts {
+    crate::rexplan::PlanOpts { exact_budget: 100_000, max_len: 12, max_visit: 60_000, ..crate::rexplan::PlanOpts::default() }
+}
+
+/// Elem nodes reachable from `roots` whose constant is not persisted in layer A (every Elem node
+/// except the theorem-level Assoc nodes, which smapio marks and re-checks on import). A layer-A
+/// file containing one would be rejected on load in a fresh session (A2 finding), so the
+/// production pair route refuses such maps.
+pub fn unpersistable_elems<F: Field>(ar: &Arena<F>, roots: &[MapId]) -> Vec<MapId> {
+    let mut out = vec![];
+    let mut stack = roots.to_vec();
+    let mut seen = std::collections::HashSet::new();
+    while let Some(m) = stack.pop() {
+        if !seen.insert(m) {
+            continue;
+        }
+        match ar.node(m) {
+            MapNode::Elem { kind, .. } => {
+                let thm = *kind == crate::smap::ElemKind::Assoc && ar.elem_windows(m).map(|(a, b)| crate::leafgen::thm_assoc_registered(a, b)).unwrap_or(false);
+                if !thm {
+                    out.push(m);
+                }
+            }
+            MapNode::Comp(g, f) => {
+                stack.push(*g);
+                stack.push(*f);
+            }
+            MapNode::Lin(t) => stack.extend(t.iter().map(|x| x.1)),
+            MapNode::Kron(f, _) => stack.push(*f),
+            _ => {}
+        }
+    }
+    out.sort_unstable();
+    out
+}
+
+/// Route of a `leaf_pairs` result.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LeafPairRoute {
+    /// X is a reduced expression of q (s = 0, mult 1): π, ι are realized rex chains
+    RexClass,
+    /// Lemma A leaves at q plus rex-chain exit/entry
+    LemmaA,
+}
+
+/// B4w: the Leaves pair route of the production provider. Rex-class targets (X reduced for q,
+/// s = 0, mult 1) go to `rex_class_pairs`; the others to `pairs_leaves` (whose Lemma A steps obey
+/// the Leaves budget rule: ≤ 1e5 unknowns, ≤ 4e5 with an uncensored record, the whole-word
+/// fallback included). Everything runs inside a mark/commit; the result is refused when a map
+/// uses an Elem constant that layer A cannot persist. Acceptance is `certify_pairs` here and
+/// then sindec's own checks (dechom_postcheck, D14 scaling, Π∘Ι = id, kept multiset, layer-A
+/// save and re-certified load), exactly as for any provider.
+#[allow(clippy::too_many_arguments)]
+pub fn leaf_pairs<F: Field>(lv: &Leaves, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, eq: Option<MapId>, sdeg: i32, mult: usize) -> Result<(Pairs<F>, LeafPairRoute, LeafStats), String> {
+    if eq.is_some() {
+        return Err("Leaves pairs: target with an idempotent e_q (not implemented)".into());
+    }
+    let xw = ar.expr_of(x).rungs.clone();
+    let rex = sdeg == 0 && mult == 1 && crate::dcoset::reduced_for(s, &xw, q).ok();
+    let opts = leaf_pair_plan_opts();
+    let mark = ar.mark();
+    let mut st = LeafStats::default();
+    let r = if rex {
+        rex_class_pairs_opts(ar, s, x, q, lq, &opts, lv.seed ^ 0xb4b4, true).map(|(p, _)| (p, LeafPairRoute::RexClass))
+    } else {
+        pairs_leaves_opts(lv, ar, s, x, q, lq, sdeg, mult, &opts, &mut st, true).map(|(p, _)| (p, LeafPairRoute::LemmaA))
+    };
+    let (p, route) = match r {
+        Ok(v) => v,
+        Err(e) => {
+            ar.commit(mark, &[]);
+            return Err(format!("Leaves pairs ({}): {}", if rex { "rex class" } else { "Lemma A" }, e));
+        }
+    };
+    let roots: Vec<MapId> = p.iotas.iter().chain(&p.pis).copied().collect();
+    let bad = unpersistable_elems(ar, &roots);
+    if !bad.is_empty() {
+        ar.commit(mark, &[]);
+        return Err(format!("Leaves pairs: {} Elem node(s) with constants not persisted in layer A", bad.len()));
+    }
+    let kept = ar.commit(mark, &roots);
+    let n = p.iotas.len();
+    Ok((Pairs { iotas: kept[..n].to_vec(), pis: kept[n..].to_vec(), form: p.form }, route, st))
 }
 
 /// The inner provider plus Leaves for closure calls without e_p (before or after the inner
@@ -1039,7 +1147,15 @@ pub struct ClosureLeaves<F: Field> {
     pub inner: Box<dyn HomProvider<F>>,
     pub leaves: Leaves,
     pub leaves_first: bool,
+    /// B4w: pair calls the inner provider fails go to `leaf_pairs` (Leaves last)
+    pub leaf_pairs: bool,
     last_fail: Option<SearchStats>,
+}
+
+impl<F: Field> ClosureLeaves<F> {
+    pub fn new(inner: Box<dyn HomProvider<F>>, leaves: Leaves, leaves_first: bool, leaf_pairs: bool) -> Self {
+        ClosureLeaves { inner, leaves, leaves_first, leaf_pairs, last_fail: None }
+    }
 }
 
 impl<F: Field> HomProvider<F> for ClosureLeaves<F> {
@@ -1054,7 +1170,37 @@ impl<F: Field> HomProvider<F> for ClosureLeaves<F> {
     fn pairs(&mut self, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, eq: Option<MapId>, sdeg: i32, mult: usize, b: &Budget) -> Result<(Pairs<F>, SearchStats), Vec<Missing>> {
         let r = self.inner.pairs(ar, s, x, q, lq, eq, sdeg, mult, b);
         self.last_fail = if r.is_err() { self.inner.failed_stats() } else { None };
-        r
+        let errs = match r {
+            Ok(v) => return Ok(v),
+            Err(e) if !self.leaf_pairs || eq.is_some() => return Err(e),
+            Err(e) => e,
+        };
+        let mut acc = self.last_fail.clone().unwrap_or_default();
+        let t0 = Instant::now();
+        let r = leaf_pairs(&self.leaves, ar, s, x, q, lq, eq, sdeg, mult);
+        let secs = t0.elapsed().as_secs_f64();
+        match r {
+            Ok((p, route, st)) => {
+                if std::env::var_os("KRHOM_TRACE").is_some() {
+                    eprintln!("[leafpairs] q {} s {} mult {}: certified by {:?} in {:.1} s (inner: {})", s.table(q).fmt(), sdeg, mult, route, secs, errs.first().map(|m| m.what.as_str()).unwrap_or(""));
+                }
+                let ss = SearchStats { candidates: p.pis.len(), evaluated: p.pis.len(), secs, exact_calls: st.exact_calls, exact_secs: st.exact_secs, detect: if route == LeafPairRoute::RexClass { "leaves-rex" } else { "leaves-lemmaA" }, ..SearchStats::default() };
+                acc.absorb(&ss);
+                self.last_fail = None;
+                Ok((p, acc))
+            }
+            Err(e) => {
+                if std::env::var_os("KRHOM_TRACE").is_some() {
+                    eprintln!("[leafpairs] q {} s {} mult {}: refused in {:.1} s: {}", s.table(q).fmt(), sdeg, mult, secs, e);
+                }
+                acc.absorb(&SearchStats { secs, ..SearchStats::default() });
+                self.last_fail = Some(acc);
+                let mut errs = errs;
+                errs.iter_mut().for_each(|m| m.what = format!("[inner] {}", m.what));
+                errs.push(Missing { what: format!("[Leaves] {}", e), degree: sdeg, stratum: None, got: 0, want: mult, kind: MissKind::Refused });
+                Err(errs)
+            }
+        }
     }
     fn end0(&mut self, ar: &mut Arena<F>, s: &mut Schur, l: ExprId, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
         let r = self.inner.end0(ar, s, l, b);
@@ -1121,6 +1267,12 @@ pub struct RexPairReport {
 /// π∘ι = id_{L_q} at every coset of the support of L_q (End⁰(B_q) = k and the top scalar is 1).
 /// Every map that uses the theorem-level Assoc certificate is listed in `theorem_assoc`.
 pub fn rex_class_pairs<F: Field>(ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, opts: &crate::rexplan::PlanOpts, seed: u64) -> Result<(Pairs<F>, RexPairReport), String> {
+    rex_class_pairs_opts(ar, s, x, q, lq, opts, seed, false)
+}
+
+/// `rex_class_pairs` with `persistable` (`leafgen::realize_chain_opts`).
+#[allow(clippy::too_many_arguments)]
+pub fn rex_class_pairs_opts<F: Field>(ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, opts: &crate::rexplan::PlanOpts, seed: u64, persistable: bool) -> Result<(Pairs<F>, RexPairReport), String> {
     let t0 = Instant::now();
     let lam = ar.lam().to_vec();
     let (xw, lw) = (ar.expr_of(x).rungs.clone(), ar.expr_of(lq).rungs.clone());
@@ -1131,8 +1283,8 @@ pub fn rex_class_pairs<F: Field>(ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q:
     let ch_pi = pl.plan(s, q, &xw, &lw, opts)?;
     let ch_io = pl.plan(s, q, &lw, &xw, opts)?;
     let mut cache = HashMap::new();
-    let (pi, rp) = crate::leafgen::realize_chain(ar, &ch_pi, &mut cache, seed)?;
-    let (io, ri) = crate::leafgen::realize_chain(ar, &ch_io, &mut cache, seed + 1000)?;
+    let (pi, rp) = crate::leafgen::realize_chain_opts(ar, &ch_pi, &mut cache, seed, persistable)?;
+    let (io, ri) = crate::leafgen::realize_chain_opts(ar, &ch_io, &mut cache, seed + 1000, persistable)?;
     let c = rep_rank_of(s, &lam, q);
     let pairs = certify_pairs(ar, x, lq, 0, &[io], &[pi], c, 1, seed ^ 0xb4)?;
     // π∘ι = id on L_q at every coset of its support (two points)
@@ -1177,6 +1329,12 @@ pub fn rex_class_pairs<F: Field>(ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q:
 /// `plan_words`; when it differs from L_q the chains come from src/rexplan.rs.
 #[allow(clippy::too_many_arguments)]
 pub fn pairs_leaves<F: Field>(lv: &Leaves, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, sdeg: i32, mult: usize, opts: &crate::rexplan::PlanOpts, st: &mut LeafStats) -> Result<(Pairs<F>, Vec<MapId>), String> {
+    pairs_leaves_opts(lv, ar, s, x, q, lq, sdeg, mult, opts, st, false)
+}
+
+/// `pairs_leaves` with `persistable` (`leafgen::realize_chain_opts`).
+#[allow(clippy::too_many_arguments)]
+pub fn pairs_leaves_opts<F: Field>(lv: &Leaves, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, sdeg: i32, mult: usize, opts: &crate::rexplan::PlanOpts, st: &mut LeafStats, persistable: bool) -> Result<(Pairs<F>, Vec<MapId>), String> {
     let lam = ar.lam().to_vec();
     let lw = ar.expr_of(lq).rungs.clone();
     let fo = lv.build_leaves(ar, s, x, &[q], LeafDir::Out, st).map_err(|e| e.what)?;
@@ -1190,12 +1348,12 @@ pub fn pairs_leaves<F: Field>(lv: &Leaves, ar: &mut Arena<F>, s: &mut Schur, x: 
         let mut cache = HashMap::new();
         if fo.word != lw {
             let ch = pl.plan(s, q, &fo.word, &lw, opts)?;
-            let (exit, _) = crate::leafgen::realize_chain(ar, &ch, &mut cache, lv.seed ^ 0xe1)?;
+            let (exit, _) = crate::leafgen::realize_chain_opts(ar, &ch, &mut cache, lv.seed ^ 0xe1, persistable)?;
             pis = pis.into_iter().map(|m| ar.add(MapNode::Comp(exit, m), "leaves pi exit")).collect::<Result<_, _>>()?;
         }
         if fi.word != lw {
             let ch = pl.plan(s, q, &lw, &fi.word, opts)?;
-            let (entry, _) = crate::leafgen::realize_chain(ar, &ch, &mut cache, lv.seed ^ 0xe2)?;
+            let (entry, _) = crate::leafgen::realize_chain_opts(ar, &ch, &mut cache, lv.seed ^ 0xe2, persistable)?;
             ios = ios.into_iter().map(|m| ar.add(MapNode::Comp(m, entry), "leaves iota entry")).collect::<Result<_, _>>()?;
         }
     }
