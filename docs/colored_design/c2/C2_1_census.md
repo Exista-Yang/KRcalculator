@@ -95,15 +95,16 @@ session were 100 % (level 4: 105 / 105, unpruned level 6: 146 / 146, both primes
 (3,3,3) level 6 to 345 / 377. Only a measured build decides.
 
 **Scan cost per knot.** Power-law fit of the measured (2,2,2) per-point scan time (1 thread, 4 jobs on the
-4 cores) against the envelope's peak Hom dimension: point_secs ≈ e^-7.17 · peakdim^0.66 over the first 32 runs
-(residuals ×0.4-4; tools/c2/project.py, runs_c2/census/projection.txt). Extrapolated (two orders of magnitude,
-and without the 94 vs 16 types per object, so treat as a lower estimate within ×10):
+4 cores) against the envelope's peak Hom dimension: after the first 32 runs the exponent was 0.66; with 45 runs
+(now including 10-12 letter knots) it is **point_secs ≈ e^-11.06 · peakdim^1.04** (residuals ×0.3-3;
+tools/c2/project.py, runs_c2/census/projection.txt), i.e. close to linear in the peak Hom dimension. Extrapolated
+(1-2 orders of magnitude, and without the 94 vs 16 types per object, so uncertain within ×3-10 either way):
 
 | class | per point | unreduced (1 296 points) | reduced only (216 points) |
 |---|---|---|---|
-| A (6_1 … 9_23) | 6-30 s | 2-11 core-h | 0.4-1.8 core-h |
-| B (8_15, 9_22, 11n_42) | 13-47 s | 5-17 core-h | 0.8-2.8 core-h |
-| C (Conway) | 38 s | 14 core-h | 2.3 core-h |
+| A (6_1 … 9_23) | 22-290 s | 8-104 core-h | 1.3-17 core-h |
+| B (8_15, 9_22, 11n_42) | 77-580 s | 28-209 core-h | 4.6-35 core-h |
+| C (Conway) | 412 s | 148 core-h | 25 core-h |
 
 Memory: the 3-strand runs peak at ≤ 0.3 GB (VmHWM) at 12 letters; the 4-strand peak complexes are 3-30× larger
 in objects, so 1-4 GB per point is the expected range [E]; 2-4 parallel points fit in 15 GB.
@@ -112,11 +113,12 @@ in objects, so 1-4 GB per point is the expected range [E]; 2-4 parallel points f
 
 | class | library | scan (if library complete) | verdict |
 |---|---|---|---|
-| A: 6_1, 7_x, 8_x (8_4, 8_6, 8_8, 8_11, 8_13, 8_14), 9_x (9_10, 9_11, 9_13, 9_17, 9_18, 9_20, 9_23) | 450 + 93 jobs (subset of level 4), max X 15 552; projected 0-14 failures | 2-11 core-h unreduced per knot and prime | **GO for a measured library build** (next step); scans GO if the build certifies the class (1-3 knots per session per prime unreduced, all reduced) |
-| B: 8_15, 9_22, 11n_42 | 555 + 93 jobs | 5-17 core-h | conditional GO (after A's library; 105 more pairs) |
-| C: Conway | 846 + 125 jobs (nearly the full level 4) | 14 core-h unreduced, 2.3 reduced | **no-go this round**; reduced-only after the full level-4 build |
+| A: 6_1, 7_x, 8_x (8_4, 8_6, 8_8, 8_11, 8_13, 8_14), 9_x (9_10, 9_11, 9_13, 9_17, 9_18, 9_20, 9_23) | 450 + 93 jobs (subset of level 4), max X 15 552; projected 0-14 failures | 8-104 core-h unreduced, 1.3-17 reduced, per knot and prime | **GO for a measured library build** (next step). Scans: GO for 6_1, 7_6, 7_7 (8-11 core-h unreduced: one session per prime with the sharded box driver) and reduced-only for the rest of A; unreduced 8_x/9_x are multi-session (box driver shards across sessions) |
+| B: 8_15, 9_22, 11n_42 | 555 + 93 jobs | 28-209 core-h unreduced, 5-35 reduced | library: conditional GO (after A's, 105 more pairs); scans: reduced-only, unreduced no-go without engine speed-up |
+| C: Conway | 846 + 125 jobs (nearly the full level 4) | 148 core-h unreduced, 25 reduced | **no-go this round**; reduced-only (multi-session) after the full level-4 build |
 | any knot, unpruned (N = 8 library) | 2 191 pairs, max X 51 840 | - | no-go (pruning is required; pruned = unpruned verified on 3 strands) |
 
 The decisive unknown is the (2,2,2,2) library certification rate; it is cheap to measure (≤ 1 h per prime for a
 first pass). Recommended first step of the next session: `libbuild run --lam 2,2,2,2 --n 4` for F31 (then F32b),
-`libbuild cover` per class, then 6_1 through sbox (box driver, sharded, `--ckpt-secs 600`).
+`libbuild cover` per class, then 6_1 through sbox (box driver, sharded, `--ckpt-secs 600`). The scan projection
+is the weakest number here; a single measured 4-strand point (sbox `point`) after the library exists replaces it.

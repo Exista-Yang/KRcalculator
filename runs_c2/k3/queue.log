@@ -46,3 +46,8 @@ Terminated
 12a_838_f32b exit 2 
 12a_1214_f32b exit 2 
 12a_1214_f31 exit 2 
+10_161_f32b exit 0 scan 756.5s
+10_161_f31 exit 0 scan 803.0s
+9_6_f31 exit 0 scan 737.3s
+12a_838_f31 exit 0 scan 1102.5s
+9_6_f32b exit 0 scan 720.2s
