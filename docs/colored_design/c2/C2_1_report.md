@@ -62,7 +62,58 @@ Command per (knot, prime) (runs_c2/k3/one.sh): `sbox --lam 2,2,2 --word W --n 4 
 unreduced, 36 reduced; one-word in-memory box loop; scaling check and χ mandatory), 4 jobs × 1 thread, queue
 ordered by the truncated envelope's peak Hom dimension (runs_c2/k3/order.txt).
 
-RESULTS_PLACEHOLDER
+**34 knots computed (both primes), 34 PASS, 0 failures.** Braid lengths 4-12; 68 runs (34 knots × 2 primes).
+Every run: F31 = F32b closure by closure; χ = `schur::decat_chi` on all 6 closures (chi_ok); the D14 scaling
+record present and passing (2 points); base-point check in the engine. All checks held for all 34 knots.
+
+**N' = 3 duality check.** wedge^2 C^3 ≅ (C^3)^* ⊗ det, so the (2,2,2) gl_3 invariant should equal the uncolored
+gl_3 homology of the *reversed* braid (engine2, examples/e2ref), up to the global shift the engine already applies.
+It does, as full polynomials (zero residual shift) for all 34 knots, unreduced and reduced. N' = 2: wedge^2 C^2 is
+the determinant (1-dimensional), so the colored invariant is that of the unknot = rank 1; this holds for all 34,
+unreduced and reduced.
+
+**N' = 4 is the new value.** wedge^2 C^4 is self-dual, so there is no duality shortcut; these N' = 4 polynomials
+(docs/colored_design/c2/gl4_222.json) are the genuinely new 2-colored gl_4 invariants. Unreduced ranks 46 … 2 206,
+reduced 25 … 2 025; the first 15 knots (by length) below, the full table in gl4_222_summary.md:
+
+| knot | word | N=4 unred | N=4 red | N=3 unred | N=3 red | N=3 vs gl_3 reversed (u / r) | χ | scaling | primes | status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 4_1 | 1 -2 1 -2 | 46 | 25 | 11 | 5 | eq / eq | yes | yes | yes | PASS |
+| 5_2 | 1 1 1 2 -1 2 | 78 | 49 | 15 | 7 | eq / eq | yes | yes | yes | PASS |
+| 6_2 | 1 1 1 -2 1 -2 | 166 | 121 | 23 | 11 | eq / eq | yes | yes | yes | PASS |
+| 6_3 | 1 1 -2 1 -2 -2 | 222 | 169 | 27 | 13 | eq / eq | yes | yes | yes | PASS |
+| 7_3 | 1 1 1 1 1 2 -1 2 | 222 | 169 | 27 | 13 | eq / eq | yes | yes | yes | PASS |
+| 7_5 | 1 1 1 1 2 -1 2 2 | 358 | 289 | 35 | 17 | eq / eq | yes | yes | yes | PASS |
+| 8_2 | 1 1 1 1 1 -2 1 -2 | 358 | 289 | 35 | 17 | eq / eq | yes | yes | yes | PASS |
+| 8_5 | 1 1 1 -2 1 1 1 -2 | 526 | 441 | 43 | 21 | eq / eq | yes | yes | yes | PASS |
+| 8_7 | -1 -1 -1 -1 2 -1 2 2 | 622 | 529 | 47 | 23 | eq / eq | yes | yes | yes | PASS |
+| 8_9 | 1 1 1 -2 1 -2 -2 -2 | 726 | 625 | 51 | 25 | eq / eq | yes | yes | yes | PASS |
+| 8_10 | -1 -1 -1 2 -1 -1 2 2 | 838 | 729 | 55 | 27 | eq / eq | yes | yes | yes | PASS |
+| 8_19 | 1 1 1 2 1 1 1 2 | 90 | 29 | 19 | 11 | eq / eq | yes | yes | yes | PASS |
+| 8_20 | 1 1 1 -2 -1 -1 -1 -2 | 118 | 81 | 19 | 9 | eq / eq | yes | yes | yes | PASS |
+| 8_21 | 1 1 1 2 -1 -1 2 2 | 286 | 225 | 31 | 15 | eq / eq | yes | yes | yes | PASS |
+| 9_3 | 1 1 1 1 1 1 1 2 -1 2 | 438 | 361 | 39 | 19 | eq / eq | yes | yes | yes | PASS |
+
+**Structure.** reduced rank(N'=4) = reduced rank(N'=3)^2 for 27 of the 34 knots (the thin ones); the 7 exceptions
+are 8_19 (29 vs 121), 10_124 (61 vs 289), 10_125 (125 vs 169), 10_139 (133 vs 441), 10_161 (173 vs 361),
+12n_235 (181 vs 361), 12n_242 (101 vs 529) — informational, not a check. The unreduced N' = 4 Poincaré polynomial
+of every amphichiral knot in the set is mirror-symmetric P(t,q) = P(1/t,1/q) (e.g. 4_1).
+
+**Checks against the library.** Pruned (prune 4) = unpruned (level-6 library) on 4_1, 5_2, 6_2, 6_3, 7_3, both
+closure-by-closure, all six closures each (runs_c2/k3/unpruned/, tools/c2/same.py). Markov words σ_1^m σ_2^{±1}
+(m = 2, 3, 4, 5) on (2,2,2) equal the 2-strand σ^m xscan of (2,2) at N' = 2, 3, 4 (reduced and unreduced), both
+primes, all 12 words (tools/c2/markov.py): this is the destabilization invariance of the σ_2 strand.
+
+**Cube / cable reference (4_1, colors 2).** Both infeasible here within 5 GB: `krhom --colored-method cube` ran
+> 90 min without finishing (it had not left the cube-assembly stage); `--colored-method cable` (6 strands) ran out
+of memory (OOM at ~3 GB). The N' = 3 duality reference (engine2) and the pruned-vs-unpruned agreement are the
+independent cross-checks that stand in for it.
+
+**Cost (prune 4, box N = 4, 216 points unreduced + 36 reduced, 1 thread, 4 jobs on 4 cores).** 45 s (4_1) to
+37 min (12a_1214, unreduced rank 2 206) per (knot, prime); VmHWM ≤ 0.3 GB except a handful of 10-12 letter knots
+that need the staged-rank memory cap raised (KRHOM_MEM_CAP_MB, --mem-mb; set to 4500 / 3200 in runs_c2/k3/one.sh).
+The queue was ordered by the truncated envelope's peak Hom dimension (runs_c2/k3/order.txt), a good cost proxy
+(section 4 fit). The remaining 151 of 185 knots are the longer braids; the projection is 150 core-h for all of them.
 
 ## 4. 4-strand census (docs/colored_design/c2/C2_1_census.md) [M + E]
 
@@ -73,4 +124,30 @@ level-6 build for the library projection; the 3-strand per-point scan cost fit f
 
 ## 5. Open problems
 
-OPEN_PLACEHOLDER
+1. **3-strand coverage is partial by time, not by capability.** 34 of 185 knots computed this session (all braid
+   lengths up to 12 among them), 0 failures. The (2,2,2) library is complete (level 4 + corner, both primes, replay
+   100 %); the remaining 151 knots are only a matter of compute (≈ 150 core-h, projected), and are resumable per
+   (knot, prime) with runs_c2/k3/queue.sh (order.txt). No mathematical or engine obstruction was seen.
+
+2. **No cube/cable reference at colors 2 here.** Both the full-cube and the 6-strand cable methods exceed 5 GB /
+   90 min on 4_1. The N' = 3 duality (engine2 reversed braid) and pruned = unpruned are the cross-checks for N' = 4;
+   an independent N' = 4 reference would need either a bigger machine for the cube or a dedicated colored reference
+   implementation. Worth adding before trusting 4-strand N' = 4 values that have no duality shortcut.
+
+3. **Staged-rank memory at N = 4.** A few 10-12 letter 3-strand knots need the staged-rank step's memory cap raised
+   (1-3.4 GB observed) above the 768 MB default; set with KRHOM_MEM_CAP_MB / --mem-mb. At 4 strands this step will be
+   larger (the box is Gr(2,4)^4, 1 296 points, peak complexes 3-30× the 3-strand ones): expect 1-4 GB per point, so
+   2-3 parallel points per 15 GB machine, not 4.
+
+4. **(2,2,2,2) library certification rate is unmeasured.** The 4-strand go/no-go rests on a projection from the
+   (3,3,3) level-6 per-X-bucket rates, which is pessimistic (the (2,2,2) builds here were 100 %, labels ≤ 4 vs ≤ 6).
+   The cheap decisive next step is `libbuild run --lam 2,2,2,2 --n 4` for one prime (≤ ~1 h projected), then `cover`.
+
+5. **4-strand scan projection is the softest number.** The fit (point_secs ∝ peakdim^1.04 over 45 3-strand runs,
+   residual ×0.3-3) is extrapolated one-to-two orders of magnitude; a single measured 4-strand box point (sbox
+   `point`, once the library exists) would replace it. Unreduced Conway (148 core-h projected) is out of reach this
+   way; reduced-only (216 points) is the realistic 4-strand unreduced-free target for the hard knots.
+
+6. **Duality was used only as a check, not a shortcut.** wedge^2 C^4 self-dual means the N' = 4 values are new; the
+   wedge^2 C^N for N = 2, 3 are dual/trivial and only serve as references. There is no analogue of the (3,3,3)
+   "N = 3 = trivial" collapse at N = 4 for (2,2,2).
