@@ -1,0 +1,50 @@
+[xengine] crossing 1/3 (+(2,2)): 3 objects -> 3 (LB 3), 2 components, 0.00s
+[xengine]   mem: before simplify 2 comps / 19 entries / 23 terms / 0.0 MB; after 19 entries / 23 terms / 0.0 MB; caches 0.0 MB; RSS tensor 4 MB end 4 MB peak 4 MB; secs decomp 0.00 transport 0.00 elim 0.00 d2 0.00
+[xengine]   stream: 1 passes, at most 3 objects held
+[xengine]   decomposed 1,1/1,1 ⊗ [E0(1)] (fibre 12) into 4 summands in 0.01s
+[xengine]   decomposed 1,1/2,0 ⊗ [F0(1)] (fibre 12) into 2 summands in 0.01s
+[xengine]   decomposed 1,1/1,1 ⊗ [E0(2)] (fibre 6) into 6 summands in 0.00s
+[xengine]   decomposed 0,2/2,0 ⊗ [E0(1)] (fibre 12) into 3 summands in 0.01s
+[xengine]   decomposed 0,2/2,0 ⊗ [E0(2)] (fibre 6) into 6 summands in 0.00s
+[xengine] crossing 2/3 (+(2,2)): 29 objects -> 7 (LB 7), 9 components, 0.03s
+[xengine]   mem: before simplify 66 comps / 735 entries / 1076 terms / 0.0 MB; after 160 entries / 223 terms / 0.0 MB; caches 0.3 MB; RSS tensor 5 MB end 5 MB peak 5 MB; secs decomp 0.02 transport 0.00 elim 0.00 d2 0.00
+[xengine]   stream: 3 passes, at most 25 objects held
+[xengine] crossing 3/3 (+(2,2)): 81 objects -> 13 (LB 11), 24 components, 0.01s
+[xengine]   mem: before simplify 198 comps / 2151 entries / 3067 terms / 0.1 MB; after 453 entries / 668 terms / 0.0 MB; caches 0.3 MB; RSS tensor 6 MB end 6 MB peak 6 MB; secs decomp 0.00 transport 0.00 elim 0.01 d2 0.00
+[xengine]   stream: 5 passes, at most 48 objects held
+[xengine] closure data: 13 objects, 3 types, 24 edges in 0.01s
+field F_2147483647
+scan 0.04s, closure data 0.01s
+hom_space calls 36 total 0.02s max 0.00s; decompositions by Hom spaces 5 (identity 4); max decomposed fibre 12
+  crossing 1 labels [2, 2]: 3 -> 3 objects (LB 3), 2 components, 0.00s
+  crossing 2 labels [2, 2]: 29 -> 7 objects (LB 7), 9 components, 0.03s
+  crossing 3 labels [2, 2]: 81 -> 13 objects (LB 11), 24 components, 0.01s
+types: [("0,2/2,0", "E0(2) F0(2)", 6), ("1,1/1,1", "E0(1) F0(1)", 6), ("1,1/2,0", "E0(2) F0(1)", 4), ("2,0/0,2", "", 1), ("2,0/1,1", "E0(1)", 2), ("2,0/2,0", "E0(2)", 1)]
+final objects (table, h, t): [("0,2/2,0", 2, -2), ("0,2/2,0", 3, -6), ("0,2/2,0", 3, -4), ("0,2/2,0", 4, -8), ("0,2/2,0", 4, -8), ("0,2/2,0", 4, -6), ("0,2/2,0", 5, -12), ("0,2/2,0", 5, -10), ("0,2/2,0", 6, -14), ("1,1/1,1", 1, -1), ("1,1/1,1", 2, -3), ("1,1/1,1", 3, -5), ("2,0/0,2", 0, 0)]
+stage 3 N = 2
+  Poincare polynomial: t^0q^0
+  total rank: 1
+  Euler characteristic: 1
+stage 3 N = 3
+  Poincare polynomial: t^0q^-6 + t^0q^-4 + t^0q^-2 + t^2q^-8 + t^2q^-6 + t^3q^-14 + t^3q^-12
+  total rank: 7
+  Euler characteristic: q^-2 + q^-4 + 2q^-6 + q^-8 - q^-12 - q^-14
+stage 3 N = 4
+  Poincare polynomial: t^0q^-12 + t^0q^-10 + 2t^0q^-8 + t^0q^-6 + t^0q^-4 + t^2q^-14 + 2t^2q^-12 + 2t^2q^-10 + t^2q^-8 + t^3q^-22 + 2t^3q^-20 + 2t^3q^-18 + t^3q^-16 + t^4q^-16 + t^5q^-24 + t^5q^-22 + t^6q^-30
+  total rank: 22
+  Euler characteristic: q^-4 + q^-6 + 3q^-8 + 3q^-10 + 3q^-12 + q^-14 - 2q^-18 - 2q^-20 - 2q^-22 - q^-24 + q^-30
+stage 3 N = 2 (reduced, block 0 marked)
+  Poincare polynomial: t^0q^0
+  total rank: 1
+  Euler characteristic: 1
+stage 3 N = 3 (reduced, block 0 marked)
+  Poincare polynomial: t^0q^-4 + t^2q^-8 + t^3q^-12
+  total rank: 3
+  Euler characteristic: q^-4 + q^-8 - q^-12
+stage 3 N = 4 (reduced, block 0 marked)
+  Poincare polynomial: t^0q^-8 + t^2q^-14 + t^2q^-12 + t^3q^-18 + t^3q^-16 + t^4q^-20 + t^5q^-24 + t^5q^-22 + t^6q^-26
+  total rank: 9
+  Euler characteristic: q^-8 + q^-12 + q^-14 - q^-16 - q^-18 + q^-20 - q^-22 - q^-24 + q^-26
+stage 3 base-point check (marked block 1 = marked block 0): PASS
+closures 0.00s
+total 0.05s, peak RSS 5672 kB
