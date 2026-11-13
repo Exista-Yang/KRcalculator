@@ -5,7 +5,7 @@ S=/tmp/claude-0/-home-user-KRcalculator/7ca6fc3a-b081-5be7-b7f0-2501a115a78c/scr
 F=$1; PV=${2:+--provider $2}; PS=${2:+_$2}
 D=runs_c2/k4/lib
 ulimit -v 14000000
-C="--lam 2,2,2,2 --n 4 --field $F --cache $S/lib2222/f$F --costs tests/data/homprov/costs_cloud.txt"
+C="--lam 2,2,2,2 --n 4 --field $F --cache $S/lib2222/f$F --costs ${COSTS:-tests/data/homprov/costs_cloud.txt} ${SR}"
 for SET in level corner; do
   SF=""; [ $SET = corner ] && SF="--corner markov-ext"
   T=l2222_n4${SET/level/}_f$F
