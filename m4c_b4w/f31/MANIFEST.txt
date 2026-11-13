@@ -1,0 +1,13 @@
+lambda: 3,3,3
+field: F31
+label: f31
+code commit: fcbc959 (branch m4c-rexplan)
+provider: libbuild --provider m4c-lf (leaves::provider_for_stamped_m4c, leaves_first = true)
+layer-A stamps: krhom-sindec v2 ladfn=schur.ladder_minflow.v1 tmpl_alg=hs1.lcx1 prov=homprov[hs-kl1] maxl=3 costs=hs-kl1:367recs:057ed4ac88a36c47 slowdown=1 chain=S0-2,Exact(l3,600s),S3-6 stage0=ProductClosure(v1,product-first) leaves=Leaves(v1,closure,threeup,prefix-ext+costalt5,window-whole,budget=1e5/4e5/os2e4l4)(leaves-first) leafpairs=LeafPairs(v1,last,rex-chain|lemmaA+exit-entry,plan=exact1e5/len12/visit6e4,assoc-as-template,persistable-only)
+files: layer_a 1572, tmpl 1437
+origin: data-gl6/m5c/f31 restored, headers carried to the M4c stamp by b4wstamp (costs token kept; files then accepted with --stamp-route; every loaded map re-certified), then libbuild run levels 5 and 6
+restore: cat layerA_tmpl.tar.gz.part-* | tar -C CACHE_DIR -xzf -   (then KRHOM_COSTS_ANY_HOST=1 libbuild run/replay --lam 3,3,3 --n 5|6 --field 31 --cache CACHE_DIR --costs docs/colored_design/m4c/b4w/costs_b4w.txt --stamp-route --provider m4c-lf)
+results: level 5 run/replay 174/177; level 6 run/replay 345/377
+sha256:
+ec8495ee261b2efd419070ce4c9bdc27acfef8e1258eb8065e5c0af3f93371df  layerA_tmpl.tar.gz.part-000
+note: the level-6 run log/jsonl lacks the summary line and the 2x retry of pair 467 (container restart killed it during that retry; 467 was Time at 1x); the replay summary is complete. The template cache also holds the band-measurement templates of pairs 127/385/467 (m4c measure).

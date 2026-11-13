@@ -1,0 +1,12 @@
+lambda: 3,3,3
+field: F32b
+label: f32b
+code commit: fcbc959 (branch m4c-rexplan)
+provider: libbuild --provider m4c-lf (leaves::provider_for_stamped_m4c, leaves_first = true)
+layer-A stamps: krhom-sindec v2 ladfn=schur.ladder_minflow.v1 tmpl_alg=hs1.lcx1 prov=homprov[hs-kl1] maxl=3 costs=hs-kl1:367recs:057ed4ac88a36c47 slowdown=1 chain=S0-2,Exact(l3,600s),S3-6 stage0=ProductClosure(v1,product-first) leaves=Leaves(v1,closure,threeup,prefix-ext+costalt5,window-whole,budget=1e5/4e5/os2e4l4)(leaves-first) leafpairs=LeafPairs(v1,last,rex-chain|lemmaA+exit-entry,plan=exact1e5/len12/visit6e4,assoc-as-template,persistable-only)
+files: layer_a 1570, tmpl 1280
+origin: data-gl6/m5c/f32b restored, headers carried to the M4c stamp by b4wstamp (costs token kept; files then accepted with --stamp-route; every loaded map re-certified), then libbuild run levels 5 and 6
+restore: cat layerA_tmpl.tar.gz.part-* | tar -C CACHE_DIR -xzf -   (then KRHOM_COSTS_ANY_HOST=1 libbuild run/replay --lam 3,3,3 --n 5|6 --field 32b --cache CACHE_DIR --costs docs/colored_design/m4c/b4w/costs_b4w.txt --stamp-route --provider m4c-lf)
+results: level 5 run/replay 174/177; level 6 run/replay 344/377
+sha256:
+6d3e9e21bc31d189883a53086eb707ecb0f238c000754af85eeac514d865dac6  layerA_tmpl.tar.gz.part-000
