@@ -3,7 +3,7 @@
 # final stage; library from layer A only (--replay). Resumable: skips finished (knot, field).
 # usage: one.sh NAME FIELD WORD
 cd /home/user/KRcalculator
-S=/tmp/claude-0/-home-user-KRcalculator/934ab925-996a-59b6-8fc2-b741a70e6e9a/scratchpad
+S=${S:-/tmp/claude-0/-home-user-KRcalculator/934ab925-996a-59b6-8fc2-b741a70e6e9a/scratchpad}
 NAME=$1; F=$2; W=$3
 D=${K3DIR:-runs_c2/k3/out}; mkdir -p $D
 TAG=${NAME}_f${F}
