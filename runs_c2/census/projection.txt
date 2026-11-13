@@ -1,0 +1,25 @@
+fit: point_secs = exp(-7.166) * peakldim^0.660 over 32 runs (1 thread, 4 jobs on 4 cores)
+residual ratio range 0.41 .. 4.13
+remaining 3-strand runs 338, projected 32.8 h on 4 cores
+4-strand Conway  peakldim  12828709  projected per point     37.8 s  unreduced 1296 pts    13.6 core-h  reduced-only 216 pts    2.3 core-h
+4-strand 6_1     peakldim    778699  projected per point      5.9 s  unreduced 1296 pts     2.1 core-h  reduced-only 216 pts    0.4 core-h
+4-strand 7_2     peakldim   2287375  projected per point     12.1 s  unreduced 1296 pts     4.4 core-h  reduced-only 216 pts    0.7 core-h
+4-strand 7_4     peakldim   2220679  projected per point     11.9 s  unreduced 1296 pts     4.3 core-h  reduced-only 216 pts    0.7 core-h
+4-strand 7_6     peakldim   1022431  projected per point      7.1 s  unreduced 1296 pts     2.6 core-h  reduced-only 216 pts    0.4 core-h
+4-strand 7_7     peakldim   1314271  projected per point      8.4 s  unreduced 1296 pts     3.0 core-h  reduced-only 216 pts    0.5 core-h
+4-strand 8_11    peakldim   2526439  projected per point     12.9 s  unreduced 1296 pts     4.7 core-h  reduced-only 216 pts    0.8 core-h
+4-strand 8_13    peakldim   3371851  projected per point     15.6 s  unreduced 1296 pts     5.6 core-h  reduced-only 216 pts    0.9 core-h
+4-strand 8_14    peakldim   2774887  projected per point     13.8 s  unreduced 1296 pts     5.0 core-h  reduced-only 216 pts    0.8 core-h
+4-strand 8_15    peakldim   2576329  projected per point     13.1 s  unreduced 1296 pts     4.7 core-h  reduced-only 216 pts    0.8 core-h
+4-strand 8_4     peakldim   2929807  projected per point     14.3 s  unreduced 1296 pts     5.1 core-h  reduced-only 216 pts    0.9 core-h
+4-strand 8_6     peakldim   1787287  projected per point     10.3 s  unreduced 1296 pts     3.7 core-h  reduced-only 216 pts    0.6 core-h
+4-strand 8_8     peakldim   3959023  projected per point     17.4 s  unreduced 1296 pts     6.3 core-h  reduced-only 216 pts    1.0 core-h
+4-strand 9_10    peakldim   3954379  projected per point     17.4 s  unreduced 1296 pts     6.3 core-h  reduced-only 216 pts    1.0 core-h
+4-strand 9_11    peakldim   2029147  projected per point     11.2 s  unreduced 1296 pts     4.0 core-h  reduced-only 216 pts    0.7 core-h
+4-strand 9_13    peakldim   5368459  projected per point     21.3 s  unreduced 1296 pts     7.7 core-h  reduced-only 216 pts    1.3 core-h
+4-strand 9_17    peakldim   3152083  projected per point     15.0 s  unreduced 1296 pts     5.4 core-h  reduced-only 216 pts    0.9 core-h
+4-strand 9_18    peakldim   5261707  projected per point     21.0 s  unreduced 1296 pts     7.6 core-h  reduced-only 216 pts    1.3 core-h
+4-strand 9_20    peakldim   4892983  projected per point     20.0 s  unreduced 1296 pts     7.2 core-h  reduced-only 216 pts    1.2 core-h
+4-strand 9_22    peakldim   3257419  projected per point     15.3 s  unreduced 1296 pts     5.5 core-h  reduced-only 216 pts    0.9 core-h
+4-strand 9_23    peakldim   9148747  projected per point     30.2 s  unreduced 1296 pts    10.9 core-h  reduced-only 216 pts    1.8 core-h
+4-strand 11n_42  peakldim  17787529  projected per point     46.9 s  unreduced 1296 pts    16.9 core-h  reduced-only 216 pts    2.8 core-h

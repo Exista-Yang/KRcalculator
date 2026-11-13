@@ -10,3 +10,8 @@ s5p_f32b exit 0
 s5n_f32b exit 0
 s2p_f32b exit 0
 s4p_f32b exit 0
+4_1_f32b exit 0
+5_2_f31 exit 0
+6_2_f31 exit 0
+6_3_f31 exit 0
+7_3_f31 exit 0
