@@ -1,0 +1,5 @@
+[libbuild] replay level-n4 F32b: 1157 jobs, 0 already certified, 1157 to run, 4 workers
+[libbuild] pair 2 x1 -> ok in 10.9s (peak 70 MB, X 12)
+[libbuild] pair 3 x1 -> ok in 11.5s (peak 70 MB, X 12)
+[libbuild] pair 1 x1 -> ok in 11.5s (peak 70 MB, X 12)
+[libbuild] pair 0 x1 -> ok in 11.7s (peak 70 MB, X 2)
