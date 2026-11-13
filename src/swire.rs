@@ -207,6 +207,8 @@ pub fn build_wlib<F: Field>(mut sd: SIndec<F>, words: &[Vec<i32>], closure: bool
         names.insert(p, sd.schur.table(p).fmt());
     }
     let stats = sd.stats();
+    // layer-A stamps (format, ladder function, TMPL_ALG, provider route) bind the library hash
+    let la_stamps = crate::sindec::route_header(&sd.layer_a_stamps()).to_string();
     let dd = sd.freeze();
     let mut shapes = BTreeMap::new();
     for &p in &all {
@@ -236,7 +238,7 @@ pub fn build_wlib<F: Field>(mut sd: SIndec<F>, words: &[Vec<i32>], closure: bool
         None => None,
     };
     let mut h = crate::boxclose::Fnv::default();
-    h.str(SWIRE_STAMP).u64(F::characteristic()).str(&format!("{:?}{:?}", lam, prune));
+    h.str(SWIRE_STAMP).u64(F::characteristic()).str(&format!("{:?}{:?}", lam, prune)).str(&la_stamps);
     for (p, n) in &names {
         h.u64(*p as u64).str(n);
     }
@@ -400,7 +402,10 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
     let dd = &*lib.dd;
     let ar = dd.ar();
     let mut ev = Eval::new(ar, Point { id: point_id, x });
-    let mut eng: PEngine<F> = PEngine::new(mode, opts.eng.clone());
+    // every component is a genuine bimodule map: pivot scalars are constants (D14, review F3)
+    let mut eo = opts.eng.clone();
+    eo.check_pivot_values = true;
+    let mut eng: PEngine<F> = PEngine::new(mode, eo);
     for s in lib.shapes.values() {
         eng.register(s.clone()).map_err(String::from)?;
     }
@@ -969,6 +974,21 @@ pub struct BoxWordOut {
     pub scan_secs: f64,
     pub close_secs: f64,
     pub final_types: BTreeSet<String>,
+    /// D14 scaling check (None only with the test opt-out `BoxOpts::scaling = false`)
+    pub scaling: Option<ScalingOut>,
+    /// closures whose χ was checked against `schur::decat_chi` (a mismatch is an Err)
+    pub chi_checked: usize,
+    /// generator-only determinant pass: (points, checks) (D14)
+    pub det_pass: (usize, usize),
+}
+
+/// Result of the D14 scaling check of one word.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ScalingOut {
+    pub points: Vec<u32>,
+    pub lambda: u64,
+    pub report: ScalingReport,
+    pub secs_milli: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -983,19 +1003,265 @@ pub struct BoxOpts {
     /// check_d2 at every box point (otherwise only at the record point, when eng.check_d2)
     pub d2_all_points: bool,
     pub freivalds_k: usize,
+    /// D14 scaling check (scans at z and λz at 2 box points). Mandatory in production: false is
+    /// a TEST-ONLY opt-out.
+    pub scaling: bool,
+    /// points scanned per batch before their values are accumulated (memory bound, review F5)
+    pub batch: usize,
 }
 
-/// The one-word box loop: record at a generic point, replay at every needed box point of the
-/// unreduced grid (the reduced grid's points are the μ^0 = ∅ subset), accumulate the entries of
-/// every stage per mode, assemble `BoxClosureData`, record Freivalds `D2Cert`s and close.
-pub fn box_word<F: PrimeField>(lib: &WLib<F>, word: &[i32], o: &BoxOpts) -> Result<BoxWordOut, String> {
+impl BoxOpts {
+    /// Production options: scaling on, Freivalds with 3 vectors, batches of 16 points.
+    pub fn new(n_box: usize, seed: u64, n_close: Vec<usize>, modes: Vec<Option<usize>>, stages: Vec<usize>, eng: EngOpts) -> Self {
+        BoxOpts { n_box, seed, n_close, modes, stages, eng, d2_all_points: false, freivalds_k: 3, scaling: true, batch: 16 }
+    }
+}
+
+/// The scaling λ of D14 (multiplicative order > 5000 in both fields).
+pub const SCALING_LAMBDA: u64 = 0x1234_5677;
+/// Engine version (sengine + swire), with the options that decide the frozen structure.
+pub fn engine_stamp(e: &EngOpts) -> String {
+    format!("{}+{}:order={:?}:streaming={}", SWIRE_STAMP, SENGINE_STAMP, e.order, e.streaming)
+}
+/// Hash of a stage's closure skeleton: stage, entry kinds and weights, objects, edges, type
+/// degrees, crossings.
+pub fn skeleton_hash<F: Field>(so: &StageOut<F>) -> u64 {
+    let mut h = crate::boxclose::Fnv::default();
+    h.str("skeleton").u64(so.stage as u64).str(&format!("{:?}|{:?}|{:?}|{:?}|{:?}", so.kinds, so.weights, so.skel.objs, so.edges, so.skel.crossings));
+    for (p, t) in &so.skel.types {
+        h.u64(*p as u64).str(&format!("{:?}{:?}", t.ins, t.outs));
+    }
+    h.get()
+}
+/// Hash of a frozen trace (pivot sequence, values, patterns, checkpoints, determinism record).
+pub fn trace_hash(fz: &FrozenTrace) -> u64 {
+    let mut h = crate::boxclose::Fnv::default();
+    h.str("trace").u64(fz.checkpoints.len() as u64);
+    for c in &fz.checkpoints {
+        h.u64(*c);
+    }
+    for r in &fz.rounds {
+        h.u64(r.stage as u64).u64(r.pattern).u64(r.pivots.len() as u64);
+        for (&(a, b), v) in r.pivots.iter().zip(r.values.iter()) {
+            h.u64(a as u64).u64(b as u64).u64(*v);
+        }
+    }
+    for s in &fz.stages {
+        h.u64(*s);
+    }
+    h.get()
+}
+/// Hash of entry values (the record point's values: the library content in this basis).
+pub fn values_hash<F: Field>(vals: &[F]) -> u64 {
+    let mut h = crate::boxclose::Fnv::default();
+    h.str("values").u64(vals.len() as u64);
+    for v in vals {
+        h.u64(value_fingerprint(v));
+    }
+    h.get()
+}
+/// The checkpoint binding of a stage of a record scan.
+pub fn stage_binding<F: Field>(so: &StageOut<F>, fz: &FrozenTrace, eng: &EngOpts) -> BoxBinding {
+    BoxBinding { stage: so.stage, skeleton_hash: skeleton_hash(so), engine_stamp: engine_stamp(eng), trace_hash: trace_hash(fz), record_hash: values_hash(&so.vals) }
+}
+
+/// χ of every closure against `schur::decat_chi` (unreduced; a reduced closure with block m
+/// marked times [N choose λ_m]). A mismatch is an Err (FATAL in production; sengine review F2).
+pub fn chi_check(lam: &[u8], word: &[i32], stage: usize, closed: &BTreeMap<(usize, Option<usize>), Poincare>) -> Result<usize, String> {
+    let mut sch = Schur::new(lam);
+    let sopts = crate::schur::ScanOpts { peak: false, every_stage: false, marked_block: None };
+    let res = crate::schur::decat_scan(&mut sch, &word[..stage], &sopts);
+    let mut n = 0;
+    for (&(nn, marked), p) in closed {
+        let want = crate::schur::decat_chi(&mut sch, &res, &word[..stage], nn);
+        let got = match marked {
+            Some(m) => p.euler().mul(&crate::laurent::LPoly::qbinom(nn as i64, lam[m] as i64)),
+            None => p.euler(),
+        };
+        if got != want {
+            return Err(format!("CHI FAIL stage {} N={} marked {:?}: χ = {:?} != decat_chi {:?} (P = {})", stage, nn, marked, got, want, p));
+        }
+        n += 1;
+    }
+    Ok(n)
+}
+
+/// Generator-only determinant pass (D14, R3 §5.1, C_sound M2): at every given box point, the
+/// identity-coset values of the in- and of the out-generators of every closable type of the
+/// library form nonsingular square matrices (cclose::det_criterion, localized). Run before the
+/// first scan; a failure means the node sequence must be redrawn (another seed) before any
+/// scanning. Returns the number of (point, type) checks.
+pub fn generator_pass<F: PrimeField>(lib: &WLib<F>, nodes: &BoxNodes<F>, grid: &BoxGrid<F>, pts: &[u32]) -> Result<usize, String> {
+    let Some(cid) = lib.id_coset else { return Ok(0) };
+    let ar = lib.dd.ar();
+    let res: Vec<Result<usize, String>> = par_map(pts, |&id| {
+        let mu = grid.mu(id);
+        let mut ev = Eval::new(ar, Point { id, x: box_x(nodes, &mu) });
+        let mut n = 0;
+        for (p, c) in &lib.closure {
+            for (side, maps) in [("ins", &c.ins), ("outs", &c.outs)] {
+                let v: Vec<Vec<F>> = maps.iter().map(|&m| ev.block(m, cid).a.clone()).collect();
+                let dim = v.first().map_or(0, |x| x.len());
+                if v.len() != dim || crate::dense::rank(&v, dim) != dim {
+                    return Err(format!("generator determinant fails at box point {:?} for type {} ({}: {} vectors of length {}): redraw the nodes (another --seed) before any scan", mu, lib.names[p], side, v.len(), dim));
+                }
+                n += 1;
+            }
+        }
+        Ok(n)
+    });
+    let mut tot = 0;
+    for r in res {
+        tot += r?;
+    }
+    Ok(tot)
+}
+
+/// The box points a word needs: the down-set of the largest needed size of every stage and
+/// mode (reduced-only runs: the μ^m = ∅ points).
+pub fn needed_points<F: PrimeField>(ug: &BoxGrid<F>, maxsize: u32, modes: &[Option<usize>]) -> Vec<u32> {
+    let mut pts = ug.points_up_to(maxsize);
+    if modes.iter().all(|m| m.is_some()) {
+        pts.retain(|&id| {
+            let mu = ug.mu(id);
+            modes.iter().any(|m| mu[m.unwrap()].iter().all(|&x| x == 0))
+        });
+    }
+    pts
+}
+
+/// Feed one point's stage values into the accumulators of every (stage, mode) that needs it.
+pub fn accumulate_point<F: PrimeField>(accs: &mut [Vec<BoxAcc<F>>], grids: &[(Option<usize>, Arc<BoxGrid<F>>)], ug: &BoxGrid<F>, id: u32, vals: &[Vec<F>], skip_done: bool) -> Result<(), String> {
+    let mu = ug.mu(id);
+    for (si, v) in vals.iter().enumerate() {
+        for (gi, (m, g)) in grids.iter().enumerate() {
+            let gid = match m {
+                None => Some(id),
+                Some(mk) => {
+                    if mu[*mk].iter().all(|&x| x == 0) {
+                        g.id_of_mu(&mu)
+                    } else {
+                        None
+                    }
+                }
+            };
+            let Some(gid) = gid else { continue };
+            let acc = &mut accs[si][gi];
+            if skip_done && acc.is_done(gid) {
+                continue;
+            }
+            if g.size(gid) <= acc.needed_size().unwrap_or(0) {
+                acc.add_point(gid, v)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Does (stage, mode) accumulator need point `id` (of the unreduced grid) and not have it yet?
+pub fn point_pending<F: PrimeField>(accs: &[Vec<BoxAcc<F>>], grids: &[(Option<usize>, Arc<BoxGrid<F>>)], ug: &BoxGrid<F>, id: u32) -> bool {
+    let mu = ug.mu(id);
+    for row in accs {
+        for (gi, (m, g)) in grids.iter().enumerate() {
+            let gid = match m {
+                None => Some(id),
+                Some(mk) => {
+                    if mu[*mk].iter().all(|&x| x == 0) {
+                        g.id_of_mu(&mu)
+                    } else {
+                        None
+                    }
+                }
+            };
+            if let Some(gid) = gid {
+                if g.size(gid) <= row[gi].needed_size().unwrap_or(0) && !row[gi].is_done(gid) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Replay one box point: values of every closed stage, checked against the record scan's
+/// structure and skeletons.
+pub fn scan_box_point<F: PrimeField>(lib: &WLib<F>, word: &[i32], nodes: &BoxNodes<F>, ug: &BoxGrid<F>, id: u32, rec: &ScanOut<F>, popts: &ScanOpts) -> Result<(Vec<Vec<F>>, PointCost), String> {
+    let tp = Instant::now();
+    let mu = ug.mu(id);
+    let out = scan_point(lib, word, box_x(nodes, &mu), id, Mode::Replay(rec.ps.frozen.clone()), popts).map_err(|e| format!("box point {:?}: {}", mu, e))?;
+    out.ps.same_structure(&rec.ps).map_err(|e| format!("box point {:?}: {}", mu, e))?;
+    for (a, b) in out.stages.iter().zip(rec.stages.iter()) {
+        if a.skel.objs != b.skel.objs || a.edges != b.edges || a.kinds != b.kinds || a.weights != b.weights {
+            return Err(format!("box point {:?}: closure skeleton of stage {} differs from the record point", mu, a.stage));
+        }
+    }
+    let mut acc = 0.0;
+    let stage_secs = out.ps.stages.iter().map(|s| { acc += s.secs; acc }).collect();
+    let stage_peak = out.ps.stages.iter().map(|s| s.peak_bytes).collect();
+    let cost = PointCost { point_id: id, secs: tp.elapsed().as_secs_f64(), peak_bytes: out.ps.mem.peak_bytes, eval_bytes: out.eval_bytes, stage_secs, stage_peak };
+    Ok((out.stages.into_iter().map(|s| s.vals).collect(), cost))
+}
+
+/// The record scan of a word (generic point from the seed; K_0 check on).
+pub fn record_scan<F: PrimeField>(lib: &WLib<F>, word: &[i32], o: &BoxOpts) -> Result<ScanOut<F>, String> {
     let k: usize = lib.lam.iter().map(|&a| a as usize).sum();
-    let t0 = Instant::now();
     let mut ropts = ScanOpts { eng: o.eng.clone(), close_stages: o.stages.clone(), k0_check: true };
     ropts.eng.id_coset = lib.id_coset;
-    let rec = scan_point(lib, word, record_x::<F>(k, o.seed ^ 0x7265_636f_7264), u32::MAX, Mode::Record, &ropts)?;
+    scan_point(lib, word, record_x::<F>(k, o.seed ^ 0x7265_636f_7264), u32::MAX, Mode::Record, &ropts)
+}
+
+/// Replay options of the box points.
+pub fn replay_opts<F: Field>(lib: &WLib<F>, o: &BoxOpts) -> ScanOpts {
+    let mut popts = ScanOpts { eng: o.eng.clone(), close_stages: o.stages.clone(), k0_check: false };
+    popts.eng.id_coset = lib.id_coset;
+    popts.eng.check_d2 = o.eng.check_d2 && o.d2_all_points;
+    popts
+}
+
+/// The two scaling points of a grid (as in the G2B runs): npoints/3 and the last point.
+pub fn scaling_points<F: PrimeField>(ug: &BoxGrid<F>) -> Vec<u32> {
+    let mut v = vec![ug.npoints / 3, ug.npoints - 1];
+    v.dedup();
+    v
+}
+
+/// Close one stage from its finished accumulators (one per mode): `BoxClosureData`, Freivalds
+/// `D2Cert`s, `close_box` at every requested (N', marked), and the χ check (Err on mismatch).
+pub fn close_stage_box<F: PrimeField>(lib: &WLib<F>, word: &[i32], so: &StageOut<F>, accs: &[BoxAcc<F>], grids: &[(Option<usize>, Arc<BoxGrid<F>>)], o: &BoxOpts) -> Result<(StageResult, usize), String> {
+    let whash = word_hash(&[word.to_vec()]);
+    let mut sr = StageResult { stage: so.stage, closed: BTreeMap::new(), entries: so.kinds.len(), objects: so.skel.objs.len(), d2_blocks: BTreeMap::new() };
+    for (gi, (m, g)) in grids.iter().enumerate() {
+        let res = accs[gi].finish().map_err(|e| format!("stage {} mode {:?}: {}", so.stage, m, e))?;
+        let stamp = BoxStamp { prime: F::characteristic(), node_seed_hash: g.nodes.hash(), library_hash: lib.hash, word_hash: whash, code_stamp: BOX_CODE_STAMP.into() };
+        let mut bd = BoxClosureData::from_box(&so.skel, &so.edges, &so.kinds, &res, lib.prune_n.map(|n| n as usize), stamp)?;
+        for &nn in &o.n_close {
+            for marked in [None, Some(0)] {
+                if m.is_some() && marked != *m {
+                    continue;
+                }
+                if m.is_none() && marked.is_some() && o.modes.contains(&marked) {
+                    continue; // served by the reduced extraction
+                }
+                let cert = closed_d2_freivalds(&mut bd, nn, marked, o.freivalds_k, o.seed ^ (nn as u64 * 7919))?;
+                sr.d2_blocks.insert((nn, marked), cert.blocks);
+                let p = close_box(&bd, nn, marked, None, None).map_err(|e| format!("stage {} N' {} marked {:?}: {}", so.stage, nn, marked, e))?;
+                sr.closed.insert((nn, marked), p);
+            }
+        }
+    }
+    let chi = chi_check(&lib.lam, word, so.stage, &sr.closed)?;
+    Ok((sr, chi))
+}
+
+/// The one-word box loop: record at a generic point, the generator-only determinant pass,
+/// replay at every needed box point of the unreduced grid (the reduced grid's points are the
+/// μ^0 = ∅ subset) in batches that are accumulated as they finish, `BoxClosureData` per stage
+/// and mode, Freivalds `D2Cert`s, closures, χ = decat_chi (fatal) and the D14 scaling check
+/// (mandatory unless the test opt-out `o.scaling = false`).
+pub fn box_word<F: PrimeField>(lib: &WLib<F>, word: &[i32], o: &BoxOpts) -> Result<BoxWordOut, String> {
+    let t0 = Instant::now();
+    let rec = record_scan(lib, word, o)?;
     let record_secs = t0.elapsed().as_secs_f64();
-    let frozen = rec.ps.frozen.clone();
     let nodes = BoxNodes::<F>::new(&lib.lam, o.n_box, o.seed);
     let grids: Vec<(Option<usize>, Arc<BoxGrid<F>>)> = o.modes.iter().map(|&m| (m, Arc::new(BoxGrid::new(nodes.clone(), m)))).collect();
     let whash = word_hash(&[word.to_vec()]);
@@ -1003,112 +1269,85 @@ pub fn box_word<F: PrimeField>(lib: &WLib<F>, word: &[i32], o: &BoxOpts) -> Resu
     let mut accs: Vec<Vec<BoxAcc<F>>> = rec
         .stages
         .iter()
-        .map(|so| grids.iter().map(|(_, g)| BoxAcc::new(g.clone(), so.weights.clone(), lib.hash, whash, lib.prune_n.map(|n| n as usize))).collect())
+        .map(|so| {
+            let bind = stage_binding(so, &rec.ps.frozen, &o.eng);
+            grids.iter().map(|(_, g)| BoxAcc::with_binding(g.clone(), so.weights.clone(), lib.hash, whash, lib.prune_n.map(|n| n as usize), bind.clone())).collect()
+        })
         .collect();
     let ug = BoxGrid::new(nodes.clone(), None);
-    let mut maxsize = 0;
-    for a in accs.iter().flatten() {
-        maxsize = maxsize.max(a.needed_size().unwrap_or(0));
-    }
-    let mut pts = ug.points_up_to(maxsize);
-    if o.modes.iter().all(|m| m.is_some()) {
-        // reduced extraction only: the points of the reduced grids (μ^m = ∅)
-        pts.retain(|&id| {
-            let mu = ug.mu(id);
-            o.modes.iter().any(|m| mu[m.unwrap()].iter().all(|&x| x == 0))
-        });
-    }
-    let mut popts = ScanOpts { eng: o.eng.clone(), close_stages: o.stages.clone(), k0_check: false };
-    popts.eng.id_coset = lib.id_coset;
-    popts.eng.check_d2 = o.eng.check_d2 && o.d2_all_points;
+    let maxsize = accs.iter().flatten().map(|a| a.needed_size().unwrap_or(0)).max().unwrap_or(0);
+    let pts = needed_points(&ug, maxsize, &o.modes);
+    let det_checks = generator_pass(lib, &nodes, &ug, &pts)?;
+    let popts = replay_opts(lib, o);
     let ts = Instant::now();
-    let res: Vec<Result<(u32, Vec<Vec<F>>, PointCost), String>> = par_map(&pts, |&id| {
-        let tp = Instant::now();
-        let mu = ug.mu(id);
-        let out = scan_point(lib, word, box_x(&nodes, &mu), id, Mode::Replay(frozen.clone()), &popts).map_err(|e| format!("box point {:?}: {}", mu, e))?;
-        out.ps.same_structure(&rec.ps).map_err(|e| format!("box point {:?}: {}", mu, e))?;
-        for (a, b) in out.stages.iter().zip(rec.stages.iter()) {
-            if a.skel.objs != b.skel.objs || a.edges != b.edges {
-                return Err(format!("box point {:?}: closure skeleton of stage {} differs from the record point", mu, a.stage));
-            }
-        }
-        let mut acc = 0.0;
-        let stage_secs = out.ps.stages.iter().map(|s| { acc += s.secs; acc }).collect();
-        let stage_peak = out.ps.stages.iter().map(|s| s.peak_bytes).collect();
-        let cost = PointCost { point_id: id, secs: tp.elapsed().as_secs_f64(), peak_bytes: out.ps.mem.peak_bytes, eval_bytes: out.eval_bytes, stage_secs, stage_peak };
-        Ok((id, out.stages.into_iter().map(|s| s.vals).collect(), cost))
-    });
-    let scan_secs = ts.elapsed().as_secs_f64();
     let mut costs = vec![];
-    for r in res {
-        let (id, vals, cost) = r?;
-        costs.push(cost);
-        let mu = ug.mu(id);
-        for (si, v) in vals.iter().enumerate() {
-            for (gi, (m, g)) in grids.iter().enumerate() {
-                let gid = match m {
-                    None => Some(id),
-                    Some(mk) => if mu[*mk].iter().all(|&x| x == 0) { g.id_of_mu(&mu) } else { None },
-                };
-                let Some(gid) = gid else { continue };
-                let acc = &mut accs[si][gi];
-                if g.size(gid) <= acc.needed_size().unwrap_or(0) {
-                    acc.add_point(gid, v)?;
-                }
-            }
+    for chunk in pts.chunks(o.batch.max(1)) {
+        let res: Vec<Result<(u32, Vec<Vec<F>>, PointCost), String>> = par_map(chunk, |&id| scan_box_point(lib, word, &nodes, &ug, id, &rec, &popts).map(|(v, c)| (id, v, c)));
+        for r in res {
+            let (id, vals, cost) = r?;
+            costs.push(cost);
+            accumulate_point(&mut accs, &grids, &ug, id, &vals, false)?;
         }
     }
+    let scan_secs = ts.elapsed().as_secs_f64();
     let tc = Instant::now();
     let mut stages = vec![];
+    let mut chi_checked = 0;
     for (si, so) in rec.stages.iter().enumerate() {
-        let mut sr = StageResult { stage: so.stage, closed: BTreeMap::new(), entries: so.kinds.len(), objects: so.skel.objs.len(), d2_blocks: BTreeMap::new() };
-        for (gi, (m, g)) in grids.iter().enumerate() {
-            let res = accs[si][gi].finish().map_err(|e| format!("stage {} mode {:?}: {}", so.stage, m, e))?;
-            let stamp = BoxStamp { prime: F::characteristic(), node_seed_hash: g.nodes.hash(), library_hash: lib.hash, word_hash: whash, code_stamp: BOX_CODE_STAMP.into() };
-            let mut bd = BoxClosureData::from_box(&so.skel, &so.edges, &so.kinds, &res, lib.prune_n.map(|n| n as usize), stamp)?;
-            for &nn in &o.n_close {
-                for marked in [None, Some(0)] {
-                    if m.is_some() && marked != *m {
-                        continue;
-                    }
-                    if m.is_none() && marked.is_some() && o.modes.contains(&marked) {
-                        continue; // served by the reduced extraction
-                    }
-                    let cert = closed_d2_freivalds(&mut bd, nn, marked, o.freivalds_k, o.seed ^ (nn as u64 * 7919))?;
-                    sr.d2_blocks.insert((nn, marked), cert.blocks);
-                    let p = close_box(&bd, nn, marked, None, None).map_err(|e| format!("stage {} N' {} marked {:?}: {}", so.stage, nn, marked, e))?;
-                    sr.closed.insert((nn, marked), p);
-                }
-            }
-        }
+        let (sr, chi) = close_stage_box(lib, word, so, &accs[si], &grids, o)?;
+        chi_checked += chi;
         stages.push(sr);
     }
+    let close_secs = tc.elapsed().as_secs_f64();
+    let scaling = if o.scaling {
+        let ts = Instant::now();
+        let ids = scaling_points(&ug);
+        let rep = scaling_check_frozen(lib, word, o, &F::from_u64(SCALING_LAMBDA), &ids, &rec)?;
+        Some(ScalingOut { points: ids, lambda: SCALING_LAMBDA, report: rep, secs_milli: ts.elapsed().as_millis() as u64 })
+    } else {
+        None
+    };
     let final_types = rec.stages.last().map(|s| s.skel.objs.iter().map(|o| lib.names[&o.0].clone()).collect()).unwrap_or_default();
-    Ok(BoxWordOut { stages, record: rec.ps.stages.clone(), record_secs, lb: rec.lb.clone(), points: pts.len(), costs, scan_secs, close_secs: tc.elapsed().as_secs_f64(), final_types })
+    Ok(BoxWordOut { stages, record: rec.ps.stages.clone(), record_secs, lb: rec.lb.clone(), points: pts.len(), costs, scan_secs, close_secs, final_types, scaling, chi_checked, det_pass: (pts.len(), det_checks) })
 }
 
 /// D14 scaling check: scans at z_μ and λ·z_μ (scaled nodes) for the given points; every entry of
 /// every stage must satisfy v(λz) = λ^w v(z). Returns (checked, zero at both points).
 pub fn scaling_check<F: PrimeField>(lib: &WLib<F>, word: &[i32], o: &BoxOpts, lambda: &F, point_ids: &[u32]) -> Result<(usize, usize), String> {
-    let k: usize = lib.lam.iter().map(|&a| a as usize).sum();
+    let rec = record_scan(lib, word, o)?;
+    let r = scaling_check_frozen(lib, word, o, lambda, point_ids, &rec)?;
+    Ok((r.checked, r.zero_both))
+}
+
+/// [`scaling_check`] against a given record scan (its frozen trace and skeletons). The scans at
+/// z and λz replay the record trace, pivot values included, and must reproduce its skeletons.
+pub fn scaling_check_frozen<F: PrimeField>(lib: &WLib<F>, word: &[i32], o: &BoxOpts, lambda: &F, point_ids: &[u32], rec: &ScanOut<F>) -> Result<ScalingReport, String> {
     let mut ropts = ScanOpts { eng: o.eng.clone(), close_stages: o.stages.clone(), k0_check: false };
     ropts.eng.id_coset = lib.id_coset;
-    let rec = scan_point(lib, word, record_x::<F>(k, o.seed ^ 0x7265_636f_7264), u32::MAX, Mode::Record, &ropts)?;
     let nodes = BoxNodes::<F>::new(&lib.lam, o.n_box, o.seed);
     let sn = nodes.scaled(lambda);
     let grid = BoxGrid::new(nodes.clone(), None);
-    let (mut checked, mut zero) = (0, 0);
+    let mut rep = ScalingReport::default();
     for &id in point_ids {
         let mu = grid.mu(id);
-        let a = scan_point(lib, word, box_x(&nodes, &mu), id, Mode::Replay(rec.ps.frozen.clone()), &ropts)?;
-        let b = scan_point(lib, word, box_x(&sn, &mu), id, Mode::Replay(rec.ps.frozen.clone()), &ropts)?;
-        for (sa, sb) in a.stages.iter().zip(b.stages.iter()) {
-            let r = check_scaling_all(&sa.vals, &sb.vals, &sa.weights, lambda).map_err(|e| format!("stage {} point {:?}: {}", sa.stage, mu, e))?;
-            checked += r.checked;
-            zero += r.zero_both;
+        let a = scan_point(lib, word, box_x(&nodes, &mu), id, Mode::Replay(rec.ps.frozen.clone()), &ropts).map_err(|e| format!("scaling scan at z{:?}: {}", mu, e))?;
+        let b = scan_point(lib, word, box_x(&sn, &mu), id, Mode::Replay(rec.ps.frozen.clone()), &ropts).map_err(|e| format!("scaling scan at λz{:?}: {}", mu, e))?;
+        for ((sa, sb), sr) in a.stages.iter().zip(b.stages.iter()).zip(rec.stages.iter()) {
+            // structure from the scans; declared weights from the record scan (whose bookkeeping
+            // is what the law certifies)
+            if sa.kinds != sr.kinds || sb.kinds != sr.kinds || sa.edges != sr.edges || sa.vals.len() != sr.weights.len() {
+                return Err(format!("scaling check: stage {} skeleton differs from the record point", sa.stage));
+            }
+            let r = check_scaling_all(&sa.vals, &sb.vals, &sr.weights, lambda).map_err(|e| format!("stage {} point {:?}: {}", sa.stage, mu, e))?;
+            rep.checked += r.checked;
+            rep.zero_both += r.zero_both;
+            rep.declared_zero += r.declared_zero;
         }
     }
-    Ok((checked, zero))
+    if rep.checked == 0 && rep.zero_both > 0 {
+        return Err("scaling check: no entry was nonzero at the scaling points".into());
+    }
+    Ok(rep)
 }
 
 // ------------------------------------------------------------------ replay-only provider

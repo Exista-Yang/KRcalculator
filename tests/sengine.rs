@@ -506,3 +506,41 @@ fn measured_costs_large() {
     cost_table(&[(10, 20, 6, 8)], true);
     cost_table(&[(20, 40, 8, 12), (30, 60, 10, 16), (40, 80, 12, 20)], false);
 }
+
+// ------------------------------------------------------------------ pivot values (M6a-2a)
+
+/// D14 frozen structure, review wave 3 sengine F3: with `check_pivot_values` a replay compares
+/// every pivot scalar with point 0's. The synthetic cone scalars a + b·x depend on the point by
+/// construction (the stand-in for a point-dependent defect): a replay at another point is refused
+/// with PointDependent, a replay at the record point itself passes; without the option the same
+/// replay passes (structure only).
+#[test]
+fn replay_compares_pivot_values() {
+    let mut refused = 0;
+    for seed in 0..30u64 {
+        let (x0, x1) = (xval(3000 + seed), xval(4000 + seed));
+        let mut o = opts(true, PivotOrder::Heap);
+        o.check_pivot_values = true;
+        let (p0, _, _) = run_tensor(seed, x0.clone(), o.clone(), Mode::Record).unwrap();
+        assert_eq!(p0.frozen.rounds.iter().map(|r| r.values.len()).sum::<usize>(), p0.frozen.pivots(), "one value per pivot");
+        // same point: every value equal
+        run_tensor(seed, x0, o.clone(), Mode::Replay(p0.frozen.clone())).unwrap();
+        // structure-only replay at another point passes
+        let mut o_off = o.clone();
+        o_off.check_pivot_values = false;
+        run_tensor(seed, x1.clone(), o_off, Mode::Replay(p0.frozen.clone())).unwrap();
+        if p0.frozen.pivots() == 0 {
+            continue;
+        }
+        match run_tensor(seed, x1, o.clone(), Mode::Replay(p0.frozen.clone())) {
+            Err(SErr::PointDependent { what, .. }) => {
+                assert!(what.contains("scalar differs"), "seed {}: {}", seed, what);
+                refused += 1;
+            }
+            Err(e) => panic!("seed {}: {}", seed, e),
+            Ok(_) => panic!("seed {}: point-dependent pivot scalars replayed silently", seed),
+        }
+    }
+    eprintln!("[pivot values] {} replays with point-dependent pivot scalars refused", refused);
+    assert!(refused >= 20);
+}

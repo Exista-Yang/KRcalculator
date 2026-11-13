@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """G2B: compare sbox JSON results (localized path) with the exact 2-strand references
 (docs/colored_design/gl6/m2s/*.json) and the Wang blocks of tests/data/wang_ref.txt.
-usage: g2b_compare.py REF.json SBOX.json [SBOX.json ...]   (exit 1 on any difference)"""
+usage: g2b_compare.py REF.json SBOX.json [SBOX.json ...]   (exit 1 on any difference, any
+chi_ok != true, or a missing / failed D14 scaling record)"""
 import json, re, sys
 
 def parse_poly(s):
@@ -36,6 +37,10 @@ for f in sys.argv[2:]:
         got = terms(r['P'])
         rank = sum(got.values())
         notes = []
+        # chi = decat_chi must have passed (sengine review F2): a missing or false chi_ok fails
+        if r.get('chi_ok') is not True:
+            bad += 1
+            notes.append('CHI FAIL (chi_ok %s)' % r.get('chi_ok'))
         if k in R:
             ok = R[k] == got
             notes.append('m2s ' + ('PASS' if ok else 'FAIL'))
@@ -54,6 +59,9 @@ for f in sys.argv[2:]:
                 bad += not ok
         print('%s %s stage %d %s N=%d rank %d: %s' % (d['field'], f, st, 'red' if r['reduced'] else 'unred', r['N'], rank, '; '.join(notes)))
     sc = d.get('scaling')
-    print('%s %s scaling: %s' % (d['field'], f, sc))
+    scl = sc if isinstance(sc, list) else [sc]
+    sc_ok = bool(scl) and all(isinstance(x, dict) and x.get('pass') is True for x in scl)
+    bad += not sc_ok
+    print('%s %s scaling: %s%s' % (d['field'], f, sc, '' if sc_ok else '  SCALING MISSING OR FAILED'))
 print('TOTAL differences:', bad)
 sys.exit(1 if bad else 0)

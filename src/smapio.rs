@@ -33,6 +33,19 @@ use crate::smap::{Arena, ElemKind, ExprId, MapId, MapNode};
 use crate::tmpl::{Template, TmplId, TmplSource, Window, TMPL_ALG};
 use crate::web::{Dir, Rung};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Replay-only import (libbuild review F3): an `H` template line whose Hom basis is neither in
+/// memory nor in the template disk cache is refused instead of recomputed by the exact solver.
+static REPLAY_ONLY: AtomicBool = AtomicBool::new(false);
+
+/// Set the process-wide replay-only mode of [`import`] (libbuild `replay` children).
+pub fn set_replay_only(on: bool) {
+    REPLAY_ONLY.store(on, Ordering::SeqCst);
+}
+pub fn replay_only() -> bool {
+    REPLAY_ONLY.load(Ordering::SeqCst)
+}
 
 pub const SMAPIO_VERSION: &str = "krhom-smapio v1";
 
@@ -334,6 +347,9 @@ pub fn import<F: Field>(ar: &mut Arena<F>, text: &str) -> Result<Vec<MapId>, Str
                 let (s, t) = (parse_window(f[1])?, parse_window(f[2])?);
                 let deg: i32 = f[3].parse().map_err(|_| format!("bad line {:?}", l))?;
                 let index: usize = f[4].parse().map_err(|_| format!("bad line {:?}", l))?;
+                if replay_only() && !ar.lib_ref().has_hom(&s, &t, deg) {
+                    return Err(format!("smapio (replay): hom basis {} -> {} degree {} is not in the template cache; replay never runs the exact solver", s.key(), t.key(), deg));
+                }
                 let ids = ar.lib().try_hom_basis_cap(&s, &t, deg, u128::MAX)?;
                 let id = *ids.get(index).ok_or_else(|| format!("smapio: hom basis {} -> {} degree {} has {} elements, index {}", s.key(), t.key(), deg, ids.len(), index))?;
                 if template_hash(ar.lib_ref().get(id)) != hash_of(f[5])? {

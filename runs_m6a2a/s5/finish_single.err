@@ -1,0 +1,13 @@
+library: 4 types, 4 closable, build 24.2s (0 provider calls, 80 layer-A loads), hash cabf041aaa23a517, commit 4dbf8ba8920a52a47efe4938f391728e714c7880-dirty
+word [1, 1, 1, 1, 1]: chi = decat_chi for 40 closures; scaling: 3724 entries checked, 3808 zero at both points, 0 declared 0
+  accumulator stage 1 mode None: 269 points, digest 9c1bd36f11b82293
+  accumulator stage 1 mode Some(0): 20 points, digest abddcd93a9ff7871
+  accumulator stage 2 mode None: 382 points, digest 1ceff53c8fe690aa
+  accumulator stage 2 mode Some(0): 20 points, digest adef7352f2ab4f4e
+  accumulator stage 3 mode None: 392 points, digest 4c0404753bacb8ec
+  accumulator stage 3 mode Some(0): 20 points, digest c1f28302f2ce4c3b
+  accumulator stage 4 mode None: 397 points, digest 754e953982c37bb9
+  accumulator stage 4 mode Some(0): 20 points, digest b1220dc5bacfa115
+  accumulator stage 5 mode None: 399 points, digest 5e5a1c721dc9b602
+  accumulator stage 5 mode Some(0): 20 points, digest 49c627817be5bce9
+finish: shards [(0, 1)], determinant pass 3192 checks at 399 points, close 11.7s, total 39.3s

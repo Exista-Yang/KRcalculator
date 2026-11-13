@@ -67,6 +67,12 @@ fn jstr(s: &str) -> String {
     o.push('"');
     o
 }
+/// the commit of this binary (embedded at build time; the code that actually runs)
+fn build_commit() -> String {
+    krhom::boxrun::build_commit().to_string()
+}
+
+#[allow(dead_code)]
 fn git_commit() -> String {
     let run = |a: &[&str]| std::process::Command::new("git").args(a).current_dir(env!("CARGO_MANIFEST_DIR")).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
     match run(&["rev-parse", "HEAD"]) {
@@ -130,7 +136,7 @@ fn set_name(args: &[String], n: u8) -> String {
     if opt(args, "--corner").is_some() {
         format!("corner-{}-n{}", opt(args, "--corner").unwrap(), n)
     } else if opt(args, "--sample").is_some() {
-        format!("sample-{}{}-n{}", opt(args, "--sample").unwrap(), opt(args, "--count").unwrap_or_else(|| "20".into()), n)
+        format!("sample-{}{}-s{}-n{}", opt(args, "--sample").unwrap(), opt(args, "--count").unwrap_or_else(|| "20".into()), opt(args, "--seed").unwrap_or_else(|| "2026".into()), n)
     } else {
         format!("level-n{}", n)
     }
@@ -337,6 +343,9 @@ fn child<F: Field>(args: &[String], job: &[String]) {
     let cache = PathBuf::from(opt(args, "--cache").expect("--cache"));
     let scale: f64 = opt(args, "--scale").map(|v| v.parse().unwrap()).unwrap_or(1.0);
     let replay = flag(args, "--replay");
+    // replay: a template referenced by layer A must already be in the template cache (smapio
+    // refuses to recompute it; libbuild review F3)
+    krhom::smapio::set_replay_only(replay);
     let (prov, stamp) = provider_and_stamp::<F>(&lam, args);
     let prov: Box<dyn HomProvider<F>> = if replay { Box::new(NoProvider) } else { prov };
     let opts = SIndecOpts { cache_dir: Some(cache.clone()), budget: scaled_budget(scale), prune_n: Some(n), layer_a_route_stamp: flag(args, "--stamp-route"), ..SIndecOpts::default() };
@@ -393,12 +402,17 @@ fn child<F: Field>(args: &[String], job: &[String]) {
     }
     let st = sd.stats();
     let by = sd.ar.bytes();
+    let tmpl_computed = sd.ar.lib_ref().stats().computed;
+    if replay && tmpl_computed > 0 {
+        errs.push(("replay".into(), "Check", format!("replay computed {} templates (the exact solver ran)", tmpl_computed)));
+    }
+    let child_stamps = sd.layer_a_stamps();
     let tl: Vec<String> = sd.target_log.iter().map(|e| format!("{{\"p\":{},\"q\":{},\"s\":{},\"mult\":{},\"secs\":{:.3},\"summary\":{}}}", jstr(&e.0), jstr(&e.1), e.2, e.3, e.4, jstr(&e.5))).collect();
     let el: Vec<String> = errs.iter().map(|(w, k, t)| format!("{{\"what\":{},\"kind\":{},\"text\":{}}}", jstr(w), jstr(k), jstr(&t[..t.len().min(2000)]))).collect();
     let _ = sd.ar.lib_ref().save();
     println!(
-        "RESULT {{\"ok\":{},{}\"wall\":{:.3},\"errors\":[{}],\"stats\":{{\"decomps\":{},\"identity\":{},\"all_killed\":{},\"targets\":{},\"sum_mult\":{},\"provider_calls\":{},\"provider_secs\":{:.3},\"max_x_flows\":{},\"layer_a_loaded\":{},\"layer_a_route\":{},\"layer_a_saved\":{},\"layer_a_rejected\":{},\"rickard\":{},\"closure\":{},\"scaling_entries\":{},\"scaling_zero\":{},\"check_secs\":{:.3}}},\"arena_bytes\":{},\"fresh\":[{}]}}",
-        errs.is_empty(), info, t0.elapsed().as_secs_f64(), el.join(","), st.decomps, st.identity, st.all_killed, st.targets, st.sum_mult, st.provider_calls, st.provider_secs, st.max_x_flows, st.layer_a_loaded, st.layer_a_route, st.layer_a_saved, st.layer_a_rejected, st.rickard, st.closure, st.scaling_entries, st.scaling_zero, st.check_secs, by.total(), tl.join(",")
+        "RESULT {{\"ok\":{},{}\"commit\":{},\"stamps\":{},\"tmpl_computed\":{},\"wall\":{:.3},\"errors\":[{}],\"stats\":{{\"decomps\":{},\"identity\":{},\"all_killed\":{},\"targets\":{},\"sum_mult\":{},\"provider_calls\":{},\"provider_secs\":{:.3},\"max_x_flows\":{},\"layer_a_loaded\":{},\"layer_a_route\":{},\"layer_a_saved\":{},\"layer_a_rejected\":{},\"rickard\":{},\"closure\":{},\"scaling_entries\":{},\"scaling_zero\":{},\"check_secs\":{:.3}}},\"arena_bytes\":{},\"fresh\":[{}]}}",
+        errs.is_empty(), info, jstr(&build_commit()), jstr(&child_stamps), tmpl_computed, t0.elapsed().as_secs_f64(), el.join(","), st.decomps, st.identity, st.all_killed, st.targets, st.sum_mult, st.provider_calls, st.provider_secs, st.max_x_flows, st.layer_a_loaded, st.layer_a_route, st.layer_a_saved, st.layer_a_rejected, st.rickard, st.closure, st.scaling_entries, st.scaling_zero, st.check_secs, by.total(), tl.join(",")
     );
 }
 
@@ -528,17 +542,51 @@ fn cmd_run(args: &[String], replay: bool) {
     let retry = !flag(args, "--no-retry");
     let mut s = Schur::new(&lam);
     let (set, _plan) = build_set(args, &mut s, &lam, n);
-    let out = opt(args, "--json").unwrap_or_else(|| format!("libbuild_{}_{}_f{}.jsonl", labels_str(&lam).replace(',', ""), set.name, field));
-    // resume: jobs already certified in OUT (same mode) are skipped
+    let mode = if replay { "replay" } else { "run" };
+    // the default output name carries the mode (and, through the set name, a sample's seed):
+    // a replay never reads a run's file (libbuild review F1, F2)
+    let out = opt(args, "--json").unwrap_or_else(|| format!("libbuild_{}_{}_f{}_{}.jsonl", labels_str(&lam).replace(',', ""), set.name, field, mode));
+    let stamp = match field.as_str() {
+        "31" => provider_and_stamp::<F31>(&lam, args).1,
+        _ => provider_and_stamp::<F32b>(&lam, args).1,
+    };
+    let stamps = format!("{} ladfn={} tmpl_alg={} prov={}", SINDEC_VERSION, LADDER_STAMP, krhom::tmpl::TMPL_ALG, stamp);
+    let cache_abs = std::fs::canonicalize(&cache).map(|p| p.display().to_string()).unwrap_or_else(|_| cache.clone());
+    // the governing key of the attempt lines of a run: an attempt line counts for a resume only
+    // under a header with exactly this key (mode, λ, N, field, set, cache, stamps, seed, provider)
+    let governing = format!(
+        "mode={} lam={} n={} field={} set={} cache={} seed={} provider={} stamp_route={} stamps={}",
+        mode,
+        labels_str(&lam),
+        n,
+        field,
+        set.name,
+        cache_abs,
+        opt(args, "--seed").unwrap_or_else(|| "2026".into()),
+        opt(args, "--provider").unwrap_or_else(|| "default".into()),
+        flag(args, "--stamp-route"),
+        stamps
+    );
+    let commit = build_commit();
+    let set_keys: BTreeSet<String> = set.jobs.iter().map(|j| j.key()).collect();
+    // resume: jobs certified in OUT under the same governing header (and the same binary commit)
     let mut done: BTreeSet<String> = BTreeSet::new();
     let mut prev: Vec<String> = vec![];
+    let mut foreign = 0usize;
     if !flag(args, "--redo") {
         if let Ok(t) = std::fs::read_to_string(&out) {
+            let mut cur_ok = false;
             for l in t.lines() {
-                if l.starts_with("{\"attempt\"") {
+                if l.starts_with("{\"header\"") {
+                    cur_ok = jfield(l, "governing") == Some(governing.as_str());
+                } else if l.starts_with("{\"attempt\"") {
                     if l.contains("\"outcome\":\"ok\"") {
                         if let Some(j) = jfield(l, "job") {
-                            done.insert(j.to_string());
+                            if cur_ok && set_keys.contains(j) {
+                                done.insert(j.to_string());
+                            } else {
+                                foreign += 1;
+                            }
                         }
                     }
                     prev.push(l.to_string());
@@ -546,20 +594,19 @@ fn cmd_run(args: &[String], replay: bool) {
             }
         }
     }
+    if foreign > 0 {
+        eprintln!("[libbuild] {}: {} certified attempt lines under another governing header or outside this set are ignored", out, foreign);
+    }
     let mut todo: Vec<Job> = set.jobs.iter().filter(|j| !done.contains(&j.key())).cloned().collect();
     if let Some(m) = opt(args, "--max-jobs") {
         todo.truncate(m.parse().unwrap());
     }
     let restricted = opt(args, "--max-jobs").is_some();
-    let stamp = match field.as_str() {
-        "31" => provider_and_stamp::<F31>(&lam, args).1,
-        _ => provider_and_stamp::<F32b>(&lam, args).1,
-    };
     let argv: Vec<String> = args.iter().map(|a| jstr(a)).collect();
     let header = format!(
-        "{{\"header\":{{\"tool\":\"libbuild\",\"mode\":{},\"args\":[{}],\"set\":{},\"lam\":{},\"n\":{},\"field\":{},\"commit\":{},\"host\":{},\"stamps\":{},\"watchdog\":{{\"wall_s\":{},\"rss_mb\":{},\"jobs\":{}}},\"scale\":{},\"jobs_total\":{},\"jobs_skipped_done\":{},\"restricted\":{}}}}}",
-        jstr(if replay { "replay" } else { "run" }), argv.join(","), jstr(&set.name), jstr(&labels_str(&lam)), n, jstr(&field), jstr(&git_commit()), jstr(&host_stamp()),
-        jstr(&format!("{} ladfn={} tmpl_alg={} prov={}", SINDEC_VERSION, LADDER_STAMP, krhom::tmpl::TMPL_ALG, stamp)), wall, rss, jobs_n, scale0, set.jobs.len(), done.len(), restricted
+        "{{\"header\":{{\"tool\":\"libbuild\",\"governing\":{},\"mode\":{},\"args\":[{}],\"set\":{},\"lam\":{},\"n\":{},\"field\":{},\"commit\":{},\"host\":{},\"stamps\":{},\"watchdog\":{{\"wall_s\":{},\"rss_mb\":{},\"jobs\":{}}},\"scale\":{},\"jobs_total\":{},\"jobs_skipped_done\":{},\"restricted\":{}}}}}",
+        jstr(&governing), jstr(mode), argv.join(","), jstr(&set.name), jstr(&labels_str(&lam)), n, jstr(&field), jstr(&commit), jstr(&host_stamp()),
+        jstr(&stamps), wall, rss, jobs_n, scale0, set.jobs.len(), done.len(), restricted
     );
     eprintln!("[libbuild] {} {} F{}: {} jobs, {} already certified, {} to run, {} workers", if replay { "replay" } else { "run" }, set.name, field, set.jobs.len(), done.len(), todo.len(), jobs_n);
     let fh = Arc::new(Mutex::new({
@@ -588,6 +635,7 @@ fn cmd_run(args: &[String], replay: bool) {
     let mut hs = vec![];
     for _w in 0..jobs_n {
         let (queue, attempts, fh, base, tlog) = (queue.clone(), attempts.clone(), fh.clone(), base.clone(), tlog.clone());
+        let (commit_c, stamps_c) = (commit.clone(), stamps.clone());
         hs.push(std::thread::spawn(move || loop {
             let item = queue.lock().unwrap().pop();
             let Some((job, sc)) = item else { break };
@@ -598,6 +646,16 @@ fn cmd_run(args: &[String], replay: bool) {
             let outcome = outcome_of(&line, killed);
             // a pair job certifies exactly its plan targets (counted fresh + loaded)
             let mut outcome = outcome;
+            // the child must be this binary (a rebuild during a run would otherwise certify
+            // results under the wrong commit; libbuild review F4) with the same stamps
+            if outcome == "ok" {
+                if let Some(l) = &line {
+                    if jfield(l, "commit") != Some(commit_c.as_str()) || jfield(l, "stamps") != Some(stamps_c.as_str()) {
+                        eprintln!("[libbuild] {}: child commit/stamps {:?} / {:?} differ from the parent's {} / {}", job.key(), jfield(l, "commit"), jfield(l, "stamps"), commit_c, stamps_c);
+                        outcome = "Commit".into();
+                    }
+                }
+            }
             if outcome == "ok" {
                 if let (Some(l), Some(wt)) = (&line, job.want_targets) {
                     if job.spec[0] == "pair" {
@@ -631,7 +689,8 @@ fn cmd_run(args: &[String], replay: bool) {
     for a in att {
         last.insert(a.job.clone(), a);
     }
-    let mut n_ok = done.len();
+    // certified = jobs of the current set only (done ⊆ set by construction; libbuild review F2)
+    let mut n_ok = done.iter().filter(|k| set_keys.contains(*k)).count();
     let mut fails: Vec<String> = vec![];
     let mut m4c: Vec<String> = vec![];
     for j in &todo {
@@ -867,10 +926,17 @@ fn cmd_calib(args: &[String]) {
 // ------------------------------------------------------------------ knot coverage
 
 /// job key -> best outcome in a run file ("ok" if any attempt certified, else the last outcome)
-fn run_status(path: &str) -> BTreeMap<String, String> {
+fn run_status(path: &str, lam: &[u8], n: u8) -> BTreeMap<String, String> {
     let mut m: BTreeMap<String, String> = BTreeMap::new();
+    // only attempt lines under a header of this λ and N count (libbuild review F1, `cover`)
+    let (want_lam, want_n) = (labels_str(lam), n.to_string());
+    let mut cur_ok = false;
     for l in std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{}: {}", path, e)).lines() {
-        if !l.starts_with("{\"attempt\"") {
+        if l.starts_with("{\"header\"") {
+            cur_ok = jfield(l, "lam") == Some(want_lam.as_str()) && jfield(l, "n") == Some(want_n.as_str());
+            continue;
+        }
+        if !l.starts_with("{\"attempt\"") || !cur_ok {
             continue;
         }
         let (Some(j), Some(o)) = (jfield(l, "job"), jfield(l, "outcome")) else { continue };
@@ -891,7 +957,7 @@ fn cmd_cover(args: &[String]) {
     let n: u8 = opt(args, "--n").expect("--n").parse().unwrap();
     let mut s = Schur::new(&lam);
     let plan = pruned_plan(&mut s, Some(n));
-    let runs: Vec<BTreeMap<String, String>> = opt(args, "--runs").map(|r| r.split(',').map(run_status).collect()).unwrap_or_default();
+    let runs: Vec<BTreeMap<String, String>> = opt(args, "--runs").map(|r| r.split(',').map(|p| run_status(p, &lam, n)).collect()).unwrap_or_default();
     let names: Option<BTreeSet<String>> = opt(args, "--names").map(|v| v.split(',').map(|x| x.to_string()).collect());
     let maxc: usize = opt(args, "--max-cross").map(|v| v.parse().unwrap()).unwrap_or(usize::MAX);
     let text = std::fs::read_to_string(opt(args, "--knots").expect("--knots")).unwrap();

@@ -51,7 +51,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 /// Version stamp of this module's algorithms and file format (part of every checkpoint header).
-pub const BOX_CODE_STAMP: &str = "boxclose-v1";
+pub const BOX_CODE_STAMP: &str = "boxclose-v2";
 
 // ------------------------------------------------------------------ fields and hashes
 
@@ -610,6 +610,52 @@ pub struct BoxHeader {
     pub lam: Vec<u8>,
     pub code_stamp: String,
     pub entries_hash: u64,
+    /// what the entries mean (M6a-2a, review wave 3 box F2 / sengine F4)
+    pub bind: BoxBinding,
+}
+
+/// The binding of a checkpoint to the meaning of its entries (M6a-2a): two shards whose weight
+/// lists agree but whose entries are coordinates in different bases must never be summed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BoxBinding {
+    /// closable stage (crossing count) the entries belong to (0: unbound, tests)
+    pub stage: usize,
+    /// hash of the closure skeleton: entry kinds, objects, edges, type degrees, crossings
+    pub skeleton_hash: u64,
+    /// engine version and the options that decide the frozen structure (pivot order, streaming)
+    pub engine_stamp: String,
+    /// hash of the frozen trace recorded at the record point (pivot sequence, patterns, values)
+    pub trace_hash: u64,
+    /// hash of the entry values at the record point (the library maps' content, in this basis)
+    pub record_hash: u64,
+}
+
+/// The fields in which two headers differ (for refusal messages).
+pub fn header_diff(a: &BoxHeader, b: &BoxHeader) -> String {
+    let mut d = vec![];
+    macro_rules! cmp {
+        ($($f:ident).+) => {
+            if a.$($f).+ != b.$($f).+ {
+                d.push(format!("{} {:?} vs {:?}", stringify!($($f).+), a.$($f).+, b.$($f).+));
+            }
+        };
+    }
+    cmp!(prime);
+    cmp!(node_seed_hash);
+    cmp!(library_hash);
+    cmp!(word_hash);
+    cmp!(prune_n);
+    cmp!(marked);
+    cmp!(n);
+    cmp!(lam);
+    cmp!(code_stamp);
+    cmp!(entries_hash);
+    cmp!(bind.stage);
+    cmp!(bind.skeleton_hash);
+    cmp!(bind.engine_stamp);
+    cmp!(bind.trace_hash);
+    cmp!(bind.record_hash);
+    d.join("; ")
 }
 
 /// Hash of an entry weight list (None: an entry that must be 0 at every point).
@@ -647,6 +693,10 @@ impl<F: PrimeField> BoxAcc<F> {
     /// hash are filled from the grid and weights; library hash, word hash and prune_n come from
     /// the caller.
     pub fn new(grid: Arc<BoxGrid<F>>, weights: Vec<Option<u32>>, library_hash: u64, word_hash: u64, prune_n: Option<usize>) -> Self {
+        Self::with_binding(grid, weights, library_hash, word_hash, prune_n, BoxBinding::default())
+    }
+    /// As [`BoxAcc::new`], with the binding of the entries (stage, skeleton, engine, trace).
+    pub fn with_binding(grid: Arc<BoxGrid<F>>, weights: Vec<Option<u32>>, library_hash: u64, word_hash: u64, prune_n: Option<usize>, bind: BoxBinding) -> Self {
         let header = BoxHeader {
             prime: F::characteristic(),
             node_seed_hash: grid.nodes.hash(),
@@ -658,6 +708,7 @@ impl<F: PrimeField> BoxAcc<F> {
             lam: grid.lam.clone(),
             code_stamp: BOX_CODE_STAMP.to_string(),
             entries_hash: entries_hash(&weights),
+            bind,
         };
         let mut off = vec![];
         let mut nout = vec![];
@@ -781,7 +832,7 @@ impl<F: PrimeField> BoxAcc<F> {
     /// overlapping done-point bitmaps.
     pub fn merge(&mut self, o: &BoxAcc<F>) -> Result<(), String> {
         if o.header != self.header {
-            return Err(format!("mismatched checkpoint header: {:?} vs {:?}", self.header, o.header));
+            return Err(format!("mismatched checkpoint header: {}", header_diff(&self.header, &o.header)));
         }
         if o.weights != self.weights || o.acc.len() != self.acc.len() || o.done.len() != self.done.len() {
             return Err("mismatched entry lists".to_string());
@@ -798,6 +849,14 @@ impl<F: PrimeField> BoxAcc<F> {
         }
         self.ndone += o.ndone;
         Ok(())
+    }
+
+    /// Content digest: header (every field) and payload (bitmap, weights, accumulators). Two
+    /// accumulators with equal digests hold byte-identical checkpoints.
+    pub fn digest(&self) -> u64 {
+        let mut h = Fnv::default();
+        h.str(&format!("{:?}", self.header)).bytes(&self.payload());
+        h.get()
     }
 
     fn payload(&self) -> Vec<u8> {
@@ -820,7 +879,7 @@ impl<F: PrimeField> BoxAcc<F> {
         let h = &self.header;
         let opt = |x: Option<usize>| x.map_or("none".to_string(), |v| v.to_string());
         let head = format!(
-            "krhom-boxacc v1\nprime={}\nnode_seed_hash={}\nlibrary_hash={}\nword_hash={}\nprune_n={}\nmarked={}\nn={}\nlam={}\ncode_stamp={}\nentries_hash={}\nentries={}\nnpoints={}\nndone={}\npayload_len={}\npayload_hash={}\nend\n",
+            "krhom-boxacc v2\nprime={}\nnode_seed_hash={}\nlibrary_hash={}\nword_hash={}\nprune_n={}\nmarked={}\nn={}\nlam={}\ncode_stamp={}\nentries_hash={}\nstage={}\nskeleton_hash={}\nengine_stamp={}\ntrace_hash={}\nrecord_hash={}\nentries={}\nnpoints={}\nndone={}\npayload_len={}\npayload_hash={}\nend\n",
             h.prime,
             h.node_seed_hash,
             h.library_hash,
@@ -831,6 +890,11 @@ impl<F: PrimeField> BoxAcc<F> {
             h.lam.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","),
             h.code_stamp,
             h.entries_hash,
+            h.bind.stage,
+            h.bind.skeleton_hash,
+            h.bind.engine_stamp,
+            h.bind.trace_hash,
+            h.bind.record_hash,
             self.weights.len(),
             self.grid.npoints,
             self.ndone,
@@ -858,6 +922,17 @@ impl<F: PrimeField> BoxAcc<F> {
         })
     }
 
+    /// [`BoxAcc::load`], then require the whole header to equal `want` (library, word, prune_n,
+    /// stage, skeleton, engine, trace and record bindings included): a resume or a merge from a
+    /// stale file of another run with the same weight list is refused (review wave 3 box F2).
+    pub fn load_expect(path: &Path, grid: Arc<BoxGrid<F>>, want: &BoxHeader) -> Result<Self, String> {
+        let acc = Self::load(path, grid)?;
+        if acc.header != *want {
+            return Err(format!("checkpoint {}: header does not match this run: {}", path.display(), header_diff(&acc.header, want)));
+        }
+        Ok(acc)
+    }
+
     /// Read a checkpoint written by [`BoxAcc::save`] against `grid`: Err if the file is
     /// truncated or corrupt (payload hash), or its N, λ, mode, prime or node hash differ from the
     /// grid's.
@@ -868,8 +943,8 @@ impl<F: PrimeField> BoxAcc<F> {
         let head = std::str::from_utf8(&raw[..end]).map_err(|_| "checkpoint: header not UTF-8")?;
         let mut kv: BTreeMap<&str, &str> = BTreeMap::new();
         let mut lines = head.lines();
-        if lines.next() != Some("krhom-boxacc v1") {
-            return Err("checkpoint: not a krhom-boxacc v1 file".into());
+        if lines.next() != Some("krhom-boxacc v2") {
+            return Err("checkpoint: not a krhom-boxacc v2 file".into());
         }
         for l in lines {
             if l == "end" {
@@ -900,6 +975,7 @@ impl<F: PrimeField> BoxAcc<F> {
             lam,
             code_stamp: get("code_stamp")?.to_string(),
             entries_hash: num("entries_hash")?,
+            bind: BoxBinding { stage: num("stage")? as usize, skeleton_hash: num("skeleton_hash")?, engine_stamp: get("engine_stamp")?.to_string(), trace_hash: num("trace_hash")?, record_hash: num("record_hash")? },
         };
         if header.prime != F::characteristic() || header.node_seed_hash != grid.nodes.hash() || header.n != grid.n || header.lam != grid.lam || header.marked != grid.marked || num("npoints")? != grid.npoints as u64 {
             return Err("checkpoint: prime, nodes, N, lambda or mode differ from the grid".into());
@@ -917,7 +993,7 @@ impl<F: PrimeField> BoxAcc<F> {
         if entries_hash(&weights) != header.entries_hash {
             return Err("checkpoint: entries hash mismatch".into());
         }
-        let mut acc = BoxAcc::new(grid, weights, header.library_hash, header.word_hash, header.prune_n);
+        let mut acc = BoxAcc::with_binding(grid, weights, header.library_hash, header.word_hash, header.prune_n, header.bind.clone());
         if acc.header != header {
             return Err("checkpoint: header inconsistent with the grid".into());
         }
@@ -958,8 +1034,11 @@ pub fn check_scaling<F: Field>(v_z: &F, v_lz: &F, lambda: &F, w: u32) -> Result<
 pub struct ScalingReport {
     /// entries checked with a nonzero value
     pub checked: usize,
-    /// entries 0 at both points (reported, not certified)
+    /// entries with a declared weight that are 0 at both points (reported, not certified)
     pub zero_both: usize,
+    /// entries declared 0 (negative or odd weight), verified 0 at both points (sengine review F1:
+    /// reported apart from `zero_both`, which carries no information)
+    pub declared_zero: usize,
 }
 
 /// [`check_scaling`] for every entry (declared weights; None: both values must be 0).
@@ -972,7 +1051,8 @@ pub fn check_scaling_all<F: Field>(vz: &[F], vlz: &[F], weights: &[Option<u32>],
                 if !vz[e].is_zero() || !vlz[e].is_zero() {
                     return Err(format!("entry {}: declared 0 but nonzero", e));
                 }
-                false
+                r.declared_zero += 1;
+                continue;
             }
         };
         if ok {
