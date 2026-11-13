@@ -1,0 +1,3 @@
+plan lam=2,2,2,2 N=4: 2520 pairs, 1032 with kept source, 869 non-identity with provider targets, 0 all-killed; kept targets 2675 (Σ mult 2990), killed targets 1514
+set level-n4: 1157 jobs {"closure": 125, "pair": 1032}; known targets 2925 (Σ mult 2990); max X 15552 flows
+n=4 exit 0 secs 23.115241680
