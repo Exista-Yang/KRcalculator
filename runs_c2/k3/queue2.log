@@ -32,3 +32,5 @@
 10_100_f32b exit 2 
 10_64_f32b exit 0 scan 1490.1s
 10_64_f31 exit 0 scan 1516.4s
+10_48_f32b exit 0 scan 2462.6s
+10_48_f31 exit 0 scan 2484.2s

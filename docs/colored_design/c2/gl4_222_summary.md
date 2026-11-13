@@ -19,13 +19,16 @@
 | 9_3 | 1 1 1 1 1 1 1 2 -1 2 | 438 | 361 | 39 | 19 | eq / eq | yes | yes | yes | PASS |
 | 9_6 | 1 1 1 1 1 1 2 -1 2 2 | 838 | 729 | 55 | 27 | eq / eq | yes | yes | yes | PASS |
 | 9_9 | 1 1 1 1 1 2 -1 2 2 2 | 1086 | 961 | 63 | 31 | eq / eq | yes | yes | yes | PASS |
+| 9_16 | 1 1 1 1 2 2 -1 2 2 2 | 1678 | 1521 | 79 | 39 | eq / eq | yes | yes | yes | PASS |
 | 10_2 | 1 1 1 1 1 1 1 -2 1 -2 | 622 | 529 | 47 | 23 | eq / eq | yes | yes | yes | PASS |
 | 10_5 | -1 -1 -1 -1 -1 -1 2 -1 2 2 | 1222 | 1089 | 67 | 33 | eq / eq | yes | yes | yes | PASS |
 | 10_9 | 1 1 1 1 1 -2 1 -2 -2 -2 | 1678 | 1521 | 79 | 39 | eq / eq | yes | yes | yes | PASS |
 | 10_17 | 1 1 1 1 -2 1 -2 -2 -2 -2 | 1846 | 1681 | 83 | 41 | eq / eq | yes | yes | yes | PASS |
 | 10_46 | 1 1 1 1 1 -2 1 1 1 -2 | 1086 | 961 | 63 | 31 | eq / eq | yes | yes | yes | PASS |
 | 10_47 | -1 -1 -1 -1 -1 2 -1 -1 2 2 | 1846 | 1681 | 83 | 41 | eq / eq | yes | yes | yes | PASS |
+| 10_48 | -1 -1 -1 -1 2 2 -1 2 2 2 | 2598 | 2401 | 99 | 49 | eq / eq | yes | yes | yes | PASS |
 | 10_62 | -1 -1 -1 -1 2 -1 -1 -1 2 2 | 2206 | 2025 | 91 | 45 | eq / eq | yes | yes | yes | PASS |
+| 10_64 | 1 1 1 -2 1 1 1 -2 -2 -2 | 2806 | 2601 | 103 | 51 | eq / eq | yes | yes | yes | PASS |
 | 10_124 | 1 1 1 1 1 2 1 1 1 2 | 154 | 61 | 27 | 17 | eq / eq | yes | yes | yes | PASS |
 | 10_125 | -1 -1 -1 -1 -1 2 1 1 1 2 | 180 | 125 | 25 | 13 | eq / eq | yes | yes | yes | PASS |
 | 10_126 | -1 -1 -1 -1 -1 -2 1 1 1 -2 | 438 | 361 | 39 | 19 | eq / eq | yes | yes | yes | PASS |
@@ -45,4 +48,4 @@
 | 12n_235 | 1 2 2 1 1 -2 -2 -2 -2 -2 -2 -2 | 258 | 181 | 33 | 19 | eq / eq | yes | yes | yes | PASS |
 | 12n_242 | 1 2 2 1 1 2 2 2 2 2 2 2 | 226 | 101 | 35 | 23 | eq / eq | yes | yes | yes | PASS |
 
-44 knots computed, 44 PASS, failures: []
+47 knots computed, 47 PASS, failures: []
