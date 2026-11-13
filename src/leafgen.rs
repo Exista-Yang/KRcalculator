@@ -53,6 +53,57 @@ pub const MAX_INTERP_FLOWS: usize = 1200;
 /// Largest window for which `validate_assoc` runs the polynomiality certificate (M4C_PLAN §3.4).
 pub const ASSOC_CERT_FLOWS: usize = 500;
 
+/// Memory/time gate of `interpolate` and of the polynomiality certificate (review wave 4,
+/// finding 1): at most this many monomials in one entry degree (the Vandermonde is nm × nm,
+/// inverted as an nm × 2nm rref; nm³ field operations).
+pub const MAX_INTERP_MONOS: u64 = 6_000;
+/// ... and at most this many stored localization entries, (#points) · ns · nt, where
+/// #points = max monomials + 4 (the certificate's count; interpolate uses + 2).
+pub const MAX_INTERP_CELLS: u128 = 250_000_000;
+
+/// Predicted size of an interpolation / polynomiality certificate of a degree-`deg` map
+/// src → tgt, computed from the words alone (no SBim, no GrTable): fibre degrees of a window
+/// word range over [0, −2·shift], so the entry degrees range over
+/// [u − maxf_tgt, u + maxf_src] with u = deg − shift_tgt + shift_src.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InterpCost {
+    pub ns: u128,
+    pub nt: u128,
+    pub max_monos: u64,
+    pub cells: u128,
+}
+
+/// The gate itself: Err (without building anything) when the window exceeds MAX_INTERP_FLOWS
+/// flows on either side, MAX_INTERP_MONOS monomials in some entry degree, or MAX_INTERP_CELLS
+/// stored entries. Called before any SBim is built by `interpolate`, `build`, `build_in`,
+/// `validate_assoc` and `theorem_vs_numeric`.
+pub fn interp_gate(src: &Window, tgt: &Window, deg: i32) -> Result<InterpCost, String> {
+    let se = Expr::new(&src.labels, &src.rungs)?;
+    let te = Expr::new(&tgt.labels, &tgt.rungs)?;
+    let (ns, nt) = (se.nflows(), te.nflows());
+    if ns.max(nt) > MAX_INTERP_FLOWS as u128 {
+        return Err(format!("interpolate: window of {} x {} flows exceeds {} (refused before any SBim build)", nt, ns, MAX_INTERP_FLOWS));
+    }
+    let (ss, ts) = (se.shift(), te.shift());
+    let (maxfs, maxft) = (-2 * ss, -2 * ts);
+    let u = deg - ts + ss;
+    let mut max_monos = 0u64;
+    let mut d = (u - maxft).max(0);
+    while d <= u + maxfs {
+        max_monos = max_monos.max(crate::rexplan::monos_of_deg(&src.labels, d));
+        d += 1;
+    }
+    let cells = (max_monos as u128 + 4).saturating_mul(ns).saturating_mul(nt);
+    let c = InterpCost { ns, nt, max_monos, cells };
+    if max_monos > MAX_INTERP_MONOS {
+        return Err(format!("interpolate: {} monomials in one entry degree exceed {} ({} x {} flows; refused before any SBim build)", max_monos, MAX_INTERP_MONOS, nt, ns));
+    }
+    if cells > MAX_INTERP_CELLS {
+        return Err(format!("interpolate: {} localization entries ({} points x {} x {} flows) exceed {} (refused before any SBim build)", cells, max_monos + 4, nt, ns, MAX_INTERP_CELLS));
+    }
+    Ok(c)
+}
+
 // ------------------------------------------------------------------ words
 
 /// labels after applying the rungs (None if a rung is invalid)
@@ -304,6 +355,7 @@ fn positions(fps: &[crate::local::FixedPoint], fi: &FlowIndex) -> Vec<usize> {
 /// of its forced degree from (#monomials) points and checked at 2 more. Err if an entry is not
 /// polynomial (the closed form is not a bimodule map of degree `deg`) or the window is too large.
 pub fn interpolate<F: Field>(src: &Window, tgt: &Window, deg: i32, f: &mut dyn FnMut(&[F]) -> WinLoc<F>, seed: u64) -> Result<PMat<F>, String> {
+    interp_gate(src, tgt, deg)?;
     let sb = src.expr().sbim::<F>();
     let tb = tgt.expr().sbim::<F>();
     let (sfi, tfi) = (FlowIndex::build(&src.expr()), FlowIndex::build(&tgt.expr()));
@@ -642,6 +694,7 @@ pub fn validate_assoc<F: Field>(ar: &mut Arena<F>, ws: &Expr, wt: &Expr, seed: u
     if a.nflows().max(b.nflows()) > ASSOC_CERT_FLOWS {
         return Err(format!("validate_assoc: {} flows > {} (refused: no certificate)", a.nflows(), ASSOC_CERT_FLOWS));
     }
+    interp_gate(&Window::new(&ws.bottom, &ws.rungs), &Window::new(&wt.bottom, &wt.rungs), 0).map_err(|e| format!("validate_assoc: {}", e))?;
     let rep = poly_certificate::<F>(&Window::new(&ws.bottom, &ws.rungs), &Window::new(&wt.bottom, &wt.rungs), 0, &mut |y: &[F]| elem_winloc(ElemKind::Assoc, &a, &b, y), seed)?;
     ar.certify_assoc(ws, wt, F::one());
     Ok(rep)
@@ -671,6 +724,21 @@ pub fn braid_dag<F: Field>(ar: &mut Arena<F>, bw: &BraidWords, seed: u64) -> Res
     let (at_b, lb, long_b, short_b) = bw.win_b.clone();
     let psi_a = ClosedForm::new("braid psi_A", CfKind::Rex, win(&la, &long_a), win(&la, &short_a))?;
     let phi_b = ClosedForm::new("braid phi_B", CfKind::Pull, win(&lb, &short_b), win(&lb, &long_b))?;
+    // review wave 4 finding 1: decide the middle step's route before building anything, and
+    // refuse (Err) when neither the numeric Assoc certificate nor the Pull fallback is within
+    // the interpolation budget (e.g. cells (3,2,3): 560 flows, 39 148 monomials).
+    {
+        let (wm, wmp) = (win(&lam, &bw.m), win(&lam, &bw.mp));
+        let fl = Expr::new(&lam, &bw.m)?.nflows().max(Expr::new(&lam, &bw.mp)?.nflows());
+        let assoc_ok = fl <= ASSOC_CERT_FLOWS as u128 && interp_gate(&wm, &wmp, 0).is_ok();
+        if !assoc_ok {
+            if let Err(e) = interp_gate(&wm, &wmp, 0) {
+                return Err(format!("braid_dag {:?}: middle step M -> M' over budget for the Assoc certificate and the Pull fallback: {}", bw.cells, e));
+            }
+        }
+        interp_gate(&psi_a.src, &psi_a.tgt, psi_a.deg).map_err(|e| format!("braid psi_A: {}", e))?;
+        interp_gate(&phi_b.src, &phi_b.tgt, phi_b.deg).map_err(|e| format!("braid phi_B: {}", e))?;
+    }
     let ta = build_in(ar, &psi_a, seed)?;
     log.push(format!("psi_A {:?}->{:?} flows {:?} certified", long_a, short_a, ta.flows));
     let tb = build_in(ar, &phi_b, seed + 1)?;
@@ -876,7 +944,7 @@ pub fn theorem_vs_numeric<F: Field>(labels: &[u8], a: &[Rung], b: &[Rung], cap: 
     let flows = fa.nflows().max(fb.nflows());
     let biject = fa.support() == fb.support() && fa.max_block() == 1 && fb.max_block() == 1 && ws.shift() == wt.shift();
     let (mut numeric, mut secs) = (None, 0.0);
-    if biject && flows <= cap {
+    if biject && flows <= cap && interp_gate(&Window::new(labels, a), &Window::new(labels, b), 0).is_ok() {
         let t0 = std::time::Instant::now();
         let r = poly_certificate::<F>(&Window::new(labels, a), &Window::new(labels, b), 0, &mut |y: &[F]| elem_winloc(ElemKind::Assoc, &fa, &fb, y), seed);
         secs = t0.elapsed().as_secs_f64();
