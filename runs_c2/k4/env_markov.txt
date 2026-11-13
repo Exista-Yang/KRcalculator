@@ -1,0 +1,44 @@
+m1	lam=[2, 2, 2, 2]	N=inf	unsimpl=27	LBobj=27	LBtypes=27	LBldim=2197	peakobj=27	peakldim=2197	finalLB=27	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=5754	gramBoxRed=894	gramSumBox=35884	killedTypesSeen=0
+m1	lam=[2, 2, 2, 2]	N=4	unsimpl=27	LBobj=27	LBtypes=27	LBldim=2197	peakobj=27	peakldim=2197	finalLB=27	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=196	gramBoxRed=38	gramSumBox=3417	killedTypesSeen=0
+m1	N=4	chi_trunc==chi_untrunc: true	chi=1q^-4+1q^-2+2q^0+1q^2+1q^4
+# m1 time=4.3s peakRSS=66MB
+m2	lam=[2, 2, 2, 2]	N=inf	unsimpl=261	LBobj=63	LBtypes=27	LBldim=6253	peakobj=63	peakldim=6253	finalLB=63	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=5754	gramBoxRed=894	gramSumBox=108697	killedTypesSeen=0
+m2	lam=[2, 2, 2, 2]	N=4	unsimpl=261	LBobj=63	LBtypes=27	LBldim=6253	peakobj=63	peakldim=6253	finalLB=63	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=196	gramBoxRed=38	gramSumBox=8413	killedTypesSeen=0
+m2	N=4	chi_trunc==chi_untrunc: true	chi=1q^-20+1q^-18+3q^-16+4q^-14+6q^-12+6q^-10+6q^-8+4q^-6+3q^-4+1q^-2+1q^0
+# m2 time=0.3s peakRSS=66MB
+m3	lam=[2, 2, 2, 2]	N=inf	unsimpl=3303	LBobj=99	LBtypes=27	LBldim=10309	peakobj=99	peakldim=10309	finalLB=99	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=5754	gramBoxRed=894	gramSumBox=181510	killedTypesSeen=0
+m3	lam=[2, 2, 2, 2]	N=4	unsimpl=3303	LBobj=99	LBtypes=27	LBldim=10309	peakobj=99	peakldim=10309	finalLB=99	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=196	gramBoxRed=38	gramSumBox=13409	killedTypesSeen=0
+m3	N=4	chi_trunc==chi_untrunc: true	chi=1q^-30+-1q^-24+-2q^-22+-2q^-20+-2q^-18+1q^-14+3q^-12+3q^-10+3q^-8+1q^-6+1q^-4
+# m3 time=0.4s peakRSS=66MB
+m4	lam=[2, 2, 2, 2]	N=inf	unsimpl=42849	LBobj=135	LBtypes=27	LBldim=14365	peakobj=135	peakldim=14365	finalLB=135	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=5754	gramBoxRed=894	gramSumBox=254323	killedTypesSeen=0
+m4	lam=[2, 2, 2, 2]	N=4	unsimpl=42849	LBobj=135	LBtypes=27	LBldim=14365	peakobj=135	peakldim=14365	finalLB=135	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=196	gramBoxRed=38	gramSumBox=18405	killedTypesSeen=0
+m4	N=4	chi_trunc==chi_untrunc: true	chi=1q^-40+1q^-30+2q^-28+3q^-26+4q^-24+4q^-22+5q^-20+4q^-18+4q^-16+3q^-14+3q^-12+1q^-10+1q^-8
+# m4 time=0.3s peakRSS=66MB
+m5	lam=[2, 2, 2, 2]	N=inf	unsimpl=556947	LBobj=171	LBtypes=27	LBldim=18421	peakobj=185	peakldim=18421	finalLB=171	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=5754	gramBoxRed=894	gramSumBox=327136	killedTypesSeen=0
+m5	lam=[2, 2, 2, 2]	N=4	unsimpl=556947	LBobj=171	LBtypes=27	LBldim=18421	peakobj=185	peakldim=18421	finalLB=171	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=196	gramBoxRed=38	gramSumBox=23401	killedTypesSeen=0
+m5	N=4	chi_trunc==chi_untrunc: true	chi=1q^-50+-1q^-36+-2q^-34+-3q^-32+-3q^-30+-2q^-28+-1q^-26+2q^-24+3q^-22+4q^-20+3q^-18+3q^-16+1q^-14+1q^-12
+# m5 time=0.3s peakRSS=66MB
+m3n	lam=[2, 2, 2, 2]	N=inf	unsimpl=3303	LBobj=99	LBtypes=27	LBldim=10309	peakobj=99	peakldim=10309	finalLB=99	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=5754	gramBoxRed=894	gramSumBox=181510	killedTypesSeen=0
+m3n	lam=[2, 2, 2, 2]	N=4	unsimpl=3303	LBobj=99	LBtypes=27	LBldim=10309	peakobj=99	peakldim=10309	finalLB=99	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=196	gramBoxRed=38	gramSumBox=13409	killedTypesSeen=0
+m3n	N=4	chi_trunc==chi_untrunc: true	chi=1q^-30+-1q^-24+-2q^-22+-2q^-20+-2q^-18+1q^-14+3q^-12+3q^-10+3q^-8+1q^-6+1q^-4
+# m3n time=0.3s peakRSS=66MB
+m3nn	lam=[2, 2, 2, 2]	N=inf	unsimpl=3303	LBobj=99	LBtypes=27	LBldim=10309	peakobj=99	peakldim=10309	finalLB=99	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=5754	gramBoxRed=894	gramSumBox=181510	killedTypesSeen=0
+m3nn	lam=[2, 2, 2, 2]	N=4	unsimpl=3303	LBobj=99	LBtypes=27	LBldim=10309	peakobj=99	peakldim=10309	finalLB=99	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=196	gramBoxRed=38	gramSumBox=13409	killedTypesSeen=0
+m3nn	N=4	chi_trunc==chi_untrunc: true	chi=1q^-30+-1q^-24+-2q^-22+-2q^-20+-2q^-18+1q^-14+3q^-12+3q^-10+3q^-8+1q^-6+1q^-4
+# m3nn time=0.4s peakRSS=66MB
+m3x	lam=[2, 2, 2, 2]	N=inf	unsimpl=3303	LBobj=99	LBtypes=27	LBldim=10309	peakobj=99	peakldim=10309	finalLB=99	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=5754	gramBoxRed=894	gramSumBox=181510	killedTypesSeen=0
+m3x	lam=[2, 2, 2, 2]	N=4	unsimpl=3303	LBobj=99	LBtypes=27	LBldim=10309	peakobj=99	peakldim=10309	finalLB=99	finaltypes=27	gramW=12	gramFull=6798	gramFullRed=1218	gramBox=196	gramBoxRed=38	gramSumBox=13409	killedTypesSeen=0
+m3x	N=4	chi_trunc==chi_untrunc: true	chi=1q^-30+-1q^-24+-2q^-22+-2q^-20+-2q^-18+1q^-14+3q^-12+3q^-10+3q^-8+1q^-6+1q^-4
+# m3x time=0.3s peakRSS=66MB
+u_s3	lam=[2, 2, 2, 2]	N=inf	unsimpl=249	LBobj=57	LBtypes=57	LBldim=12025	peakobj=83	peakldim=12025	finalLB=57	finaltypes=57	gramW=16	gramFull=28743	gramFullRed=3663	gramBox=17353	gramBoxRed=1536	gramSumBox=191487	killedTypesSeen=0
+u_s3	lam=[2, 2, 2, 2]	N=4	unsimpl=204	LBobj=48	LBtypes=48	LBldim=7735	peakobj=68	peakldim=7735	finalLB=48	finaltypes=48	gramW=14	gramFull=14520	gramFullRed=2178	gramBox=196	gramBoxRed=38	gramSumBox=6240	killedTypesSeen=4
+u_s3	N=4	chi_trunc==chi_untrunc: true	chi=1q^-20+1q^-18+3q^-16+4q^-14+6q^-12+6q^-10+6q^-8+4q^-6+3q^-4+1q^-2+1q^0
+# u_s3 time=0.6s peakRSS=66MB
+w41s	lam=[2, 2, 2, 2]	N=inf	unsimpl=1599	LBobj=231	LBtypes=48	LBldim=39637	peakobj=325	peakldim=39637	finalLB=231	finaltypes=48	gramW=14	gramFull=14520	gramFullRed=2178	gramBox=10654	gramBoxRed=1257	gramSumBox=594328	killedTypesSeen=0
+w41s	lam=[2, 2, 2, 2]	N=4	unsimpl=1035	LBobj=207	LBtypes=42	LBldim=33397	peakobj=207	peakldim=33397	finalLB=207	finaltypes=42	gramW=14	gramFull=14520	gramFullRed=2178	gramBox=196	gramBoxRed=38	gramSumBox=27657	killedTypesSeen=5
+w41s	N=4	chi_trunc==chi_untrunc: true	chi=1q^-16+1q^-12+1q^-10+1q^10+1q^12+1q^16
+# w41s time=0.5s peakRSS=66MB
+w52s	lam=[2, 2, 2, 2]	N=inf	unsimpl=249339	LBobj=573	LBtypes=63	LBldim=134641	peakobj=927	peakldim=134641	finalLB=573	finaltypes=63	gramW=16	gramFull=28743	gramFullRed=3663	gramBox=17353	gramBoxRed=1536	gramSumBox=2359804	killedTypesSeen=0
+w52s	lam=[2, 2, 2, 2]	N=4	unsimpl=150747	LBobj=423	LBtypes=48	LBldim=71461	peakobj=513	peakldim=71461	finalLB=423	finaltypes=48	gramW=14	gramFull=14520	gramFullRed=2178	gramBox=196	gramBoxRed=38	gramSumBox=56729	killedTypesSeen=5
+w52s	N=4	chi_trunc==chi_untrunc: true	chi=1q^-42+1q^-38+-2q^-34+-2q^-32+-2q^-30+-2q^-28+-1q^-26+1q^-24+1q^-22+2q^-20+1q^-18+2q^-16+1q^-14+1q^-12+2q^-10+1q^-8+1q^-4
+# w52s time=0.8s peakRSS=66MB
