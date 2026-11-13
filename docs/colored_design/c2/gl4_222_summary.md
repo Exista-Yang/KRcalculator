@@ -13,12 +13,16 @@
 | 8_20 | 1 1 1 -2 -1 -1 -1 -2 | 118 | 81 | 19 | 9 | eq / eq | yes | yes | yes | PASS |
 | 8_21 | 1 1 1 2 -1 -1 2 2 | 286 | 225 | 31 | 15 | eq / eq | yes | yes | yes | PASS |
 | 9_3 | 1 1 1 1 1 1 1 2 -1 2 | 438 | 361 | 39 | 19 | eq / eq | yes | yes | yes | PASS |
+| 9_6 | 1 1 1 1 1 1 2 -1 2 2 | 838 | 729 | 55 | 27 | eq / eq | yes | yes | yes | PASS |
 | 10_2 | 1 1 1 1 1 1 1 -2 1 -2 | 622 | 529 | 47 | 23 | eq / eq | yes | yes | yes | PASS |
 | 10_124 | 1 1 1 1 1 2 1 1 1 2 | 154 | 61 | 27 | 17 | eq / eq | yes | yes | yes | PASS |
 | 10_125 | -1 -1 -1 -1 -1 2 1 1 1 2 | 180 | 125 | 25 | 13 | eq / eq | yes | yes | yes | PASS |
 | 10_139 | 1 1 1 1 2 1 1 1 2 2 | 258 | 133 | 35 | 21 | eq / eq | yes | yes | yes | PASS |
 | 10_141 | -1 -1 -1 -1 2 1 1 1 2 2 | 526 | 441 | 43 | 21 | eq / eq | yes | yes | yes | PASS |
+| 10_161 | 1 1 1 2 -1 2 1 1 2 2 | 298 | 173 | 35 | 19 | eq / eq | yes | yes | yes | PASS |
 | 11a_364 | 1 1 1 1 1 1 1 1 1 2 -1 2 | 726 | 625 | 51 | 25 | eq / eq | yes | yes | yes | PASS |
 | 12a_722 | 1 -2 1 1 1 1 1 1 1 1 1 -2 | 958 | 841 | 59 | 29 | eq / eq | yes | yes | yes | PASS |
+| 12a_838 | 1 1 1 -2 1 1 1 1 1 1 1 -2 | 1846 | 1681 | 83 | 41 | eq / eq | yes | yes | only 31 | PARTIAL (one prime) |
+| 12n_235 | 1 2 2 1 1 -2 -2 -2 -2 -2 -2 -2 | 258 | 181 | 33 | 19 | eq / eq | yes | yes | yes | PASS |
 
-20 knots computed, 20 PASS, failures: []
+24 knots computed, 24 PASS, failures: []

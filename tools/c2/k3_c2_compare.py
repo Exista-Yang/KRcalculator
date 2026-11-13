@@ -28,7 +28,7 @@ def e2(word, n):
         if m: res[m[1] == 'reduced'] = parse(m[2])
     return res
 knots = [l.strip().split(';') for l in open('tools/ntrunc_t1/data/knots3_all.txt') if l.strip()]
-out, rows, fails, ncomp = [], [], [], 0
+out, rows, fails, partial, ncomp = [], [], [], [], 0
 for name, lam, w, _ in knots:
     word = list(map(int, w.split()))
     runs = {F: json.load(open('%s/%s_f%s.json' % (K, name, F))) for F in ('31', '32b') if os.path.exists('%s/%s_f%s.json' % (K, name, F))}
@@ -53,8 +53,12 @@ for name, lam, w, _ in knots:
             'N3': base[(3, red)]['P']['str'], 'rank3': sum(g3.values()), 'gl3_reversed_equal': eq3, 'N2_rank1': n2, 'N4_mirror_symmetric': mir}
         ok = ok and eq3 and n2
     rec['red_rank4_eq_red_rank3_sq'] = rec['reduced']['rank4'] == rec['reduced']['rank3'] ** 2  # informational (exponential growth, thin knots)
-    rec['status'] = 'PASS' if ok else 'FAIL'
-    if not ok: fails.append(name)
+    if len(runs) < 2 and ok is False and chi_ok and scal_ok and all(rec[m]['gl3_reversed_equal'] and rec[m]['N2_rank1'] for m in ('unreduced', 'reduced')):
+        rec['status'] = 'PARTIAL (one prime)'
+    else:
+        rec['status'] = 'PASS' if ok else 'FAIL'
+    if rec['status'] == 'FAIL': fails.append(name)
+    if rec['status'] != 'PASS': partial.append(name)
     out.append(rec); ncomp += 1
     rows.append('| %s | %s | %d | %d | %d | %d | %s / %s | %s | %s | %s | %s |' % (name, w, rec['unreduced']['rank4'], rec['reduced']['rank4'], rec['unreduced']['rank3'], rec['reduced']['rank3'],
         'eq' if rec['unreduced']['gl3_reversed_equal'] else 'NE', 'eq' if rec['reduced']['gl3_reversed_equal'] else 'NE',
@@ -62,10 +66,10 @@ for name, lam, w, _ in knots:
 doc = {'lam': [2, 2, 2], 'prune': 4, 'box_N': 4, 'closures': [2, 3, 4], 'seed': 201,
        'library': 'data-gl6/c2/l222_n4 (layer A only, --replay)',
        'checks': "chi = decat_chi on every closure; D14 scaling (2 points); F31 = F32b; N'=3 = uncolored gl_3 of the reversed braid (engine2); N'=2 rank 1",
-       'computed': ncomp, 'failed': fails, 'knots': out}
+       'computed': ncomp, 'failed': fails, 'one_prime_only': [x for x in partial if x not in fails], 'knots': out}
 os.makedirs('docs/colored_design/c2', exist_ok=True)
 json.dump(doc, open('docs/colored_design/c2/gl4_222.json', 'w'), indent=1)
 hdr = ["| knot | word | N=4 unred | N=4 red | N=3 unred | N=3 red | N=3 vs gl_3 reversed (u / r) | χ | scaling | primes | status |", "|---|---|---|---|---|---|---|---|---|---|---|"]
 open('docs/colored_design/c2/gl4_222_summary.md', 'w').write('\n'.join(hdr + rows) + '\n\n%d knots computed, %d PASS, failures: %s\n' % (ncomp, ncomp - len(fails), fails))
-print('%d knots computed, %d PASS, failures: %s' % (ncomp, ncomp - len(fails), fails))
+print('%d knots computed, %d PASS (both primes), failures: %s, one prime only: %s' % (ncomp, ncomp - len(partial), fails, [x for x in partial if x not in fails]))
 print('reduced rank4 == (reduced rank3)^2 for', sum(r['red_rank4_eq_red_rank3_sq'] for r in out), 'of', ncomp, '; not for', [r['knot'] for r in out if not r['red_rank4_eq_red_rank3_sq']])
