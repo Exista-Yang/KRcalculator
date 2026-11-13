@@ -1,0 +1,10 @@
+lambda: 2,2,2
+field: F31
+label: f31
+code commit: e168425 (branch colored-2c4)
+layer-A stamps: krhom-sindec v2 ladfn=schur.ladder_minflow.v1 tmpl_alg=hs1.lcx1 prov=homprov[hs-kl1] maxl=2 costs=hs-kl1:424recs:10aca28cbc1790f5 slowdown=1 chain=Exact,S0-6
+files: layer_a 400, tmpl 799
+restore: cat layerA_tmpl.tar.gz.part-* | tar -C CACHE_DIR -xzf -   (then libbuild run/replay --cache CACHE_DIR --costs tests/data/homprov/costs_cloud.txt, KRHOM_COSTS_ANY_HOST=1)
+sets: level-n6 (146 jobs) + corner-markov-ext-n6 (21 jobs), unpruned (N = 6 = K)
+sha256:
+ef94f7c6add25edfdeb7d51608f705554ccf486b13afaf59d15db0ca66c179fe  layerA_tmpl.tar.gz.part-000
