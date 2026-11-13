@@ -7,15 +7,17 @@
    3
   ],
   "primes": [
-   "31"
+   "31",
+   "32b"
   ],
   "secs": {
-   "31": 61.57
+   "31": 61.57,
+   "32b": 147.34
   },
   "points": 1277,
   "point_secs_mean": 0.0507,
   "vmhwm_mb": 100,
-  "primes_identical": false,
+  "primes_identical": true,
   "chi_ok": true,
   "scaling_ok": true,
   "N3_gl3_reversed": {
@@ -52,15 +54,17 @@
    3
   ],
   "primes": [
-   "31"
+   "31",
+   "32b"
   ],
   "secs": {
-   "31": 62.49
+   "31": 62.49,
+   "32b": 146.28
   },
   "points": 1295,
   "point_secs_mean": 0.0538,
   "vmhwm_mb": 104,
-  "primes_identical": false,
+  "primes_identical": true,
   "chi_ok": true,
   "scaling_ok": true,
   "N3_gl3_reversed": {
@@ -101,15 +105,17 @@
    3
   ],
   "primes": [
-   "31"
+   "31",
+   "32b"
   ],
   "secs": {
-   "31": 67.56
+   "31": 67.56,
+   "32b": 156.25
   },
   "points": 1296,
   "point_secs_mean": 0.0638,
   "vmhwm_mb": 109,
-  "primes_identical": false,
+  "primes_identical": true,
   "chi_ok": true,
   "scaling_ok": true,
   "N3_gl3_reversed": {
@@ -151,15 +157,17 @@
    3
   ],
   "primes": [
-   "31"
+   "31",
+   "32b"
   ],
   "secs": {
-   "31": 72.04
+   "31": 72.04,
+   "32b": 164.33
   },
   "points": 1296,
   "point_secs_mean": 0.0775,
   "vmhwm_mb": 114,
-  "primes_identical": false,
+  "primes_identical": true,
   "chi_ok": true,
   "scaling_ok": true,
   "N3_gl3_reversed": {
@@ -202,15 +210,17 @@
    3
   ],
   "primes": [
-   "31"
+   "31",
+   "32b"
   ],
   "secs": {
-   "31": 128.94
+   "31": 128.94,
+   "32b": 172.61
   },
   "points": 1296,
   "point_secs_mean": 0.1705,
   "vmhwm_mb": 122,
-  "primes_identical": false,
+  "primes_identical": true,
   "chi_ok": true,
   "scaling_ok": true,
   "N3_gl3_reversed": {
@@ -251,15 +261,17 @@
    3
   ],
   "primes": [
-   "31"
+   "31",
+   "32b"
   ],
   "secs": {
-   "31": 67.14
+   "31": 67.14,
+   "32b": 152.03
   },
   "points": 1296,
   "point_secs_mean": 0.0647,
   "vmhwm_mb": 109,
-  "primes_identical": false,
+  "primes_identical": true,
   "chi_ok": true,
   "scaling_ok": true,
   "N3_gl3_reversed": {
@@ -300,15 +312,17 @@
    -3
   ],
   "primes": [
-   "31"
+   "31",
+   "32b"
   ],
   "secs": {
-   "31": 69.26
+   "31": 69.26,
+   "32b": 154.44
   },
   "points": 1296,
   "point_secs_mean": 0.0637,
   "vmhwm_mb": 108,
-  "primes_identical": false,
+  "primes_identical": true,
   "chi_ok": true,
   "scaling_ok": true,
   "N3_gl3_reversed": {
@@ -349,15 +363,17 @@
    -3
   ],
   "primes": [
-   "31"
+   "31",
+   "32b"
   ],
   "secs": {
-   "31": 68.23
+   "31": 68.23,
+   "32b": 151.39
   },
   "points": 1296,
   "point_secs_mean": 0.0639,
   "vmhwm_mb": 108,
-  "primes_identical": false,
+  "primes_identical": true,
   "chi_ok": true,
   "scaling_ok": true,
   "N3_gl3_reversed": {
@@ -397,15 +413,17 @@
    3
   ],
   "primes": [
-   "31"
+   "31",
+   "32b"
   ],
   "secs": {
-   "31": 261.77
+   "31": 261.77,
+   "32b": 1572.53
   },
   "points": 1295,
   "point_secs_mean": 0.3645,
   "vmhwm_mb": 226,
-  "primes_identical": false,
+  "primes_identical": true,
   "chi_ok": true,
   "scaling_ok": true,
   "N3_gl3_reversed": {

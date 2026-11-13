@@ -83,5 +83,11 @@ for name, lam, w, _ in words:
         rec['N2_rank1'], rec['chi_ok'], rec['scaling_ok'], ','.join(rec['primes']) + (' =' if rec['primes_identical'] else ''), rec.get('vs', '-'), ' '.join(chk), rec['status']))
 open(D + '/compare.txt', 'w').write('\n'.join(lines) + '\n')
 json.dump(out, open(D + '/compare.json', 'w'), indent=1)
+doc = {'lam': [2, 2, 2, 2], 'prune': 4, 'box_N': 4, 'box_points': 1296, 'closures': [2, 3, 4], 'seed': 201,
+       'library': 'data-gl6 c2/l2222_n4 (layer A only, --replay, --costs costs_2222.txt --stamp-route)',
+       'checks': "chi = decat_chi on every closure; D14 scaling; F31 = F32b; N'=3 = uncolored gl_3 of the reversed braid (engine2); N'=2 rank 1; Markov: = 2-strand sigma^m (xscan) / = 3-strand C2-1 value",
+       'note': 'the 4-strand knots of knots4_cloud.txt need the M5i (idempotent) types and are not computed (C2_2_report.md section 2)',
+       'computed': len(out), 'failed': [r['word_name'] for r in out if r['status'] != 'PASS'], 'words': out}
+json.dump(doc, open('docs/colored_design/c2/gl4_2222.json', 'w'), indent=1)
 print('\n'.join(lines)); print('%d words, %d not PASS' % (len(out), bad))
 sys.exit(1 if bad else 0)

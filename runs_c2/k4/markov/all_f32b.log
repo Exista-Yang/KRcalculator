@@ -1,0 +1,9 @@
+22:40:10 m1_f32b exit 0 148s
+22:42:36 m2_f32b exit 0 146s
+22:45:12 m3_f32b exit 0 156s
+22:47:57 m4_f32b exit 0 165s
+22:50:49 m5_f32b exit 0 172s
+22:53:21 m3n_f32b exit 0 152s
+22:55:56 m3nn_f32b exit 0 155s
+22:58:27 m3x_f32b exit 0 151s
+23:24:40 u_s3_f32b exit 0 1573s
