@@ -1,0 +1,4 @@
+run 31 4 exit 0
+replay 31 4 exit 0
+run 32b 4 exit 0
+replay 32b 4 exit 0
