@@ -1,0 +1,20 @@
+
+thread 'main' (9237) panicked at src/bin/sbox.rs:51:72:
+library: dec_word(2,0,1/1,2,0/0,1,2 ⊗ E0.2,F0.2): provider failed (engineering): replay: pairs not in layer A [Refused, degree 0, 0/1]
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/panicking.rs:689:5
+   1: core::panicking::panic_fmt
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/panicking.rs:80:14
+   2: sbox::run::<krhom::field::Fp<2147483647>>::{closure#4}
+             at ./src/bin/sbox.rs:51:72
+   3: <core::result::Result<krhom::swire::WLib<krhom::field::Fp<2147483647>>, alloc::string::String>>::unwrap_or_else::<sbox::run<krhom::field::Fp<2147483647>>::{closure#4}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/result.rs:1622:23
+   4: sbox::run::<krhom::field::Fp<2147483647>>
+             at ./src/bin/sbox.rs:51:53
+   5: sbox::main
+             at ./src/bin/sbox.rs:142:14
+   6: <fn() as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+exit 101

@@ -1,0 +1,50 @@
+library: 4 types, build 25.4s, hash e562dcdcfe173221
+[sprof] stage 0: 0 pivots, 0 updates, 0.000e0 mult-adds, 0.00s in apply_pivot, 0.00s stage; rounds 0.00s, push loop 0.00s, touched 0, edges 3
+[sprof] stage 1: 87 pivots, 990 updates, 2.500e4 mult-adds, 0.00s in apply_pivot, 0.08s stage; rounds 0.00s, push loop 0.00s, touched 2103, edges 32
+[sprof] stage 2: 444 pivots, 39975 updates, 8.796e5 mult-adds, 0.03s in apply_pivot, 0.16s stage; rounds 0.06s, push loop 0.01s, touched 32634, edges 149
+[sprof] stage 3: 1257 pivots, 261124 updates, 5.606e6 mult-adds, 0.19s in apply_pivot, 0.74s stage; rounds 0.32s, push loop 0.07s, touched 172249, edges 465
+[sprof] stage 4: 2712 pivots, 1232012 updates, 2.599e7 mult-adds, 0.89s in apply_pivot, 2.55s stage; rounds 1.44s, push loop 0.30s, touched 575757, edges 1169
+[sprof] stage 5: 4995 pivots, 4416710 updates, 9.292e7 mult-adds, 3.71s in apply_pivot, 9.03s stage; rounds 5.98s, push loop 1.06s, touched 1525137, edges 2765
+[dcid] visits 143193 KI-fma 6.453e7 πKI-fma(bound) 1.570e9 Σkr 0 Σnzr 2315502 T-est 0.000e0 pairs 32154494 nnzf 0
+record: total 12.594s | dec+obj 0.017 | dC⊗id 4.372 | rickard 0.233 | extract 0.003 | k0 0.005 | pivots 4.828 (5950811 updates, 1.254e8 mult-adds) | pattern hash 0.189 | rest 2.946 | engine peak 323.4 MB, eval memo 11.8 MB
+   memory peak 323.4 MB at stage 5 insertion: 7957 objects, 1062999 components, complex 323.0 MB (peak complex alone 310.2 MB), previous complex 0.4 MB
+   stage 1: inserted 4 objects 4 comps 3 pivots 0 entries 60 peak 0.0 MB cum 0.000s
+   stage 2: inserted 189 objects 15 comps 32 pivots 87 entries 868 peak 12.3 MB cum 0.076s
+   stage 3: inserted 928 objects 40 comps 149 pivots 444 entries 3807 peak 19.0 MB cum 0.241s
+   stage 4: inserted 2599 objects 85 comps 465 pivots 1257 entries 11244 peak 48.6 MB cum 0.982s
+   stage 5: inserted 5580 objects 156 comps 1169 pivots 2712 entries 27377 peak 130.8 MB cum 3.530s
+   stage 6: inserted 10249 objects 259 comps 2765 pivots 4995 entries 62742 peak 323.4 MB cum 12.560s
+   record trace digest 1f5ee983733a2c3a
+[sprof] stage 0: 0 pivots, 0 updates, 0.000e0 mult-adds, 0.00s in apply_pivot, 0.00s stage; rounds 0.00s, push loop 0.00s, touched 0, edges 3
+[sprof] stage 1: 87 pivots, 990 updates, 2.500e4 mult-adds, 0.00s in apply_pivot, 0.07s stage; rounds 0.00s, push loop 0.00s, touched 0, edges 32
+[sprof] stage 2: 444 pivots, 39975 updates, 8.796e5 mult-adds, 0.02s in apply_pivot, 0.10s stage; rounds 0.02s, push loop 0.00s, touched 0, edges 149
+[sprof] stage 3: 1257 pivots, 261124 updates, 5.606e6 mult-adds, 0.17s in apply_pivot, 0.67s stage; rounds 0.17s, push loop 0.00s, touched 0, edges 465
+[sprof] stage 4: 2712 pivots, 1232012 updates, 2.599e7 mult-adds, 1.00s in apply_pivot, 2.32s stage; rounds 1.02s, push loop 0.00s, touched 0, edges 1169
+[sprof] stage 5: 4995 pivots, 4416710 updates, 9.292e7 mult-adds, 3.34s in apply_pivot, 6.68s stage; rounds 3.40s, push loop 0.00s, touched 0, edges 2765
+[dcid] visits 143193 KI-fma 6.453e7 πKI-fma(bound) 1.570e9 Σkr 0 Σnzr 2315502 T-est 0.000e0 pairs 32154494 nnzf 0
+replay point 133: total 9.869s | dec+obj 0.014 | dC⊗id 4.798 | rickard 0.252 | extract 0.005 | k0 0.000 | pivots 4.527 (5950811 updates, 1.254e8 mult-adds) | pattern hash 0.203 | rest 0.070 | engine peak 323.4 MB, eval memo 11.8 MB
+   memory peak 323.4 MB at stage 5 insertion: 7957 objects, 1062999 components, complex 323.0 MB (peak complex alone 310.2 MB), previous complex 0.4 MB
+   stage 1: inserted 4 objects 4 comps 3 pivots 0 entries 60 peak 0.0 MB cum 0.000s
+   stage 2: inserted 189 objects 15 comps 32 pivots 87 entries 868 peak 12.3 MB cum 0.066s
+   stage 3: inserted 928 objects 40 comps 149 pivots 444 entries 3807 peak 19.0 MB cum 0.165s
+   stage 4: inserted 2599 objects 85 comps 465 pivots 1257 entries 11244 peak 48.6 MB cum 0.833s
+   stage 5: inserted 5580 objects 156 comps 1169 pivots 2712 entries 27377 peak 130.8 MB cum 3.150s
+   stage 6: inserted 10249 objects 259 comps 2765 pivots 4995 entries 62742 peak 323.4 MB cum 9.833s
+   values digest dc0e0420d3762048
+[sprof] stage 0: 0 pivots, 0 updates, 0.000e0 mult-adds, 0.00s in apply_pivot, 0.00s stage; rounds 0.00s, push loop 0.00s, touched 0, edges 3
+[sprof] stage 1: 87 pivots, 990 updates, 2.500e4 mult-adds, 0.00s in apply_pivot, 0.08s stage; rounds 0.00s, push loop 0.00s, touched 0, edges 32
+[sprof] stage 2: 444 pivots, 39975 updates, 8.796e5 mult-adds, 0.02s in apply_pivot, 0.12s stage; rounds 0.03s, push loop 0.00s, touched 0, edges 149
+[sprof] stage 3: 1257 pivots, 261124 updates, 5.606e6 mult-adds, 0.18s in apply_pivot, 0.54s stage; rounds 0.18s, push loop 0.00s, touched 0, edges 465
+[sprof] stage 4: 2712 pivots, 1232012 updates, 2.599e7 mult-adds, 0.78s in apply_pivot, 1.84s stage; rounds 0.80s, push loop 0.00s, touched 0, edges 1169
+[sprof] stage 5: 4995 pivots, 4416710 updates, 9.292e7 mult-adds, 2.79s in apply_pivot, 5.78s stage; rounds 2.85s, push loop 0.00s, touched 0, edges 2765
+[dcid] visits 143193 KI-fma 6.453e7 πKI-fma(bound) 1.570e9 Σkr 0 Σnzr 2315502 T-est 0.000e0 pairs 32154494 nnzf 0
+replay point 266: total 8.405s | dec+obj 0.014 | dC⊗id 4.151 | rickard 0.200 | extract 0.006 | k0 0.000 | pivots 3.776 (5950811 updates, 1.254e8 mult-adds) | pattern hash 0.190 | rest 0.067 | engine peak 323.4 MB, eval memo 11.8 MB
+   memory peak 323.4 MB at stage 5 insertion: 7957 objects, 1062999 components, complex 323.0 MB (peak complex alone 310.2 MB), previous complex 0.4 MB
+   stage 1: inserted 4 objects 4 comps 3 pivots 0 entries 60 peak 0.0 MB cum 0.001s
+   stage 2: inserted 189 objects 15 comps 32 pivots 87 entries 868 peak 12.3 MB cum 0.081s
+   stage 3: inserted 928 objects 40 comps 149 pivots 444 entries 3807 peak 19.0 MB cum 0.202s
+   stage 4: inserted 2599 objects 85 comps 465 pivots 1257 entries 11244 peak 48.6 MB cum 0.742s
+   stage 5: inserted 5580 objects 156 comps 1169 pivots 2712 entries 27377 peak 130.8 MB cum 2.585s
+   stage 6: inserted 10249 objects 259 comps 2765 pivots 4995 entries 62742 peak 323.4 MB cum 8.367s
+   values digest d226f6bce18a80b3
+mean replay 9.137s; VmHWM 320 MB

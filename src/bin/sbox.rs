@@ -47,7 +47,7 @@ fn run<F: PrimeField>(a: &[String]) {
     let modes: Vec<Option<usize>> = opt(a, "--modes").unwrap_or("u,r".into()).split(',').map(|m| if m == "u" { None } else { Some(0) }).collect();
     let (prov, stamp) = provider_for_stamped::<F>(&lam, Some(&costs), 1.0);
     let prov: Box<dyn krhom::homprov::HomProvider<F>> = if flag(a, "--replay") { Box::new(NoProvider) } else { prov };
-    let sd = SIndec::with_stamp(&lam, prov, stamp, SIndecOpts { cache_dir: cache, prune_n: prune, ..Default::default() });
+    let sd = SIndec::with_stamp(&lam, prov, stamp, SIndecOpts { cache_dir: cache, prune_n: prune, layer_a_route_stamp: flag(a, "--stamp-route"), ..Default::default() });
     let lib = build_wlib(sd, &[word.clone()], true).unwrap_or_else(|e| panic!("library: {}", e));
     eprintln!("library: {} types, {} closable, build {:.1}s ({} provider calls, {} layer-A loads), hash {:x}", lib.shapes.len(), lib.closure.len(), lib.build_secs, lib.stats.provider_calls, lib.stats.layer_a_loaded, lib.hash);
     let mut labels = lam.clone();
