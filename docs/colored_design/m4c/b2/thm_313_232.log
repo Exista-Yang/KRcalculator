@@ -1,0 +1,8 @@
+
+running 1 test
+test braid_middle_313_232 ... braid middle (3, 1, 3): 140 flows, theorem Ok(()), numeric Some(true) (273.5 s)
+braid middle (2, 3, 2): 210 flows, theorem Ok(()), numeric Some(true) (1604.2 s)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 1877.70s
+

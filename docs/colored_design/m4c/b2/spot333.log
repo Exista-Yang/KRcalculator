@@ -1,0 +1,8 @@
+
+running 1 test
+(3,3,3) middle: theorem ok, multistep [[3, 6], [], [3, 6]], 1680 flows (0.001 s)
+(3,3,3) spot check: SpotReport { flows: 1680, cols: [0, 29, 201, 2, 43, 10], cosets_checked: 16, points: 7, entries: 10080, max_deg: 10, secs: 17.017177576 }
+test spot_check_333 ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 17.02s
+

@@ -1099,3 +1099,111 @@ impl<F: Field> HomProvider<F> for ClosureLeaves<F> {
         self.last_fail.clone()
     }
 }
+
+// =============================================================================================
+// M4c B2/B4: rex-class pairs (X ≅ B_q: X is itself a reduced expression of q, s = 0, mult 1)
+// =============================================================================================
+
+/// Report of a rex-class pair built from rex chains.
+#[derive(Clone, Debug)]
+pub struct RexPairReport {
+    pub pi_chain: Vec<String>,
+    pub iota_chain: Vec<String>,
+    pub templates: usize,
+    pub exact_moves: usize,
+    pub max_exact_unknowns: u128,
+    pub theorem_assoc: Vec<MapId>,
+    pub secs: f64,
+}
+
+/// π: X → L_q and ι: L_q → X as realized rex chains (src/rexplan.rs, `leafgen::realize_chain`),
+/// certified by `certify_pairs` (form rank 1 at rep(q) at two points, genuine) and checked:
+/// π∘ι = id_{L_q} at every coset of the support of L_q (End⁰(B_q) = k and the top scalar is 1).
+/// Every map that uses the theorem-level Assoc certificate is listed in `theorem_assoc`.
+pub fn rex_class_pairs<F: Field>(ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, opts: &crate::rexplan::PlanOpts, seed: u64) -> Result<(Pairs<F>, RexPairReport), String> {
+    let t0 = Instant::now();
+    let lam = ar.lam().to_vec();
+    let (xw, lw) = (ar.expr_of(x).rungs.clone(), ar.expr_of(lq).rungs.clone());
+    if !crate::dcoset::reduced_for(s, &xw, q).ok() {
+        return Err("rex_class_pairs: X is not a reduced expression of q".into());
+    }
+    let mut pl = crate::rexplan::Planner::new();
+    let ch_pi = pl.plan(s, q, &xw, &lw, opts)?;
+    let ch_io = pl.plan(s, q, &lw, &xw, opts)?;
+    let mut cache = HashMap::new();
+    let (pi, rp) = crate::leafgen::realize_chain(ar, &ch_pi, &mut cache, seed)?;
+    let (io, ri) = crate::leafgen::realize_chain(ar, &ch_io, &mut cache, seed + 1000)?;
+    let c = rep_rank_of(s, &lam, q);
+    let pairs = certify_pairs(ar, x, lq, 0, &[io], &[pi], c, 1, seed ^ 0xb4)?;
+    // π∘ι = id on L_q at every coset of its support (two points)
+    let comp = ar.add(MapNode::Comp(pi, io), "rex pair pi.iota")?;
+    for pt in points::<F>(ar.k(), seed ^ 0x1d, 2, 0) {
+        let mut ev = Eval::new(ar, pt);
+        let lay = ev.layout(lq, lq);
+        for &cc in &lay.cosets {
+            let b = ev.block(comp, cc);
+            let n = b.rows as usize;
+            for i in 0..n {
+                for j in 0..n {
+                    let want = if i == j { F::one() } else { F::zero() };
+                    if b.a[i * n + j] != want {
+                        return Err(format!("rex_class_pairs: pi.iota != id at coset {}", cc));
+                    }
+                }
+            }
+        }
+    }
+    let mut thm = crate::leafgen::relies_on_theorem(ar, pi);
+    thm.extend(crate::leafgen::relies_on_theorem(ar, io));
+    let exact: Vec<&crate::rexplan::Move> = ch_pi.moves.iter().chain(&ch_io.moves).filter(|m| m.kind == crate::rexplan::MoveKind::Exact).collect();
+    Ok((
+        pairs,
+        RexPairReport {
+            pi_chain: rp.lines,
+            iota_chain: ri.lines,
+            templates: rp.templates + ri.templates,
+            exact_moves: exact.len(),
+            max_exact_unknowns: exact.iter().map(|m| m.unknowns).max().unwrap_or(0),
+            theorem_assoc: thm,
+            secs: t0.elapsed().as_secs_f64(),
+        },
+    ))
+}
+
+/// M4c B2/B4: pairs through Lemma A (A4 form) with a rex-chain exit/entry: π = exit ∘ LL_q
+/// (Out leaves X → W_q of degree −s, then the chain W_q → L_q), ι = LL^∨_q ∘ entry (the chain
+/// L_q → W_q, then In leaves W_q → X of degree s); `certify_pairs` selects `mult` pairs with an
+/// invertible form at rep(q) (two points, genuine). W_q is the final junction word of
+/// `plan_words`; when it differs from L_q the chains come from src/rexplan.rs.
+#[allow(clippy::too_many_arguments)]
+pub fn pairs_leaves<F: Field>(lv: &Leaves, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, sdeg: i32, mult: usize, opts: &crate::rexplan::PlanOpts, st: &mut LeafStats) -> Result<(Pairs<F>, Vec<MapId>), String> {
+    let lam = ar.lam().to_vec();
+    let lw = ar.expr_of(lq).rungs.clone();
+    let fo = lv.build_leaves(ar, s, x, &[q], LeafDir::Out, st).map_err(|e| e.what)?;
+    let fi = lv.build_leaves(ar, s, x, &[q], LeafDir::In, st).map_err(|e| e.what)?;
+    let fo = fo.into_iter().find(|f| f.t == q).ok_or("pairs_leaves: no Out family at q")?;
+    let fi = fi.into_iter().find(|f| f.t == q).ok_or("pairs_leaves: no In family at q")?;
+    let mut pis: Vec<MapId> = fo.maps.iter().copied().filter(|&m| ar.info(m).deg == -sdeg).collect();
+    let mut ios: Vec<MapId> = fi.maps.iter().copied().filter(|&m| ar.info(m).deg == sdeg).collect();
+    if fo.word != lw || fi.word != lw {
+        let mut pl = crate::rexplan::Planner::new();
+        let mut cache = HashMap::new();
+        if fo.word != lw {
+            let ch = pl.plan(s, q, &fo.word, &lw, opts)?;
+            let (exit, _) = crate::leafgen::realize_chain(ar, &ch, &mut cache, lv.seed ^ 0xe1)?;
+            pis = pis.into_iter().map(|m| ar.add(MapNode::Comp(exit, m), "leaves pi exit")).collect::<Result<_, _>>()?;
+        }
+        if fi.word != lw {
+            let ch = pl.plan(s, q, &lw, &fi.word, opts)?;
+            let (entry, _) = crate::leafgen::realize_chain(ar, &ch, &mut cache, lv.seed ^ 0xe2)?;
+            ios = ios.into_iter().map(|m| ar.add(MapNode::Comp(m, entry), "leaves iota entry")).collect::<Result<_, _>>()?;
+        }
+    }
+    let c = rep_rank_of(s, &lam, q);
+    let p = certify_pairs(ar, x, lq, sdeg, &ios, &pis, c, mult, lv.seed ^ 0xa4)?;
+    let mut thm = vec![];
+    for &m in p.iotas.iter().chain(&p.pis) {
+        thm.extend(crate::leafgen::relies_on_theorem(ar, m));
+    }
+    Ok((p, thm))
+}
