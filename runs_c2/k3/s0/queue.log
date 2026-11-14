@@ -22,3 +22,4 @@
 12a_1233_f32b exit 0 scan 3603.4s
 runs_c2/k3/s0/one.sh: line 14: 12209 Killed                  KRHOM_MEM_CAP_MB=${MEMCAP:-12000} KRHOM_COSTS_ANY_HOST=1 KRHOM_THREADS=${THREADS:-1} timeout ${TMO:-30000} $S/bin/sbox --lam 2,2,2 --word "$W" --n 4 --ns 2,3,4 --field $F --seed ${SEED:-201} --prune 4 --mem-mb ${MEMMB:-12000} --replay --cache ${LIB:-$S/lib222}/f$F --costs tests/data/homprov/costs_cloud.txt --stages $L --json $D/$TAG.json > $D/$TAG.out 2> $D/$TAG.err
 12a_1215_f31 exit 137 
+12n_467_f32b exit 0 scan 5928.3s
