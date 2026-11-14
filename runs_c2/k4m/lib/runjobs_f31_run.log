@@ -17,3 +17,20 @@ Terminated
 04:21:25 pair 1209 "ok":true 25s
 04:22:00 pair 1371 "ok":true 35s
 04:22:26 pair 1390 "ok":true 26s
+04:32:28 pair 1404 "ok":true 602s
+environment: line 3: 19516 Aborted                 KRHOM_COSTS_ANY_HOST=1 KRHOM_THREADS=1 timeout ${WALL:-3600} ./target/release/libbuild one --lam 2,2,2,2 --n 4 --field $F --cache $CACHE --costs /home/user/lib2222/costs_2222.txt --stamp-route $RF -- $J 2>> $D/m5i_f${F}_${MODE}.stderr
+04:38:53 pair 1412 "ok":false 385s
+04:39:18 pair 1418 "ok":true 25s
+04:39:46 pair 1435 "ok":false 28s
+04:40:13 pair 1458 "ok":true 27s
+04:40:37 pair 1472 "ok":false 24s
+04:41:02 pair 1483 "ok":false 25s
+04:41:21 pair 1528 "ok":false 19s
+04:41:48 pair 1769 "ok":false 27s
+Terminated
+04:42:21 pair 1812 "ok":false 33s
+04:42:42 pair 1882 "ok":false 21s
+04:43:05 pair 2082 "ok":false 23s
+04:43:29 pair 2368 "ok":false 24s
+04:43:43 closure 1,0,1,0/0,0,1,1/1,1,0,0/0,1,0,1 "ok":true 14s
+04:43:55 closure 0,1,0,1/1,0,1,0/0,1,0,1/1,0,1,0 "ok":false 12s

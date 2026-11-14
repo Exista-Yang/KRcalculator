@@ -960,9 +960,15 @@ impl<F: Field> SIndec<F> {
                 return Err(DecErr::Check(format!("M5i: multiplicity {} in char X < {} in term_mult", mx, cnt)));
             }
             let t = PairTarget { x, q, lq, eq, s, mult: mx };
+            let comm_q = if let (Some(_), false, 0, 1) = (eq, lq == x, s, mx) { self.comm_chain(&xw, &word_of(&self.ar, lq))? } else { None };
             let (mut ins, mut outs) = if let (Some(e), true, 0, 1) = (eq, lq == x, s, mx) {
                 // X is the (decomposable) canonical ladder of q itself: ι = π = e_q
                 (vec![e], vec![e])
+            } else if let (Some(e), Some((c, cb))) = (eq, comm_q) {
+                // X is commutation-equivalent to L_q (decomposable): ι = c⁻¹∘e_q, π = e_q∘c
+                let io = self.ar.add(MapNode::Comp(cb, e), "m5i comm iota").map_err(DecErr::Check)?;
+                let pi = self.ar.add(MapNode::Comp(e, c), "m5i comm pi").map_err(DecErr::Check)?;
+                (vec![io], vec![pi])
             } else if let Some(fam) = fam.as_ref() {
                 // source idempotent: the family of X from the commutation reroute
                 let (a, b) = fam.get(&(q, s)).cloned().unwrap_or_default();
@@ -978,9 +984,10 @@ impl<F: Field> SIndec<F> {
                 let what = format!("target {} at v^{} of {} ⊗ {}", self.tfmt(q), s, self.tfmt(p), crate::smapio::rung_str(&r));
                 match self.target_pairs(p, &rs, &t) {
                     Ok(x) => x,
-                    Err(err) if eq.is_some() && !fam_tried => {
-                        // M5i: an idempotent target the provider cannot reach (no leaf of a
-                        // decomposable ladder in Search's tree): the commutation reroute of X
+                    Err(err) if !fam_tried && !matches!(err, DecErr::Refused(_)) && std::env::var("KRHOM_NO_REROUTE_FALLBACK").is_err() => {
+                        // C2-4: a target the provider cannot reach (an idempotent target has no leaf
+                        // in Search's tree; a non-local splitting leaves stuck branches): the
+                        // commutation reroute of X, decomposed from an earlier prefix type
                         fam_tried = true;
                         fam = self.reroute_family(p, r).map_err(|e| e.ctx(&format!("{} (reroute after: {})", what, err)))?;
                         let Some(f) = fam.as_ref() else { return Err(err.ctx(&format!("{} (no reroute)", what))) };
@@ -1095,6 +1102,62 @@ impl<F: Field> SIndec<F> {
         Ok((f, g, sw))
     }
 
+    /// (from → to, to → from) mutually inverse commutation isomorphisms when `to` is in the
+    /// commutation class of `from` (breadth first over adjacent commuting swaps, ≤ 4 096 words)
+    fn comm_chain(&mut self, from: &[Rung], to: &[Rung]) -> Result<Option<(MapId, MapId)>, DecErr> {
+        if from.len() != to.len() || from == to {
+            return Ok(None);
+        }
+        let mut prev: HashMap<Vec<Rung>, (Vec<Rung>, usize)> = HashMap::new();
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(from.to_vec());
+        prev.insert(from.to_vec(), (vec![], usize::MAX));
+        let mut found = false;
+        while let Some(cur) = queue.pop_front() {
+            if cur == to {
+                found = true;
+                break;
+            }
+            if prev.len() > 4096 {
+                break;
+            }
+            for i in 0..cur.len().saturating_sub(1) {
+                if crate::homprov::rungs_commute(&cur[i], &cur[i + 1]) {
+                    let mut nw = cur.clone();
+                    nw.swap(i, i + 1);
+                    if !prev.contains_key(&nw) {
+                        prev.insert(nw.clone(), (cur.clone(), i));
+                        queue.push_back(nw);
+                    }
+                }
+            }
+        }
+        if !found {
+            return Ok(None);
+        }
+        let mut steps = vec![];
+        let mut cur = to.to_vec();
+        while cur != from {
+            let (p, i) = prev[&cur].clone();
+            steps.push((p.clone(), i));
+            cur = p;
+        }
+        steps.reverse();
+        let (mut fwd, mut bwd): (Option<MapId>, Option<MapId>) = (None, None);
+        for (w, i) in steps {
+            let (f, g, _) = self.swap_iso(&w, i)?;
+            fwd = Some(match fwd {
+                None => f,
+                Some(x) => self.ar.add(MapNode::Comp(f, x), "m5i chain").map_err(DecErr::Check)?,
+            });
+            bwd = Some(match bwd {
+                None => g,
+                Some(x) => self.ar.add(MapNode::Comp(x, g), "m5i chain back").map_err(DecErr::Check)?,
+            });
+        }
+        Ok(Some((fwd.unwrap(), bwd.unwrap())))
+    }
+
     /// M5i, decomposable source (C2-4): the decomposition of X = L_p·R through the commutation
     /// class: R commutes with the tail w[j..] of w = L_p (j < |w| minimal), so X ≅ Y = w[..j]·R·w[j..];
     /// w[..j] is the canonical ladder of a type a, and Y is decomposed rung by rung from a
@@ -1184,9 +1247,9 @@ impl<F: Field> SIndec<F> {
         if let Err(f) = &r {
             // M5i: an extra summand of a decomposable canonical ladder is a global (not local)
             // splitting, which Search's windows do not see; Exact with raised caps
-            // (KRHOM_M5I_EXACT_UNK unknowns, default 2.5 M) is the fallback, its output certified
+            // (KRHOM_M5I_EXACT_UNK unknowns, default 1.3 M) is the fallback, its output certified
             // as any provider's (DecHom output checks, then M5's own)
-            let cap: u64 = std::env::var("KRHOM_M5I_EXACT_UNK").ok().and_then(|v| v.parse().ok()).unwrap_or(2_500_000);
+            let cap: u64 = if self.prov.name() == "NoProvider" { 0 } else { std::env::var("KRHOM_M5I_EXACT_UNK").ok().and_then(|v| v.parse().ok()).unwrap_or(1_300_000) };
             let m5i = key.starts_with("kind=idem") || t.eq.is_some() || self.types.get(&p).is_some_and(|x| x.e.is_some());
             if m5i && !f.guard && cap > 0 {
                 let (xw, qw) = (word_of(&self.ar, t.x), word_of(&self.ar, t.lq));
@@ -1561,7 +1624,7 @@ impl<F: Field> SIndec<F> {
                     self.stats.provider_calls += 1;
                     if let (Err(f), Some(_)) = (&r, ep) {
                         // M5i: closure through e_p, Exact fallback with raised caps (as for pairs)
-                        let cap: u64 = std::env::var("KRHOM_M5I_EXACT_UNK").ok().and_then(|v| v.parse().ok()).unwrap_or(2_500_000);
+                        let cap: u64 = if self.prov.name() == "NoProvider" { 0 } else { std::env::var("KRHOM_M5I_EXACT_UNK").ok().and_then(|v| v.parse().ok()).unwrap_or(1_300_000) };
                         let w = word_of(&self.ar, lad);
                         let dmax = want.iter().copied().max().unwrap_or(0);
                         let unk = (0..=dmax.max(0)).map(|d| crate::homprov::hom_unknowns(&self.lam, &[], &w, d).max(crate::homprov::hom_unknowns(&self.lam, &w, &[], d))).max().unwrap_or(0);
