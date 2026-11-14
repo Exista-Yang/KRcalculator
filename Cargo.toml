@@ -2,7 +2,7 @@
 name = "krhom"
 version = "0.1.0"
 edition = "2024"
-description = "Colored Khovanov-Rozansky gl_N link homology via truncated singular Bott-Samelson bimodules"
+description = "Colored (exterior power) Khovanov-Rozansky gl_N link homology via singular Soergel bimodules and the universal-construction closure"
 
 [dependencies]
 num-bigint = "0.4"
