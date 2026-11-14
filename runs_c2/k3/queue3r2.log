@@ -1,0 +1,8 @@
+runs_c2/k3/one2.sh: line 14: 16641 Killed                  KRHOM_MEM_CAP_MB=${MEMCAP:-4500} KRHOM_COSTS_ANY_HOST=1 KRHOM_THREADS=${THREADS:-2} timeout ${TMO:-7200} $S/bin/sbox --lam 2,2,2 --word "$W" --n 4 --ns 2,3,4 --field $F --seed ${SEED:-201} --prune 4 --mem-mb ${MEMMB:-3200} --replay --cache ${LIB:-$S/lib222}/f$F --costs tests/data/homprov/costs_cloud.txt --stages $L --json $D/$TAG.json > $D/$TAG.out 2> $D/$TAG.err
+10_118_f32b exit 137 
+runs_c2/k3/one2.sh: line 14: 16640 Killed                  KRHOM_MEM_CAP_MB=${MEMCAP:-4500} KRHOM_COSTS_ANY_HOST=1 KRHOM_THREADS=${THREADS:-2} timeout ${TMO:-7200} $S/bin/sbox --lam 2,2,2 --word "$W" --n 4 --ns 2,3,4 --field $F --seed ${SEED:-201} --prune 4 --mem-mb ${MEMMB:-3200} --replay --cache ${LIB:-$S/lib222}/f$F --costs tests/data/homprov/costs_cloud.txt --stages $L --json $D/$TAG.json > $D/$TAG.out 2> $D/$TAG.err
+10_118_f31 exit 137 
+Terminated
+10_99_f31 exit 143 
+Terminated
+10_99_f32b exit 143 

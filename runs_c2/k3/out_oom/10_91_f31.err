@@ -1,0 +1,6 @@
+library: 16 types, 16 closable, build 5.1s (0 provider calls, 233 layer-A loads), hash 5944480c88254f94, commit b5d579279cb51ad0657ef6b537fefa2ba8f2b96c
+memory allocation of 41943040 bytes failed
+stack backtrace:
+memory allocation of 5110901 bytes failed
+skipping backtrace printing to avoid potential recursion
+exit 134
