@@ -1,0 +1,11 @@
+lambda: 2,2,2,2
+field: F31
+label: l2222_n4_c25/f31
+code commit: af0059d (branch colored-2c4-fix)
+layer-A stamps (first file): krhom-sindec v2 ladfn=schur.ladder_minflow.v1 tmpl_alg=hs1.lcx1 prov=homprov[hs-kl1] maxl=2 costs=hs-kl1:424recs:10aca28cbc1790f5 slowdown=1 chain=Exact,S0-6 stage0=ProductClosure(v1,product-first) leaves=Leaves(v1,closure,threeup,prefix-ext+costalt5,window-whole,budget=1e5/4e5/os2e4l4)(leaves-first) leafpairs=LeafPairs(v1,last,rex-chain|lemmaA+exit-entry,plan=exact1e5/len12/visit6e4,assoc-as-template,persistable-only)
+provider: m4c-lf (production chain + Stage 0 + Leaves closure (leaves-first) + Leaves pairs); all files carry the M4c-lf stamp (C2-2 files carried over with b4wstamp)
+files: layer_a 2612, tmpl 2777
+restore: cat layerA_tmpl.tar.gz.part-* | tar -C CACHE_DIR -xzf -   (then KRHOM_COSTS_ANY_HOST=1 libbuild replay / sbox --replay --cache CACHE_DIR --costs c2/costs_2222_c25.txt --stamp-route --provider m4c-lf)
+sets: level-n4 + corner-markov-ext-n4 (replay pending at pack time; see C2_5_report.md)
+sha256:
+dd3de29a7e81178a4ebfda53460d2fadafea02141a43f478244f36f6ce0d2c49  layerA_tmpl.tar.gz.part-000

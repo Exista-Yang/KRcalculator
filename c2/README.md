@@ -13,3 +13,12 @@ Restore: see each MANIFEST.txt (KRHOM_COSTS_ANY_HOST=1, --costs tests/data/hompr
 - costs_2222.txt: the calibrated cost table (costs_cloud.txt + 88 (2,2,2,2) closure calls; runs_c2/k4/calib).
   Layer-A files carry either table's stamp: read with `--costs costs_2222.txt --stamp-route`.
 - runs2222/: libbuild run / fix / replay JSON lines and logs.
+
+## C2-5: (2,2,2,2) library repair (session C2-5, branch colored-2c4-fix)
+
+- l2222_n4_c25/{f31,f32b}: layer A + templates of the (2,2,2,2) prune-4 library after C2-5 (C2-2's files carried over to
+  the M4c-lf stamp with b4wstamp, plus the jobs fixed by calibration and by the Leaves pair / closure routes).
+  Read with `--costs costs_2222_c25.txt --stamp-route --provider m4c-lf` (libbuild and sbox). See colored-2c4-fix
+  docs/colored_design/c2/C2_5_report.md.
+- costs_2222_c25.txt: costs_2222.txt + the C2-5 window / Leaves-step records (calibration rounds 1-5).
+- runs2222_c25/: C2-5 replay JSON lines and logs.
