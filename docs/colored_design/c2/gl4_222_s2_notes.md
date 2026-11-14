@@ -7,3 +7,4 @@ Not check failures; sbox refused or the job was stopped by the memory guard.
 - Memory guard (runs_c2/k3/guard_s2.sh): kills the youngest sbox when total RSS > 13.8 GB and re-queues it.
 - 12n_830: F32b ran ~3 h, then sbox stopped at the final staged-rank stage: "needs about 52535 MB, above the memory cap of 16000 MB". NOT computed (mem-cap refusal); the F31 run was not attempted (same word, same stage; it would cost another ~3 h to reach the same refusal).
 - 12n_708 F31: first run hit the 4 h `timeout` (exit 124, not a check failure); restarted with a 12 h timeout.
+- 12a_1283: F31 ran ~1.7 h, then sbox stopped at the final staged-rank stage: "needs about 52572 MB, above the memory cap of 16000 MB". NOT computed (mem-cap refusal). The F32b run was stopped at 6 min as the same refusal is certain (same word).
