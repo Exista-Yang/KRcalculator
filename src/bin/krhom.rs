@@ -515,7 +515,7 @@ fn box_route(o: &Opts, out: &mut Outcome, bw: &BraidWord, labels: &[usize], wi: 
     let status_files: Vec<PathBuf> = [Some(&inst31), inst32.as_ref()].into_iter().flatten().filter_map(|i| i.status.clone()).collect();
     let complete = inst31.status.is_none();
     let diag = |e: CalcErr| -> CalcErr {
-        if e.code() != 4 || e.msg().contains("this binary's route stamp") {
+        if e.code() != 4 || e.msg().contains("this binary's route stamp") || e.msg().contains("does not cover this word") {
             return e; // not a library error, or the stamp preflight's own message
         }
         let first = e.msg().lines().next().unwrap_or("").chars().take(400).collect::<String>();
@@ -533,9 +533,28 @@ fn box_route(o: &Opts, out: &mut Outcome, bw: &BraidWord, labels: &[usize], wi: 
             CalcErr::Library(format!("damaged install: library {} is complete but a map is missing or rejected ({}): run tools/fetch_library.sh --force {}", reg31.id, first, reg31.id))
         }
     };
-    fn one<F: krhom::boxclose::PrimeField>(reg: &RegEntry, inst: &InstalledLib, p: BoxParams, retry: BoxParams) -> Result<PrimeOut, CalcErr> {
+    // a word that needs uncertified jobs is reported before any template-recompute retry (which
+    // would only rebuild the library to fail again)
+    let missing = || -> Option<CalcErr> {
+        if complete {
+            return None;
+        }
+        eprintln!("krhom: a layer-A map is missing; diagnosing which jobs the word needs ...");
+        match diagnose_missing(&lam, reg31.n, wi, &status_files) {
+            Ok(m) if !m.is_empty() => Some(CalcErr::Library(format!("library {} does not cover this word: {} jobs not certified for both primes: {}", reg31.id, m.len(), m.join(", ")))),
+            Ok(_) => None,
+            Err(d) => {
+                eprintln!("krhom: diagnosis failed: {}", d);
+                None
+            }
+        }
+    };
+    fn one<F: krhom::boxclose::PrimeField>(reg: &RegEntry, inst: &InstalledLib, p: BoxParams, retry: BoxParams, missing: &dyn Fn() -> Option<CalcErr>) -> Result<PrimeOut, CalcErr> {
         match guard(&format!("box engine ({})", F::name()), || run_prime::<F>(reg, inst, &p)) {
             Err(e) if e.code() == 4 && e.msg().contains("not in layer A") && p.replay_only => {
+                if let Some(m) = missing() {
+                    return Err(m);
+                }
                 eprintln!("[{}] a layer-A map was not found in replay-only mode; retrying once with template recomputation enabled (deterministic; loaded maps are re-certified)", F::name());
                 guard(&format!("box engine ({})", F::name()), || run_prime::<F>(reg, inst, &retry))
             }
@@ -552,11 +571,11 @@ fn box_route(o: &Opts, out: &mut Outcome, bw: &BraidWord, labels: &[usize], wi: 
             );
         }
     };
-    let a = one::<F31>(&reg31, &inst31, mk(o.seed, true), mk(o.seed, false)).map_err(diag)?;
+    let a = one::<F31>(&reg31, &inst31, mk(o.seed, true), mk(o.seed, false), &missing).map_err(diag)?;
     report(&a);
     out.primes.push(a.clone());
     if let Some(inst32) = &inst32 {
-        let b = one::<F32b>(&reg32, inst32, mk(o.seed2, true), mk(o.seed2, false)).map_err(diag)?;
+        let b = one::<F32b>(&reg32, inst32, mk(o.seed2, true), mk(o.seed2, false), &missing).map_err(diag)?;
         report(&b);
         out.primes.push(b.clone());
         if !o.check_library {
