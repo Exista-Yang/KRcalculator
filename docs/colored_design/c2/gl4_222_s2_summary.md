@@ -9,5 +9,6 @@
 | 12n_468 | 1 2 2 2 2 1 1 -2 -2 -2 -2 -2 | 1518 | 1369 | 75 | 37 | eq / eq | yes | yes | yes | PASS |
 | 12n_570 | -1 -2 -2 -2 -2 -2 -2 -1 -1 2 2 2 | 2206 | 2025 | 91 | 45 | eq / eq | yes | yes | yes | PASS |
 | 11a_338 | 1 1 1 1 1 2 2 2 -1 2 2 2 | 5038 | 4761 | 139 | 69 | eq / eq | yes | yes | yes | PASS |
+| 12n_345 | 1 1 1 2 2 2 1 1 -2 -2 -2 -2 | 4758 | 4489 | 135 | 67 | eq / eq | yes | yes | yes | PASS |
 
-9 knots computed, 9 PASS, failures: []
+10 knots computed, 10 PASS, failures: []
