@@ -192,8 +192,11 @@ Measured on the 4-core cloud machine (`KRHOM_THREADS=4`, both primes, this branc
 | `"1 1 1 2" --no-simplify` (3 strands) | 0.9 s + 0.9 s | 16 MB |
 | `"1 2 3" --no-simplify` (4 strands), unreduced | 83 s + 126 s | 119 MB |
 | `"1 2 3" --no-simplify --reduced` | 46 s + 56 s | 116 MB |
+| `"1 1 1 2 3" --no-simplify` (4 strands), unreduced / reduced | 96 s + 91 s / 41 s + 55 s | 128 / 121 MB |
+| 6_1 `"1 1 2 -1 -3 2 -3" --check-library` (library build only) | 222 s + 217 s | 1046 MB |
+| 8_15 `--check-library` (not covered: exit 4 with the 11 missing jobs) | 101 s in total | |
 
-- Loading the 4-strand library takes 20–34 s per prime; 3 strands 0.1–6 s.
+- Loading the 4-strand library takes 20–34 s per prime for short words and about 220 s for 6_1-sized words (1119 layer-A loads); 3 strands 0.1–6 s.
 - From earlier production runs (2 threads, per prime, both modes): 8-letter 3-strand knots
   100–1151 s, 10-letter 247–2564 s. F32b is about 1× F31 at 3 strands and 1–3× at 4 strands.
 - 4-strand class-A knots (6_1 and the other 17) are expected to take 0.2–1.3 core-hours reduced
