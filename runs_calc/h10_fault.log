@@ -1,0 +1,4 @@
+randcheck: self-tests passed (convention, libraries) in 1s
+T3-01 FAIL           A      2 1 1 1 -1 -1  markov+cancel+cancel (21s)
+seed=20261115 n=1 PASS 0 FAIL 1 WARN 0 SKIP 0 TIMEOUT 0 ERROR 0; checks: primes 2, seeds 2, chi 4, isotopy 0, markov 1, mirror 0, duality-N3 2, reversal 0, N2 2, lewark 1, unknot 1, closed-form 6, cross-engine 0; 21s
+exit 1
