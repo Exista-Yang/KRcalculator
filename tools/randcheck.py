@@ -623,7 +623,7 @@ def main():
         for e in errs:
             print("randcheck: self-test FAILED: " + e, file=sys.stderr)
         return 2
-    print("randcheck: self-tests passed (convention%s, libraries) in %.0fs" % ("" if (a.no_anchor or a.only) else ", 4_1 anchor", time.time() - t0), file=sys.stderr)
+    print("randcheck: self-tests passed (convention%s, libraries) in %.0fs" % ("" if (a.no_anchor or a.only or 3 not in tiers) else ", 4_1 anchor", time.time() - t0), file=sys.stderr)
     covered = set()
     t4 = [e for e in exs if e["tier"] == 4]
     if t4:
