@@ -23,6 +23,6 @@ for k in $(seq 0 $((K-1))); do
 done
 wait
 dirs=${dirs#,}
-eval timeout 7200 ./target/release/sbox finish $C --dirs $dirs --json $D/$TAG.json > $D/$TAG.out 2> $D/$TAG.err
+KRHOM_THREADS=${THREADS_FIN:-4} eval timeout 7200 ./target/release/sbox finish $C --dirs $dirs --json $D/$TAG.json > $D/$TAG.out 2> $D/$TAG.err
 echo "exit $?" >> $D/$TAG.err
 echo "$(date +%T) $TAG $(tail -1 $D/$TAG.err) $(( $(date +%s) - t0 ))s"
