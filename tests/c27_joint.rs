@@ -19,7 +19,18 @@ fn plan_max(lam: &[u8], p: &str, rung: &str, q: &str, joint: bool) -> (u128, usi
     let plan = lv.plan_words(&mut s, &mut sc, &x, &js, id);
     let finals = lv.final_pred_words(&mut s, &mut sc, &x, &plan, id);
     let steps = plan_steps(&mut s, &mut sc, &x, &plan);
-    let mx = steps.iter().filter(|st| !(st.level == x.len() && finals.keys().any(|(qq, i)| *qq == st.to && plan[x.len() - 1][*i].0 == st.from))).map(|st| st.score_w).max().unwrap();
+    // a replaced final step is built into the per-predecessor word W' instead: it counts with the
+    // replacement step's own W-aware score (review leaves #1), not as solved
+    let mut wlc = std::collections::HashMap::new();
+    let mut repl = std::collections::HashMap::new();
+    for (&(qq, i), wa) in &finals {
+        let (tp, wp) = plan[x.len() - 1][i].clone();
+        let g = sc.step(&mut s, tp, &x[x.len() - 1]).into_iter().find(|e| e.0 == qq).map(|e| e.1).unwrap();
+        let sw = krhom::leaves::step_score_w(&mut wlc, lam, &wp, &x[x.len() - 1], wa, &g);
+        let e = repl.entry((qq, tp)).or_insert(0u128);
+        *e = (*e).max(sw);
+    }
+    let mx = steps.iter().map(|st| if st.level == x.len() { repl.get(&(st.to, st.from)).copied().unwrap_or(st.score_w) } else { st.score_w }).max().unwrap();
     (mx, finals.len())
 }
 

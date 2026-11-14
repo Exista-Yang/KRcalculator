@@ -14,8 +14,13 @@
 # The registry is data/libraries.tsv (shared with src/calc.rs). Every chunk is checked against the
 # registry sha256 and the MANIFEST sha256 of the data commit, its tar listing is checked (regular
 # files under layer_a/ and tmpl/ only, counts = MANIFEST), layers are extracted in registry
-# (restore) order, and LIBRARY.txt records a per-file sha256 list. Exit 0 on success, 1 on usage
-# errors, 2 on a failed download or verification.
+# (restore) order, and LIBRARY.txt records a per-file sha256 list plus the sources of costs.txt
+# (data-commit path) and status.txt (checkout path and sha256), which "already installed" and
+# --verify-only re-check against the registry and the checkout. Exit 0 on success, 1 on usage
+# errors, 2 on a failed download, install step or verification.
+#
+# Every install step is guarded explicitly with `|| die`: install_row runs on the left of `||`,
+# where bash ignores errexit.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -75,6 +80,24 @@ verify_installed() {
       return 1
     fi
   done
+  # sources of costs.txt and status.txt (review tools #4): the costs path in the data commit must be
+  # the registry's (same data_commit + same path = same bytes), and status.txt must be the
+  # registry's status file with the checkout's current sha256 (a corrected data/libstatus file
+  # makes the install stale)
+  if [ "$(grep -m1 '^costs_source: ' "$lib" | sed 's/^costs_source: //')" != "$costs" ]; then
+    [ "$quiet" = 1 ] || echo "  $id/$fld: LIBRARY.txt costs_source differs from the registry (expected '$costs')" >&2
+    return 1
+  fi
+  local want_status="complete"
+  if [ "$status" != "complete" ]; then
+    [ -f "$repo_root/$status" ] || { [ "$quiet" = 1 ] || echo "  $id/$fld: status file $status missing from this checkout" >&2; return 1; }
+    want_status="$status $(sha_of "$repo_root/$status")"
+    [ -f "$dest/status.txt" ] && [ "$(sha_of "$dest/status.txt")" = "${want_status##* }" ] || { [ "$quiet" = 1 ] || echo "  $id/$fld: status.txt missing or differs from $status in this checkout" >&2; return 1; }
+  fi
+  if [ "$(grep -m1 '^status_source: ' "$lib" | sed 's/^status_source: //')" != "$want_status" ]; then
+    [ "$quiet" = 1 ] || echo "  $id/$fld: LIBRARY.txt status_source differs from the registry/checkout (expected '$want_status')" >&2
+    return 1
+  fi
   local cs; cs="$(grep -m1 '^costs: ' "$lib" | awk '{print $3}')"
   [ -f "$dest/costs.txt" ] && [ "$(sha_of "$dest/costs.txt")" = "$cs" ] || { [ "$quiet" = 1 ] || echo "  $id/$fld: costs.txt missing or changed" >&2; return 1; }
   head -1 "$dest/costs.txt" | grep -q '^krhom-costs v2 alg=hs-kl1' || { [ "$quiet" = 1 ] || echo "  $id/$fld: costs.txt has the wrong format" >&2; return 1; }
@@ -97,8 +120,9 @@ trap cleanup EXIT
 ensure_commit() {
   local commit="$1"
   if [ -n "$repo_url" ] && [ -z "$tmp_repo" ]; then
-    tmp_repo="$(mktemp -d)"
-    git init -q --bare "$tmp_repo"
+    tmp_repo="$(mktemp -d)" || die "mktemp failed"
+    [ -n "$tmp_repo" ] && [ -d "$tmp_repo" ] || die "mktemp gave no directory"
+    git init -q --bare "$tmp_repo" || die "git init $tmp_repo failed"
     git_dir="$tmp_repo"
   fi
   if git -C "$git_dir" cat-file -e "$commit^{commit}" 2>/dev/null; then return 0; fi
@@ -125,10 +149,11 @@ install_row() {
     if verify_installed "$dest" "$row" 1; then echo "$id/$fld: already installed ($dest)"; return 0; fi
     echo "$id/$fld: an installed copy under $dest does not verify; reinstalling" >&2
   fi
-  ensure_commit "$commit"
-  mkdir -p "$root"
-  staging="$(mktemp -d "$root/.staging-$id-$fld-XXXXXX")"
-  mkdir -p "$staging/chunks" "$staging/lib/layer_a" "$staging/lib/tmpl" "$staging/lib/MANIFESTS"
+  ensure_commit "$commit" || die "cannot get data commit $commit"
+  mkdir -p "$root" || die "cannot create the install root $root"
+  staging="$(mktemp -d "$root/.staging-$id-$fld-XXXXXX")" || { staging=""; die "cannot create a staging directory under $root (not writable?)"; }
+  [ -n "$staging" ] && [ -d "$staging" ] || { staging=""; die "empty or missing staging path under $root"; }
+  mkdir -p "$staging/chunks" "$staging/lib/layer_a" "$staging/lib/tmpl" "$staging/lib/MANIFESTS" || die "cannot create staging subdirectories in $staging"
   local i=0 entry path want dir manifest base got na nt man_la man_tm
   IFS=';' read -r -a entries <<<"$layers"
   for entry in "${entries[@]}"; do
@@ -142,34 +167,38 @@ install_row() {
     grep -q "^$got  $base\$" "$manifest" || die "$path: sha256 $got is not the MANIFEST value"
     # tar listing: regular files and directories under layer_a/ and tmpl/ only
     local listing; listing="$(tar -tvzf "$staging/chunks/$i")" || die "$path: not a gzip tar"
-    local names; names="$(tar -tzf "$staging/chunks/$i")"
-    if echo "$listing" | awk '{print substr($1,1,1)}' | grep -qv '^[-d]$'; then die "$path: tar has entries that are not regular files or directories"; fi
-    if echo "$names" | grep -Evq '^(\./)?((layer_a|tmpl)/?|layer_a/a-[0-9a-f]{16}\.txt|tmpl/tmpl-[0-9a-f]{16}\.txt|\./?)$'; then
-      die "$path: unexpected tar entry: $(echo "$names" | grep -Ev '^(\./)?((layer_a|tmpl)/?|layer_a/a-[0-9a-f]{16}\.txt|tmpl/tmpl-[0-9a-f]{16}\.txt|\./?)$' | head -1)"
-    fi
-    na="$(echo "$names" | grep -Ec 'layer_a/a-[0-9a-f]{16}\.txt$' || true)"
-    nt="$(echo "$names" | grep -Ec 'tmpl/tmpl-[0-9a-f]{16}\.txt$' || true)"
+    local names; names="$(tar -tzf "$staging/chunks/$i")" || die "$path: cannot list the tar"
+    # the checks read here-strings / variables, never `echo | grep -q` (which fails open under
+    # pipefail when grep -q exits early and echo gets SIGPIPE; review tools #3)
+    local types bad_entry
+    types="$(awk '{print substr($1,1,1)}' <<<"$listing")" || die "$path: cannot read the tar listing"
+    if grep -qv '^[-d]$' <<<"$types"; then die "$path: tar has entries that are not regular files or directories"; fi
+    bad_entry="$(grep -Ev '^(\./)?((layer_a|tmpl)/?|layer_a/a-[0-9a-f]{16}\.txt|tmpl/tmpl-[0-9a-f]{16}\.txt|\./?)$' <<<"$names" || true)"
+    [ -z "$bad_entry" ] || die "$path: unexpected tar entry: $(head -1 <<<"$bad_entry")"
+    na="$(grep -Ec 'layer_a/a-[0-9a-f]{16}\.txt$' <<<"$names" || true)"
+    nt="$(grep -Ec 'tmpl/tmpl-[0-9a-f]{16}\.txt$' <<<"$names" || true)"
     # MANIFEST "files:" line in either word order ("layer_a 233, tmpl 471" / "249 layer_a, 233 tmpl")
     local fl; fl="$(grep -m1 '^files' "$manifest")"
     man_la="$(echo "$fl" | grep -oE '(layer_a [0-9]+|[0-9]+ layer_a)' | grep -oE '[0-9]+')"
     man_tm="$(echo "$fl" | grep -oE '(tmpl [0-9]+|[0-9]+ tmpl)' | grep -oE '[0-9]+')"
     [ "$na" = "$man_la" ] && [ "$nt" = "$man_tm" ] || die "$path: tar has $na layer_a / $nt tmpl files, MANIFEST says $man_la / $man_tm"
-    echo "$names" | grep -E '(layer_a/a-|tmpl/tmpl-)' | sed 's#^\./##' | sed "s#^#$i #" >>"$staging/owners"
+    grep -E '(layer_a/a-|tmpl/tmpl-)' <<<"$names" | sed 's#^\./##' | sed "s#^#$i #" >>"$staging/owners" || die "cannot write $staging/owners"
     tar -C "$staging/lib" -xzf "$staging/chunks/$i" || die "$path: extraction failed"
-    cp "$manifest" "$staging/lib/MANIFESTS/$(echo "$dir" | tr '/' '_').txt"
+    cp "$manifest" "$staging/lib/MANIFESTS/$(echo "$dir" | tr '/' '_').txt" || die "cannot copy the MANIFEST of $dir"
     echo "  $id/$fld layer $i: $path ok (sha256 ${got:0:12}, $na layer_a + $nt tmpl)" >&2
     i=$((i + 1))
   done
   git -C "$git_dir" show "$commit:$costs" >"$staging/lib/costs.txt" || die "cannot read $costs"
   head -1 "$staging/lib/costs.txt" | grep -q '^krhom-costs v2 alg=hs-kl1' || die "$costs: wrong format"
-  local status_line="complete"
+  local status_line="complete" status_source="complete"
   if [ "$status" != "complete" ]; then
     [ -f "$repo_root/$status" ] || die "status file $status missing from this checkout"
-    cp "$repo_root/$status" "$staging/lib/status.txt"
+    cp "$repo_root/$status" "$staging/lib/status.txt" || die "cannot copy $status"
     status_line="status.txt"
+    status_source="$status $(sha_of "$staging/lib/status.txt")"
   fi
   # last writer of every file (registry order: later layers overwrite earlier names)
-  awk '{own[$2]=$1} END {for (f in own) print own[f], f}' "$staging/owners" | sort -k2 >"$staging/final"
+  awk '{own[$2]=$1} END {for (f in own) print own[f], f}' "$staging/owners" | sort -k2 >"$staging/final" || die "cannot write $staging/final"
   local fa ft
   fa="$(grep -c ' layer_a/' "$staging/final" || true)"; ft="$(grep -c ' tmpl/' "$staging/final" || true)"
   [ "$fa" = "$(find "$staging/lib/layer_a" -type f | wc -l | tr -d ' ')" ] || die "layer_a count mismatch after extraction"
@@ -185,20 +214,27 @@ install_row() {
     echo "layers: $layers"
     echo "stamp_layers: $stl"
     echo "costs: costs.txt $(sha_of "$staging/lib/costs.txt")"
+    echo "costs_source: $costs"
     echo "status: $status_line"
+    echo "status_source: $status_source"
     echo "files_layer_a: $fa"
     echo "files_tmpl: $ft"
     echo "installed: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
     echo "fetched_by: tools/fetch_library.sh @ $code_commit"
     echo "files:"
     (cd "$staging/lib" && while read -r own f; do echo "$own $(sha_of "$f") $f"; done <"$staging/final")
-  } >"$staging/lib/LIBRARY.txt"
+  } >"$staging/lib/LIBRARY.txt" || die "cannot write $staging/lib/LIBRARY.txt"
   local aside=""
-  if [ -d "$dest" ]; then aside="$dest.old-$$"; mv "$dest" "$aside"; fi
-  mkdir -p "$(dirname "$dest")"
-  mv "$staging/lib" "$dest"
-  [ -n "$aside" ] && rm -rf "$aside"
-  rm -rf "$staging"; staging=""
+  if [ -d "$dest" ]; then aside="$dest.old-$$"; mv "$dest" "$aside" || die "cannot move the old copy $dest aside"; fi
+  mkdir -p "$(dirname "$dest")" || { [ -n "$aside" ] && mv "$aside" "$dest"; die "cannot create $(dirname "$dest")"; }
+  if ! mv "$staging/lib" "$dest"; then
+    # keep the old install: move it back before giving up
+    [ -n "$aside" ] && mv "$aside" "$dest"
+    die "cannot move the new copy into $dest (the old copy, if any, was kept)"
+  fi
+  if [ -n "$aside" ]; then rm -rf "$aside" || echo "fetch_library: warning: could not remove $aside" >&2; fi
+  rm -rf "$staging" || echo "fetch_library: warning: could not remove $staging" >&2
+  staging=""
   verify_installed "$dest" "$row" || die "$id/$fld: installed copy does not verify"
   echo "$id/$fld: installed ($dest: $fa layer_a, $ft tmpl files, data ${commit:0:12})"
 }

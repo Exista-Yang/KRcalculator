@@ -473,6 +473,9 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
         let mut wlc = std::collections::HashMap::new();
         let mut keys: Vec<_> = finals.keys().cloned().collect();
         keys.sort();
+        // (to, from) of a replaced final step -> the replacement word's own score sw (review
+        // leaves #1: the step is not free; its cost is that of the step into W')
+        let mut repl = std::collections::HashMap::new();
         for (qq, i) in keys {
             let wa = &finals[&(qq, i)];
             let (tp, wp) = plan[x.len() - 1][i].clone();
@@ -480,12 +483,15 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
             let sw = krhom::leaves::step_score_w(&mut wlc, lam, &wp, &x[x.len() - 1], wa, &g);
             println!("  per-predecessor final: {} -> {}: [{}]·{} -> [{}] score_w {}", s.table(tp).fmt(), s.table(qq).fmt(), rungs_str(&wp), rungs_str(&[x[x.len() - 1]]), rungs_str(wa), sw);
             for st in steps.iter().filter(|st| st.level == x.len() && st.from == tp && st.to == qq) {
-                if st.score_w > 100_000 {
-                    over -= 1;
-                }
+                over -= (st.score_w > 100_000) as usize;
+                over += (sw > 100_000) as usize;
             }
+            let e = repl.entry((qq, tp)).or_insert(0u128);
+            *e = (*e).max(sw);
         }
-        let mx = steps.iter().map(|st| if st.level == x.len() && st.to == q && finals.keys().any(|(qq, i)| *qq == q && plan[x.len() - 1][*i].0 == st.from) { 0 } else { st.score_w }).max().unwrap_or(0).max(mx.min(0));
+        // max over the steps actually built: a replaced final step counts with its replacement's
+        // score sw (not 0)
+        let mx = steps.iter().map(|st| if st.level == x.len() { repl.get(&(st.to, st.from)).copied().unwrap_or(st.score_w) } else { st.score_w }).max().unwrap_or(0).max(mx.min(0));
         // exit chain dry run
         let wq = plan[x.len()].iter().find(|e| e.0 == q).map(|e| e.1.clone()).unwrap_or_default();
         let lq = canonical_ladder(&mut s, q);

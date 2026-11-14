@@ -22,7 +22,8 @@ on them and on related words, and checks relations fixed in code before running 
   O8  N'=3 duality: colored-2 N'=3 of w = uncolored N=3 of rev(w), same mode            B
   O9  N'=2 is exactly t^0q^0, both modes                                               C
   O10b Lewark-type: [N 2]_q P_red - P_unred = (1+t) Q with Q >= 0 (knots)              E
-  O11 2-strand closed forms (Wang T(2,2m+1) via tools/wang.py, unknot, unlink)        C (B for m=4, m=3 N>=5)
+  O11 2-strand closed forms (Wang T(2,2m+1) via tools/wang.py, unknot, unlink,
+      Hopf |n| = 2 unreduced by Wang Thm 3.5 = tests/common hopf_formula)              C (B for m=4, m=3 N>=5)
   O12 unknot words: unreduced [N 2]_q, reduced t^0q^0                                  C
   O13a 2-strand cross-engine: --box-live = exact path (N' <= 4, both modes)           C
 
@@ -32,7 +33,10 @@ example). Box-route calls always pass --no-simplify.
 
 Report: OUT/SEED/examples.jsonl (one line per example), OUT/SEED/summary.md, and a final line
 "seed=... n=... PASS a FAIL b WARN c SKIP d TIMEOUT e; checks: ...".
-Exit 0 if no FAIL or ERROR, 1 on any FAIL or ERROR, 2 on a harness failure.
+Exit 0 if no FAIL or ERROR, 1 on any FAIL or ERROR, 2 on a harness failure (a self-test, the
+convention call, tools/wang.py, the m5i_cover build or run, or any other harness exception).
+krhom exit 4 (library missing, damaged or rejected) is FAIL: T3 runs only with the complete
+l222_n4 library and T4 only on words the m5i_cover filter found covered by both primes.
 """
 import argparse
 import concurrent.futures as cf
@@ -186,6 +190,9 @@ def isotopy_move(rng, w, n, kinds=("rotate", "conjugate", "relation", "cancel"))
 
 # ------------------------------------------------------------------ running krhom
 
+class HarnessError(Exception):
+    """a failure of the harness itself (exit 2), never a verdict about krhom"""
+
 class Ctx:
     def __init__(self, a):
         self.krhom = a.krhom
@@ -234,7 +241,10 @@ def run_krhom(ctx, ex, ns, word, strands, colors="2", reduced=False, extra=(), t
         rec["primes"] = [{k: pr.get(k) for k in ("field", "seed", "secs", "chi_checked", "closures", "points", "vmhwm_kb")} for pr in j.get("primes", [])]
     if p.returncode != 0:
         tail = p.stderr.strip().splitlines()[-3:]
-        status = {3: "FAIL", 2: "FAIL", 4: "SKIP(library)", 5: "ERROR"}.get(p.returncode, "ERROR")
+        # exit 4 is FAIL: T3 runs only with the complete l222_n4 library and T4 only on words that
+        # passed the m5i_cover filter, so a library error there is a broken install, a stamp or
+        # registry mismatch, or a map rejected on load (review tools #1)
+        status = {3: "FAIL", 2: "FAIL", 4: "FAIL", 5: "ERROR"}.get(p.returncode, "ERROR")
         raise RunFail(status, "exit %d: krhom %s: %s" % (p.returncode, " ".join(args[1:]), " | ".join(tail)), code=p.returncode)
     res = {r["N"]: poly_of(r["P"]) for r in j["results"]}
     # O3 (box routes): chi checked for every closure of every prime
@@ -305,9 +315,52 @@ _wang = {}
 def wang(n, m):
     key = (n, m)
     if key not in _wang:
-        out = subprocess.run([sys.executable, "-I", os.path.join(HERE, "wang.py"), "2", str(n), str(m)], capture_output=True, text=True, check=True).stdout
-        _wang[key] = parse_pstr(out.splitlines()[0])
+        try:
+            out = subprocess.run([sys.executable, "-I", os.path.join(HERE, "wang.py"), "2", str(n), str(m)], capture_output=True, text=True, check=True, timeout=600).stdout
+            _wang[key] = parse_pstr(out.splitlines()[0])
+        except Exception as e:
+            raise HarnessError("tools/wang.py 2 %d %d failed: %r" % (n, m, e))
     return _wang[key]
+
+def qbin(n, k):
+    """symmetric Gaussian binomial [n k]_q as {q: coeff} ([2 1] = q + q^-1)"""
+    if k < 0 or k > n:
+        return {}
+    if k == 0 or k == n:
+        return {0: 1}
+    out = {}
+    for e, c in qbin(n - 1, k).items():
+        out[e + k] = out.get(e + k, 0) + c
+    for e, c in qbin(n - 1, k - 1).items():
+        out[e - (n - k)] = out.get(e - (n - k), 0) + c
+    return {e: c for e, c in out.items() if c}
+
+def lmul1(a, b):
+    out = {}
+    for i, x in a.items():
+        for j, y in b.items():
+            out[i + j] = out.get(i + j, 0) + x * y
+    return {e: c for e, c in out.items() if c}
+
+def hopf_closed(n, a, b):
+    """closure of sigma_1^2 with colors (a, b) at gl_N, unreduced (Wang arXiv:2211.08409 Thm 3.5,
+    converted; = tests/common/mod.rs hopf_formula): m = min(a, b),
+    sum_{j=0}^{m - max(0, a+b-N)} t^{2j} q^{-ab - mN + 2m^2 - j(N+2)} [N; m-j, a-m+j, b-m+j, N-a-b+m-j]"""
+    out = {}
+    if a > n or b > n:
+        return out
+    m = min(a, b)
+    for j in range(0, m - max(0, a + b - n) + 1):
+        k = m - j
+        parts = [k, a - k, b - k, n - a - b + k]
+        mult, rest = {0: 1}, n
+        for x in parts[:-1]:
+            mult = lmul1(mult, qbin(rest, x))
+            rest -= x
+        s0 = -a * b - m * n + 2 * m * m - j * (n + 2)
+        for e, c in mult.items():
+            out[(2 * j, s0 + e)] = out.get((2 * j, s0 + e), 0) + c
+    return {x: c for x, c in out.items() if c}
 
 def closed_form_2strand(w, n, reduced):
     """O11: (value, label) or None"""
@@ -318,6 +371,9 @@ def closed_form_2strand(w, n, reduced):
     if a == 0:
         b = qbinom2(n)
         return (qpoly_t0(b) if reduced else qmul(b, qpoly_t0(b))), "C"
+    if a == 2 and not reduced:
+        v = hopf_closed(n, 2, 2)
+        return (mirror_poly(v) if e < 0 else v), "C"
     if a % 2 == 1 and not reduced:
         m = (a - 1) // 2
         v = wang(n, m)
@@ -502,6 +558,8 @@ def run_example(ctx, ex, covered):
         else:
             ex_t4(ctx, ex, covered)
         ex["status"] = finish_status(ex)
+    except HarnessError:
+        raise
     except RunFail as e:
         ex["error"] = str(e)
         ex["status"] = e.status if not any(c["result"] == "FAIL" for cs in ex["checks"].values() for c in cs) else "FAIL"
@@ -516,10 +574,18 @@ def self_tests(ctx, tiers, anchor):
     errs = []
     # 1. convention: exact path = wang.py (unreduced) for (2,2) sigma^3, N = 2,3,4
     ex = {"id": "selftest-convention", "runs": [], "checks": {}, "subseed": 0}
-    r = run_krhom(ctx, ex, [2, 3, 4], [1, 1, 1], 2, timeout=120)
-    for n in (2, 3, 4):
-        if r[n] != wang(n, 1):
-            errs.append("convention: krhom (2,2) sigma^3 N=%d %s != wang.py %s" % (n, pstr(r[n]), pstr(wang(n, 1))))
+    try:
+        r = run_krhom(ctx, ex, [2, 3, 4], [1, 1, 1], 2, timeout=120)
+        for n in (2, 3, 4):
+            if r[n] != wang(n, 1):
+                errs.append("convention: krhom (2,2) sigma^3 N=%d %s != wang.py %s" % (n, pstr(r[n]), pstr(wang(n, 1))))
+        # the Hopf closed form of O11 against the exact path, N = 2..5
+        r = run_krhom(ctx, ex, [2, 3, 4, 5], [1, 1], 2, timeout=120)
+        for n in (2, 3, 4, 5):
+            if r[n] != hopf_closed(n, 2, 2):
+                errs.append("convention: krhom (2,2) Hopf N=%d %s != closed form %s" % (n, pstr(r[n]), pstr(hopf_closed(n, 2, 2))))
+    except (RunFail, HarnessError, OSError, ValueError, KeyError) as e:
+        errs.append("convention call failed: %s" % e)
     # 3. libraries installed
     for t, lib in ((3, "l222_n4"), (4, "l2222_n4")):
         if t in tiers:
@@ -549,9 +615,19 @@ def self_tests(ctx, tiers, anchor):
 
 def t4_coverage(ctx, cand_words):
     """words (strings) with 0 missing jobs in both primes' status files (m5i_cover example)"""
+    try:
+        return t4_coverage_inner(ctx, cand_words)
+    except HarnessError:
+        raise
+    except Exception as e:
+        raise HarnessError("T4 coverage filter (m5i_cover) failed: %r" % e)
+
+def t4_coverage_inner(ctx, cand_words):
     exe = os.path.join(ROOT, "target/release/examples/m5i_cover")
     if not os.path.exists(exe):
-        subprocess.run(["cargo", "build", "--release", "--example", "m5i_cover"], cwd=ROOT, check=True, capture_output=True)
+        p = subprocess.run(["cargo", "build", "--release", "--example", "m5i_cover"], cwd=ROOT, capture_output=True, text=True)
+        if p.returncode != 0:
+            raise HarnessError("cargo build --release --example m5i_cover failed: %s" % p.stderr.strip()[-400:])
     st = [open(os.path.join(ROOT, "data/libstatus/l2222_n4_%s.txt" % f)).read().splitlines() for f in ("f31", "f32b")]
     ok = set(l for l in st[0] if l.endswith(" ok")) & set(st[1])
     both = os.path.join(ctx.tmp, "both.txt")
@@ -561,7 +637,10 @@ def t4_coverage(ctx, cand_words):
     with open(cands, "w") as f:
         for i, w in enumerate(cand_words):
             f.write("c%d;2,2,2,2;%s;4\n" % (i, w))
-    out = subprocess.run([exe, "2,2,2,2", "4", cands, both], capture_output=True, text=True, check=True).stdout
+    p = subprocess.run([exe, "2,2,2,2", "4", cands, both], capture_output=True, text=True)
+    if p.returncode != 0:
+        raise HarnessError("m5i_cover exit %d: %s" % (p.returncode, p.stderr.strip()[-400:]))
+    out = p.stdout
     covered = set()
     for line in out.splitlines():
         m = re.match(r"c(\d+) \[.*\]: .*missing (\d+) ", line)
@@ -639,7 +718,11 @@ def main():
     with cf.ThreadPoolExecutor(max_workers=1 if a.inject_fault else a.jobs) as pool:
         futs = {pool.submit(run_example, ctx, e, covered): e for e in order}
         for f in cf.as_completed(futs):
-            e = f.result()
+            try:
+                e = f.result()
+            except HarnessError:
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise
             print("%s %-14s %-6s %s  %s (%.0fs)%s" % (e["id"], e["status"], e.get("mode", ""), e.get("word", ""), (e.get("partner") or {}).get("kind", ""), e["secs"], ("  " + e["error"]) if e.get("error") else ""), file=sys.stderr, flush=True)
     exs.sort(key=lambda e: e["id"])
     with open(os.path.join(outdir, "examples.jsonl"), "w") as f:
@@ -684,4 +767,14 @@ def poly_of_str_ranks(s):
     return parse_pstr(s).values()
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        rc = main()
+    except HarnessError as e:
+        print("randcheck: harness failure: %s" % e, file=sys.stderr)
+        rc = 2
+    except Exception as e:  # any other harness bug: exit 2 (documented), never 1
+        import traceback
+        traceback.print_exc()
+        print("randcheck: harness failure: %r" % e, file=sys.stderr)
+        rc = 2
+    sys.exit(rc)

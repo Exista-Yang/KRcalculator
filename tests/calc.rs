@@ -87,7 +87,7 @@ fn refusals_exit_1() {
     refused(&["2", "--braid", "1 1", "--colored-method", "magic"], 1, "cable, cube or singular");
     refused(&["2", "--braid", "1 1", "--pd", "[[1,4,2,5],[3,6,4,1],[5,2,6,3]]"], 1, "exactly one of");
     refused(&["2", "--braid", "1 1 1", "--colors", "2", "--colored-method", "cube", "--reduced"], 1, "--reduced is only supported");
-    refused(&["2", "--braid", "1 1 1", "--colors", "4"], 1, "colors 1..=3");
+    refused(&["4", "--braid", "1 1 1", "--colors", "4"], 1, "colors 1..=3");
     // validation-only environment switches are refused on the box route (review K12)
     let r = krhom_env(&["2,3", "--braid", "1 -2 1 -2", "--strands", "3", "--colors", "2"], &[("KRHOM_NO_M5I", "1")]);
     assert_eq!(r.code, 1, "{}", r.err);
@@ -209,6 +209,168 @@ fn developer_single_prime_is_labelled() {
     for hidden in ["--field", "--single-prime", "--seed-f32b"] {
         assert!(!u.out.contains(hidden), "usage shows {}", hidden);
     }
+}
+
+// ------------------------------------------------------------------ CALC-2 fixes
+
+/// CALC-2 item 1: on the exact 2-strand route a memory-cap refusal is exit 5 naming
+/// --mem-cap-mb (not a panic, exit 2), --mem-cap-mb is honoured there, and the A_λ shape limit
+/// (top weight a(N - a) > 255) is exit 1 before any engine work.
+#[test]
+fn exact2_memory_cap_and_shape_refusals() {
+    // the reviewer's example: dim A_λ = C(30,3)^2, far above the default cap
+    refused(&["30", "--braid", "1 1 1", "--colors", "3"], 5, "--mem-cap-mb");
+    // --mem-cap-mb applies on this route: a tiny cap refuses an input that runs by default
+    let r = krhom(&["2,3", "--braid", "1 1 1", "--strands", "2", "--colors", "2", "--mem-cap-mb", "1"]);
+    assert_eq!(r.code, 5, "{}\n{}", r.out, r.err);
+    assert!(r.err.contains("above the memory cap of 1 MB") && !r.err.contains("please report"), "{}", r.err);
+    let j = empty_lib().join("cap.json");
+    let r = krhom(&["2", "--braid", "1 1 1", "--strands", "2", "--colors", "2", "--mem-cap-mb", "4000", "--json", j.to_str().unwrap()]);
+    ok(&r, "cap 4000");
+    assert!(std::fs::read_to_string(&j).unwrap().contains("\"mem_cap_mb\":4000"));
+    // top weight: 2 * (130 - 2) = 256 > 255 (exit 1, no engine run, no panic)
+    refused(&["130", "--braid", "1 1 1", "--colors", "2"], 1, "a(N - a) <= 255");
+    refused(&["89", "--braid", "1 1 1", "--colors", "3"], 1, "N <= 88 for color 3");
+}
+
+/// CALC-2 item 2: N below the color is answered (zero) before any route refusal and without an
+/// engine run.
+#[test]
+fn n_below_the_color_short_circuits_refusals() {
+    for args in [
+        &["1,2", "--braid", "aBaB", "--colors", "3"][..], // no library for (3,3,3)
+        &["2,3", "--braid", "1 1 1", "--colors", "4"][..], // exact 2-strand colors > 3
+        &["1", "--braid", "1 1 1", "--strands", "2", "--colors", "2"][..], // exact 2-strand, no xscan
+        &["2,3", "--braid", "1 1 2 2 3 3 4 4", "--strands", "5", "--colors", "4"][..], // 5 strands
+    ] {
+        let r = krhom(args);
+        ok(&r, &format!("{:?}", args));
+        assert!(r.out.contains("method: none (every N is below the color"), "{:?}: {}", args, r.out);
+        assert!(r.out.contains("Poincare polynomial: 0") && !r.out.contains("Poincare polynomial: t"), "{}", r.out);
+        assert!(!r.err.contains("[F_2147483647]"), "{:?}: an engine ran:\n{}", args, r.err);
+    }
+    // an N at or above the color still goes through the refusal
+    refused(&["2,3,4", "--braid", "1 1 1", "--colors", "4"], 1, "colors 1..=3");
+}
+
+/// CALC-2 items 3, 4, 5, 6: batch blocks are named before any early return and on the error line;
+/// CSV names are RFC 4180-quoted; JSON/CSV are written per finished item; `input` has no duplicate key.
+#[test]
+fn batch_names_csv_quoting_and_incremental_outputs() {
+    let d = empty_lib();
+    let f = d.join("b.txt");
+    std::fs::write(&f, "L6a5{0,1}; aaa\nbad; 1 0\nthree, strands; 1 2 1 -2 1\nsay \"hi\"; aBaB\n").unwrap();
+    let (jb, cb) = (d.join("b.json"), d.join("b.csv"));
+    let b = krhom(&["2", "--file", f.to_str().unwrap(), "--json", jb.to_str().unwrap(), "--csv", cb.to_str().unwrap(), "--colors", "1"]);
+    assert_eq!(b.code, 1, "{}\n{}", b.out, b.err);
+    // a parse error still gets its name block and a named error line
+    assert!(b.out.contains("name: bad\nerror: bad: exit 1 (unsupported)"), "{}", b.out);
+    let sc = std::fs::read_to_string(&cb).unwrap();
+    assert!(sc.contains("\"L6a5{0,1}\",2,false,0,-3,1"), "{}", sc);
+    assert!(sc.contains("\"say \"\"hi\"\"\",2,false,"), "{}", sc);
+    for l in sc.lines().skip(1) {
+        // 6 fields after RFC 4180 parsing
+        let mut n = 1;
+        let mut q = false;
+        for c in l.chars() {
+            match c {
+                '"' => q = !q,
+                ',' if !q => n += 1,
+                _ => {}
+            }
+        }
+        assert_eq!(n, 6, "{}", l);
+    }
+    let sj = std::fs::read_to_string(&jb).unwrap();
+    assert!(sj.starts_with("[\n{") && sj.trim_end().ends_with(']') && sj.matches("\"tool\":\"krhom\"").count() == 4, "{}", sj);
+    // `input` has each key once (the string is "text", the parsed array "braid")
+    for rec in sj.split("\"tool\":\"krhom\"").skip(1) {
+        let inp = &rec[rec.find("\"input\":{").unwrap()..];
+        let inp = &inp[..inp.find('}').unwrap()];
+        assert_eq!(inp.matches("\"braid\":").count(), inp.contains("\"braid\":[").then_some(1).unwrap_or(0), "{}", inp);
+        assert!(inp.matches("\"text\":").count() == 1, "{}", inp);
+    }
+}
+
+/// CALC-2 item 5: an aborted batch keeps the finished records (JSON array and CSV rows written
+/// after each item).
+#[test]
+fn batch_outputs_survive_a_kill() {
+    let d = empty_lib();
+    let f = d.join("k.txt");
+    // the first line is instant; the second (80 crossings, color 2: minutes) is killed
+    std::fs::write(&f, format!("first; aaa\nslow; {}\n", "a".repeat(80))).unwrap();
+    let (jb, cb) = (d.join("k.json"), d.join("k.csv"));
+    let mut c = Command::new(env!("CARGO_BIN_EXE_krhom"));
+    c.args(["5", "--file", f.to_str().unwrap(), "--colors", "2", "--json", jb.to_str().unwrap(), "--csv", cb.to_str().unwrap()]).env("KRHOM_THREADS", "1").env("KRHOM_LIB_DIR", empty_lib()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    let mut ch = c.spawn().unwrap();
+    let t0 = std::time::Instant::now();
+    // wait until the first record is on disk, then SIGKILL
+    loop {
+        let s = std::fs::read_to_string(&jb).unwrap_or_default();
+        if s.contains("\"name\":\"first\"") {
+            break;
+        }
+        assert!(t0.elapsed().as_secs() < 600, "first record not written");
+        if let Some(st) = ch.try_wait().unwrap() {
+            panic!("krhom ended early: {:?}", st);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    ch.kill().unwrap();
+    let _ = ch.wait();
+    let sj = std::fs::read_to_string(&jb).unwrap();
+    assert!(sj.starts_with("[\n{") && sj.trim_end().ends_with(']') && sj.matches("\"tool\":\"krhom\"").count() == 1, "{}", sj);
+    let sc = std::fs::read_to_string(&cb).unwrap();
+    assert!(sc.starts_with("name,N,reduced,t,q,rank\nfirst,5,false,"), "{}", sc);
+}
+
+/// CALC-2 items 15, 16: --table and --convention knotjob (Bar-Natan / KnotInfo: the right-handed
+/// trefoil aaa at N = 2 is q + q^3 + t^2q^5 + t^3q^9; reduced q^2 + t^2q^6 + t^3q^8).
+#[test]
+fn table_and_knotjob_convention() {
+    let r = krhom(&["2", "--braid", "aaa", "--convention", "knotjob", "--table"]);
+    ok(&r, "knotjob");
+    assert!(r.out.contains("convention: knotjob (q -> q^-1)"), "{}", r.out);
+    assert!(r.out.contains("Poincare polynomial: t^0q^1 + t^0q^3 + t^2q^5 + t^3q^9"), "{}", r.out);
+    assert!(r.out.contains("Euler characteristic: -q^9 + q^5 + q^3 + q^1"), "{}", r.out);
+    assert!(r.out.contains("  table (rows t, columns q):\n  t\\q  1  3  5  7  9\n    0  1  1\n    1\n    2        1\n    3              1\n"), "{}", r.out);
+    let r = krhom(&["2", "--braid", "aaa", "--convention", "knotjob", "--reduced"]);
+    ok(&r, "knotjob reduced");
+    assert!(r.out.contains("Poincare polynomial: t^0q^2 + t^2q^6 + t^3q^8"), "{}", r.out);
+    // default output unchanged (no convention line, krhom gradings), JSON records the convention
+    let d = empty_lib();
+    let (j1, j2) = (d.join("a.json"), d.join("b.json"));
+    let a = krhom(&["2,3", "--braid", "1 1 1", "--strands", "2", "--colors", "2", "--json", j1.to_str().unwrap()]);
+    let b = krhom(&["2,3", "--braid", "1 1 1", "--strands", "2", "--colors", "2", "--convention", "knotjob", "--table", "--json", j2.to_str().unwrap()]);
+    ok(&a, "default");
+    ok(&b, "knotjob colored");
+    assert!(!a.out.contains("convention:") && !a.out.contains("table"), "{}", a.out);
+    assert!(std::fs::read_to_string(&j1).unwrap().contains("\"convention\":\"krhom\""));
+    assert!(std::fs::read_to_string(&j2).unwrap().contains("\"convention\":\"knotjob (q -> q^-1)\""));
+    // the knotjob polynomial is the default one with q -> q^-1, term by term
+    let poly = |s: &str, n: usize| -> Vec<(i32, i32, i64)> {
+        let l = s.lines().skip_while(|l| *l != format!("N = {}", n)).nth(1).unwrap();
+        let mut v: Vec<(i32, i32, i64)> = l.trim().trim_start_matches("Poincare polynomial: ").split(" + ").filter(|x| *x != "0").map(|x| {
+            let (c, r) = x.split_once('t').unwrap();
+            let (t, q) = r.trim_start_matches('^').split_once("q^").unwrap();
+            (t.parse().unwrap(), q.parse().unwrap(), if c.is_empty() { 1 } else { c.parse().unwrap() })
+        }).collect();
+        v.sort();
+        v
+    };
+    for n in [2, 3] {
+        let mut flipped: Vec<_> = poly(&a.out, n).into_iter().map(|(t, q, k)| (t, -q, k)).collect();
+        flipped.sort();
+        assert_eq!(flipped, poly(&b.out, n), "N = {}", n);
+    }
+    // --table in --file mode, zero table
+    let f = d.join("t.txt");
+    std::fs::write(&f, "u; 1\nz; aaa\n").unwrap();
+    let r = krhom(&["1,2", "--file", f.to_str().unwrap(), "--colors", "2", "--table"]);
+    ok(&r, "file table");
+    assert!(r.out.contains("name: z") && r.out.contains("  table: 0") && r.out.contains("  table (rows t, columns q):"), "{}", r.out);
+    refused(&["2", "--braid", "aaa", "--convention", "rolfsen"], 1, "--convention must be krhom or knotjob");
 }
 
 // ------------------------------------------------------------------ with the libraries (F3)

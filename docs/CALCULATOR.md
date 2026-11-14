@@ -24,6 +24,7 @@ Contents:
 
 ```
 krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS) [--colors c | c1,c2,...] [--reduced]
+               [--table] [--convention krhom|knotjob]
                [--json OUT] [--csv OUT] [--no-simplify] [--check-library] [--lib-dir DIR]
                [--seed S] [--seed-retries K] [--mem-mb M] [--mem-cap-mb M]
                [--colored-method cable|cube|singular] [--cube] [--closure tower|exact] [--end right|left|alt]
@@ -37,9 +38,11 @@ krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS) [--colors 
 | `--pd PD` | A PD code instead of a braid, e.g. `"[[1,4,2,5],[3,6,4,1],[5,2,6,3]]"` (converted with Vogel's algorithm and simplified). |
 | `--colors` | A single color applies to every component (`--colors 2`); a list gives one color per link component, numbered by the smallest bottom strand position. Default: all 1 (uncolored). |
 | `--reduced` | Reduced homology: the strand at bottom position 0 is marked; the reduced unknot is `t^0q^0`. |
-| `--file BRAIDS` | Batch: one braid per line, optional `NAME;` prefix, blank lines and `#` comments ignored. N, colors, `--strands` and `--reduced` apply to every line. One output block per line, headed `name: NAME`. An error on one line is reported and the batch continues; the exit code is that of the first failing line. |
-| `--json OUT` | Machine-readable results (an array with `--file`): input, route, library, per-prime provenance (seeds, timings, χ and scaling checks, layer-A loads, VmHWM), results with terms `[t,q,k]`, and the error if any. |
-| `--csv OUT` | Rows `name,N,reduced,t,q,rank` (a zero polynomial is one row with empty t, q and rank 0). |
+| `--file BRAIDS` | Batch: one braid per line, optional `NAME;` prefix, blank lines and `#` comments ignored. N, colors, `--strands` and `--reduced` apply to every line. One output block per line, headed `name: NAME` (printed first, also for a line that fails to parse). An error on one line is reported (stdout: `error: NAME: exit C (kind)`; stderr: `krhom: NAME: message`) and the batch continues; the exit code is that of the first failing line. |
+| `--json OUT` | Machine-readable results (an array with `--file`): input (`kind`, the input string as `text`, N, mode, the parsed `braid` array, ...), route, convention, library, per-prime provenance (seeds, timings, χ and scaling checks, layer-A loads, VmHWM), results with terms `[t,q,k]`, and the error if any. With `--file` the array is rewritten after every finished line (atomically: temporary file + rename), so an abort (out of memory under `ulimit -v`, SIGKILL, a timeout) keeps the finished records. |
+| `--csv OUT` | Rows `name,N,reduced,t,q,rank` (a zero polynomial is one row with empty t, q and rank 0). The name is quoted per RFC 4180 when it contains a comma, a quote or a line break (`"L6a5{0,1}"`). The header is written at start and each line's rows are appended and flushed when it finishes. |
+| `--table` | After each N block, the bigraded table: rows t ascending, columns q ascending (step 2 when all q have one parity), entries = dimensions, blank for 0 (KnotJob-style). Also in `--file` mode. |
+| `--convention knotjob` | Print (and write to `--json`/`--csv`) every result with q → q⁻¹, t unchanged: Bar-Natan / KnotJob / KnotInfo gradings. The right-handed trefoil `aaa` at N = 2 then reads `q + q^3 + t^2q^5 + t^3q^9`. A line `convention: knotjob (q -> q^-1)` follows `coefficients:`, and the JSON field `convention` records it (`"krhom"` by default). `--convention krhom` is the default. |
 
 Examples:
 
@@ -75,7 +78,12 @@ N = 4
 ```
 
 Terms are sorted by t, then q; `2t^-2q^8` means rank 2 in homological degree −2 and q-degree 8.
-The convention is that of the repository (ours(t,q) = Wang(1/t,1/q), see tools/wang.py). On the
+The convention is that of the repository (ours(t,q) = Wang(1/t,1/q), see tools/wang.py): positive
+knots sit in negative q-degrees. `--convention knotjob` maps q → q⁻¹ (verified: krhom's N = 2
+uncolored homology in bidegree (t, q) is KnotInfo's / KnotJob's Khovanov table entry (t, −q), as
+`tools/batch_check.py`'s `kh` check uses; `aaa` gives `t^0q^-3 + t^0q^-1 + t^2q^-5 + t^3q^-9` by
+default and Bar-Natan's `q + q^3 + t^2q^5 + t^3q^9` with the option; reduced `q^2 + t^2q^6 +
+t^3q^8` = KnotInfo `kh_reduced` of 3_1). On the
 2-strand and Soergel routes the method line reads `method: singular (exact 2-strand singular
 Soergel engine)` or `closure: tower (Right end first)`. If simplification removed strands, a line
 `simplified braid: WORD  (strands k)` follows the braid. Progress and the per-prime certification
@@ -86,13 +94,16 @@ lines go to stderr.
 | Input | Route (automatic) | N | Strands |
 |---|---|---|---|
 | all colors 1 | localized Soergel engine (engine2), two primes | any N ≥ 1 | any |
-| colored, ≤ 2 strands after simplification | exact singular Soergel engine (xengine), two primes | any N | 1–2, colors 1..3 |
+| colored, ≤ 2 strands after simplification | exact singular Soergel engine (xengine), two primes | a(N − a) ≤ 255 for every color a (N ≤ 256 for color 1, N ≤ 129 for color 2, N ≤ 88 for color 3), and the closure's memory estimate under `--mem-cap-mb` (default 768 MB; e.g. color 3 at N = 30 needs about 1.5 TB and is refused with exit 5) | 1–2, colors 1..3 |
 | colored, uniform color 2, 3 strands | localized box engine + library `l222_n4` (labels 2,2,2), two primes | N ≤ 4 | 3 |
 | colored, uniform color 2, 4 strands | localized box engine + library `l2222_n4` (labels 2,2,2,2), two primes | N ≤ 4 | 4 |
 | anything else colored | refused (exit 1) with this matrix; `--colored-method cube` is exact over Q but exponential (tiny inputs only) | | |
 
 - N below a color: the homology is 0 (Λ^a C^N = 0 for a > N). krhom prints the zero polynomial
-  for those N on every route, without running an engine, and says so on stderr.
+  for those N on every route, without running an engine, and says so on stderr. When every
+  requested N is below the largest color, the answer is printed before any route refusal (`method:
+  none (every N is below the color ...)`), e.g. `krhom 1,2 --braid aBaB --colors 3` prints 0 and
+  exits 0 although no (3,3,3) library exists.
 - Colored braids are simplified first (cyclic reduction, Markov destabilization, a deterministic
   random search). The simplified braid is used only if it has fewer strands, and for `--reduced`
   on a link only if the marked component is unchanged. `--no-simplify` keeps the given word.
@@ -127,10 +138,18 @@ tools/fetch_library.sh --verify-only l222_n4 l2222_n4
 - Transport: the tool fetches the data commit by SHA into the current clone (`git fetch origin
   <sha>`; the work tree is untouched) or, with `--repo URL`, into a temporary bare repository. It
   falls back to fetching the `data-gl6` branch if the server refuses SHA fetches.
+- Every install step is checked explicitly (`|| die`; errexit is inactive inside the install
+  function), an empty or missing staging path is refused, and the old copy is kept if the new one
+  cannot be moved into place.
 - Checks: every chunk's sha256 must equal both the registry (`data/libraries.tsv`) and the
   MANIFEST of the data commit; the tar listing must contain only regular files `layer_a/a-<16hex>.txt`
   and `tmpl/tmpl-<16hex>.txt` (no links, no `..`), with the MANIFEST's counts.
-- `LIBRARY.txt` records the registry fields and a per-file list `LAYER SHA256 PATH`.
+- `LIBRARY.txt` records the registry fields, the sources of `costs.txt` (`costs_source:` the
+  path in the data commit) and `status.txt` (`status_source:` the checkout path and its sha256),
+  and a per-file list `LAYER SHA256 PATH`. "already installed" and `--verify-only` re-check both
+  sources against the registry and the current `data/libstatus` file, so a corrected status file
+  or costs path triggers a reinstall (installs made before CALC-2 lack these lines and are
+  reinstalled once).
   `--verify-only` checks every listed file's sha256; extra files (templates a later run may write)
   are tolerated. A second install run prints `already installed`; `--force` reinstalls.
 - krhom itself checks on every run that LIBRARY.txt matches the registry, that every listed file
@@ -167,11 +186,11 @@ details go to stderr and `--json`; stdout says `coefficients: Q`.
 | Code | Meaning | Example message (stderr, prefix `krhom: `) |
 |---|---|---|
 | 0 | success | |
-| 1 | usage or unsupported input | `labels [2, 2, 1] on 3 strands are not uniform; supported on 3-4 strands: ...`; `no library for labels [3, 3, 3] on 3 strands ...`; `N = 5 is above the library's N <= 4 ...`; `split link (sigma_2 never occurs): compute the pieces separately`; `3 colors given, but the link has 1 components ...`; `braid "a1" mixes letters and integers ...`; `uncolored input: drop --colored-method singular ...`; `validation-only environment switches change the computation on the box route: unset KRHOM_NO_M5I` |
+| 1 | usage or unsupported input | `N = 130 with color 2: the exact 2-strand engine supports a(N - a) <= 255 ...`; `labels [2, 2, 1] on 3 strands are not uniform; supported on 3-4 strands: ...`; `no library for labels [3, 3, 3] on 3 strands ...`; `N = 5 is above the library's N <= 4 ...`; `split link (sigma_2 never occurs): compute the pieces separately`; `3 colors given, but the link has 1 components ...`; `braid "a1" mixes letters and integers ...`; `uncolored input: drop --colored-method singular ...`; `validation-only environment switches change the computation on the box route: unset KRHOM_NO_M5I` |
 | 2 | engine or certification failure | `localized engine failed on F_2147483647: <error>. This is a certification failure; please report it with --json output.` |
 | 3 | the two primes disagree; no result printed | `the two primes disagree (torsion or a bug); no result printed: N = 3: ...` |
 | 4 | library missing, wrong version, stamp mismatch, damaged, or not covering the word | `library l222_n4 (F_2147483647) is not installed under <root>: run tools/fetch_library.sh l222_n4 (about 3.5 MB per prime)`; `damaged install: 1 of the 5921 files listed in .../LIBRARY.txt are missing (...): run tools/fetch_library.sh --force l2222_n4`; `library l2222_n4 does not cover this word: 11 jobs not certified for both primes: pair 926 (p=..., rung=...), ...` |
-| 5 | resource refusal | `per-point memory ... above the budget ...` (raise `--mem-mb`); `... above the memory cap of ... MB` (raise `--mem-cap-mb`) |
+| 5 | resource refusal | `per-point memory ... above the budget ...` (raise `--mem-mb`); `... above the memory cap of ... MB ...; with krhom use --mem-cap-mb M to raise it` (on every route, including the exact 2-strand engine) |
 
 When a library job is missing, krhom diagnoses which jobs the word needs from the shipped status
 files (`data/libstatus/`; this costs about 25 s for the (2,2,2,2) plan, only on failure). If the
@@ -203,9 +222,10 @@ Measured on the 4-core cloud machine (`KRHOM_THREADS=4`, both primes, this branc
   and 1.2–8 core-hours unreduced per prime (projection, never run to completion). Use `--reduced`
   for speed. Runs are not resumable yet (the production `sbox box/finish` driver is).
 - Memory: `--mem-mb` is the per-point budget (default 3200 at 3 strands, 3000 at 4 strands); the
-  closure estimate cap `KRHOM_MEM_CAP_MB` is set by krhom on the box route (`--mem-cap-mb`, else
-  the environment variable, else 4500 × max(1, threads/2) at 3 strands and 200000 at 4 strands,
-  where the estimate is 30–130× too high). The real guard is the shell: run long jobs under
+  closure estimate cap `KRHOM_MEM_CAP_MB` is set from `--mem-cap-mb` before any engine work, on
+  every route. Without the flag: the environment variable if set; else on the box route 4500 ×
+  max(1, threads/2) at 3 strands and 200000 at 4 strands (where the estimate is 30–130× too
+  high), and on the exact 2-strand route the library default of 768 MB. The real guard is the shell: run long jobs under
   `ulimit -v 14000000` (or less).
 - `KRHOM_THREADS` sets the thread count (default: all cores).
 
@@ -225,7 +245,7 @@ Options: `--tiers 2,3,4`, `--only ID`, `--krhom PATH`, `--jobs 2` (each krhom th
 `KRHOM_THREADS=2` and an 8 GB address-space limit), `--out runs_random`, `--no-anchor`.
 
 Self-tests first (exit 2 if one fails): the 2-strand exact path equals `tools/wang.py` for the
-(2,2) trefoil at N = 2,3,4; the libraries of the requested tiers verify; the 4_1 anchor (both
+(2,2) trefoil at N = 2,3,4 and the Hopf closed form of O11 at N = 2..5; the libraries of the requested tiers verify; the 4_1 anchor (both
 modes, against the known strings; skipped with `--only` or `--no-anchor`).
 
 Tiers: T2 (2 strands, exact path, N = 2..6), T3 (3 strands; Mode A: a 2-strand core stabilized by
@@ -251,7 +271,7 @@ counted as confirmation; E = expected, not proven: a mismatch is WARN):
 | O8 | colored-2 N'=3 of w = uncolored N=3 of rev(w), same mode | B |
 | O9 | N'=2 is exactly t^0q^0 | C |
 | O10b | [N 2]_q·P_red − P_unred = (1+t)·Q with Q ≥ 0 (knots) | E |
-| O11 | 2-strand closed forms: Wang T(2,2m+1) via tools/wang.py (B for m = 4 and for m = 3 at N ≥ 5), unknot, unlink | C |
+| O11 | 2-strand closed forms: Wang T(2,2m+1) via tools/wang.py (B for m = 4 and for m = 3 at N ≥ 5), unknot, unlink, Hopf \|n\| = 2 unreduced (Wang Thm 3.5 = tests/common `hopf_formula`, mirrored for n = −2) | C |
 | O12 | unknot words: [N 2]_q unreduced, t^0q^0 reduced | C |
 | O13a | `--box-live` (in-memory unpruned library, 2 strands) = exact path, N ≤ 4 | C |
 
@@ -260,8 +280,14 @@ components, mode, core, partner, runs with arguments, exit codes, times and resu
 label and detail, status), `summary.md` (one row per example, details and repro commands for every
 non-PASS example), and the final line
 `seed=... n=... PASS a FAIL b WARN c SKIP d TIMEOUT e ERROR f; checks: primes x, seeds y, ...`.
-Exit 0 if there is no FAIL or ERROR, 1 otherwise, 2 if a self-test fails. TIMEOUT (per call:
-T2 120 s, T3 and T4 2400 s) is never a PASS.
+Exit 0 if there is no FAIL or ERROR, 1 otherwise, 2 on a harness failure: a self-test, the
+convention call, `tools/wang.py`, the build or run of `examples/m5i_cover`, or any other exception
+of the harness itself. krhom exit 4 (library missing, damaged, stamp/registry mismatch, map
+rejected on load) is FAIL: T3 runs only with the complete `l222_n4` and T4 only on words the
+m5i_cover filter found covered. TIMEOUT is never a PASS. Per-call timeouts: 120 s for the 2-strand
+exact-path calls (T2 base, mirror and rotation; the T3/T4 cores; the convention self-test), 300 s
+for the T2 `--box-live` call, 600 s for the uncolored O8 calls, 2400 s for the 3-4 strand box
+calls (and the 4_1 anchor).
 
 ## 8. Advanced and developer options
 

@@ -35,7 +35,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 const USAGE: &str = "usage: krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS) [--colors c | c1,c2,...] [--reduced]
-             [--json OUT] [--csv OUT] [--no-simplify] [--check-library] [--lib-dir DIR]
+             [--table] [--convention krhom|knotjob] [--json OUT] [--csv OUT] [--no-simplify] [--check-library] [--lib-dir DIR]
              [--seed S] [--seed-retries K] [--mem-mb M] [--mem-cap-mb M]
              [--colored-method cable|cube|singular] [--cube] [--closure tower|exact] [--end right|left|alt]
   N        gl_N ranks, a comma-separated list (e.g. 2,3,4)
@@ -44,12 +44,14 @@ const USAGE: &str = "usage: krhom N[,N...] (--braid WORD [--strands n] | --pd PD
   --colors c applies to every component; c1,c2,... is one color per link component (default 1)
   --reduced  reduced homology (the strand at bottom position 0 is marked)
   --file   one braid per line, optional \"NAME;\" prefix, '#' comments; same N/colors/--reduced for all
+  --table  also print the bigraded table of each N (rows t, columns q, blank = 0)
+  --convention knotjob  print with q -> q^-1 (Bar-Natan / KnotJob gradings: aaa at N=2 is q + q^3 + t^2q^5 + t^3q^9)
   --json OUT  machine-readable results (an array with --file); --csv OUT rows name,N,reduced,t,q,rank
   colored 3-4 strands (uniform color 2, N <= 4) need the prebuilt library: tools/fetch_library.sh l222_n4 l2222_n4
   results are over Q (two large primes must agree; the full cube is exact over Q); docs/CALCULATOR.md";
 
-const VALUE_OPTS: [&str; 18] = ["--pd", "--braid", "--strands", "--colors", "--colored-method", "--field", "--closure", "--end", "--json", "--csv", "--file", "--lib-dir", "--seed", "--seed-f32b", "--seed-retries", "--mem-mb", "--mem-cap-mb", "--name"];
-const FLAG_OPTS: [&str; 8] = ["--cube", "--reduced", "--single-prime", "--no-simplify", "--check-library", "--box-live", "--help", "-h"];
+const VALUE_OPTS: [&str; 19] = ["--convention", "--pd", "--braid", "--strands", "--colors", "--colored-method", "--field", "--closure", "--end", "--json", "--csv", "--file", "--lib-dir", "--seed", "--seed-f32b", "--seed-retries", "--mem-mb", "--mem-cap-mb", "--name"];
+const FLAG_OPTS: [&str; 9] = ["--table", "--cube", "--reduced", "--single-prime", "--no-simplify", "--check-library", "--box-live", "--help", "-h"];
 
 #[derive(Clone, Debug)]
 struct Opts {
@@ -73,6 +75,10 @@ struct Opts {
     /// KRHOM_MEM_CAP_MB as given by the user's environment at start
     env_mem_cap: bool,
     env_any_host: bool,
+    /// --table: print the bigraded table after each N block
+    table: bool,
+    /// --convention knotjob: print (and write) every result with q -> q^-1
+    knotjob: bool,
 }
 
 enum Input {
@@ -174,6 +180,11 @@ fn parse_args(args: &[String]) -> Result<(Opts, Vec<Item>, Option<String>, Optio
     let retries = num("--seed-retries", Some(2))?.unwrap();
     let mem_mb = num("--mem-mb", None)?;
     let mem_cap_mb = num("--mem-cap-mb", None)?;
+    let knotjob = match get("--convention").as_deref() {
+        None | Some("krhom") => false,
+        Some("knotjob") => true,
+        Some(c) => return Err(un(format!("--convention must be krhom or knotjob, not {}", c))),
+    };
     if get("--field").is_some() {
         eprintln!("krhom: note: --field is a developer option and has no effect; results are over Q");
     }
@@ -197,6 +208,8 @@ fn parse_args(args: &[String]) -> Result<(Opts, Vec<Item>, Option<String>, Optio
         mem_cap_mb,
         env_mem_cap: std::env::var_os("KRHOM_MEM_CAP_MB").is_some(),
         env_any_host: std::env::var_os("KRHOM_COSTS_ANY_HOST").is_some(),
+        table: flag("--table"),
+        knotjob,
     };
     let nin = ["--braid", "--pd", "--file"].iter().filter(|k| get(k).is_some()).count();
     if nin != 1 {
@@ -278,6 +291,10 @@ fn set_env(k: &str, v: &str) {
 fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
     let un = |m: String| CalcErr::Unsupported(m);
     let mut out = Outcome { coefficients: "Q".into(), ..Default::default() };
+    // the name heads the block before any early return (a failed batch line is identifiable)
+    if let Some(n) = &item.name {
+        println!("name: {}", n);
+    }
     // ---- input
     let (mut bw, is_braid) = match &item.input {
         Input::Braid(s) => {
@@ -324,9 +341,6 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
     if o.reduced && (route_kind == "cube" || route_kind == "cable") {
         return Err(un("--reduced is only supported for uncolored links with the Soergel engine and with the singular route".into()));
     }
-    if let Some(n) = &item.name {
-        println!("name: {}", n);
-    }
     println!("gl_N for N in {:?}  strands {}  crossings {}  components {}  colors {:?}", o.ns, bw.strands, bw.word.len(), ncomp, colors);
     println!("braid: {}", sigstr(&bw.signed()));
     // ---- N below a color: wedge^a C^N = 0 (review K14 / Q5), on every route
@@ -335,6 +349,18 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
     let run_ns: Vec<usize> = o.ns.iter().copied().filter(|&n| n >= amax).collect();
     if !out.zero_ns.is_empty() {
         eprintln!("krhom: note: N = {:?} is below the color {}: the homology is 0 there (wedge^a C^N = 0 for a > N); not computed", out.zero_ns, amax);
+    }
+    if run_ns.is_empty() && !o.check_library {
+        // every N is below the color: the answer is 0 on every route, before any route refusal
+        // (no library, colors > 3) and without running an engine (D4 Q5, review cli #3)
+        out.route = "zero";
+        println!("method: none (every N is below the color {}: the homology is 0, nothing to compute)", amax);
+        out.used = Some(bw);
+        out.labels = labels;
+        for &n in &out.zero_ns.clone() {
+            out.results.insert(n, Poincare::default());
+        }
+        return Ok(out);
     }
     let word: Vec<Gen> = bw.word.clone();
     let results: BTreeMap<usize, Poincare> = match route_kind {
@@ -393,10 +419,12 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
                 if labels.iter().any(|&a| a > 3) {
                     return Err(un(format!("colors {:?}: the exact 2-strand engine handles colors 1..=3; --colored-method cube is exact over Q (tiny inputs only)", colors)));
                 }
+                exact2_shape(&labels, &run_ns, o.reduced).map_err(un)?;
+                out.mem_cap_mb = Some(std::env::var("KRHOM_MEM_CAP_MB").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(krhom::cclose::DEFAULT_MEM_CAP_MB));
                 println!("method: singular (exact 2-strand singular Soergel engine){}", if o.reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
                 let red = o.reduced;
                 let (l1, l2, w1, w2, ns1, ns2) = (labels.clone(), labels.clone(), word.clone(), word.clone(), run_ns.clone(), run_ns.clone());
-                let em = |e: String| if e.contains("above the memory cap") { CalcErr::Resource(e) } else { CalcErr::Engine(format!("singular method failed: {}", e)) };
+                let em = exact2_err;
                 two_primes(o, &mut out, &run_ns, move || khr_singular_exact::<F31>(&l1, &w1, &ns1, red).map_err(em), move || khr_singular_exact::<F32b>(&l2, &w2, &ns2, red).map_err(em))?
             } else if o.box_live {
                 out.route = "box-live";
@@ -443,6 +471,102 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
         out.results.insert(n, Poincare::default());
     }
     Ok(out)
+}
+
+/// The exact 2-strand closure's shape limit (cclose::check_alg_shape): every unmarked block of
+/// color a needs a(N - a) <= 255 (N <= 256 for color 1, N <= 129 for color 2, N <= 88 for
+/// color 3). Checked before any engine work; exit 1.
+fn exact2_shape(labels: &[usize], run_ns: &[usize], reduced: bool) -> Result<(), String> {
+    for &nn in run_ns {
+        for (i, &a) in labels.iter().enumerate() {
+            if reduced && i == 0 || a > nn {
+                continue;
+            }
+            if a * (nn - a) > 255 {
+                return Err(format!(
+                    "N = {} with color {}: the exact 2-strand engine supports a(N - a) <= 255 for every color a (here {} * {} = {}), i.e. N <= 256 for color 1, N <= 129 for color 2, N <= 88 for color 3",
+                    nn,
+                    a,
+                    a,
+                    nn - a,
+                    a * (nn - a)
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Classify an error of the exact 2-strand engine: a memory-cap refusal is a resource refusal
+/// (exit 5, with the flag to raise), an unsupported shape is exit 1, anything else exit 2.
+fn exact2_err(e: String) -> CalcErr {
+    if e.contains("above the memory cap") {
+        CalcErr::Resource(format!("{}; with krhom use --mem-cap-mb M to raise it (the run then needs about that much memory)", e))
+    } else if e.contains("top weight") || e.contains("labels above 16") {
+        CalcErr::Unsupported(format!("singular method: {}", e))
+    } else {
+        CalcErr::Engine(format!("singular method failed: {}", e))
+    }
+}
+
+/// Mirror the q-grading (q -> q^-1, t unchanged): krhom's convention to Bar-Natan / KnotJob.
+fn to_knotjob(p: &Poincare) -> Poincare {
+    let mut r = Poincare::default();
+    for (&(t, q), &k) in &p.c {
+        r.add_term(t, -q, k);
+    }
+    r
+}
+
+/// The bigraded table: rows t ascending, columns q ascending (step 2 when every q has the same
+/// parity), entries = dimensions, blank for 0.
+fn table_lines(p: &Poincare) -> Vec<String> {
+    if p.c.is_empty() {
+        return vec!["  table: 0".into()];
+    }
+    let (tmin, tmax) = (p.c.keys().map(|k| k.0).min().unwrap(), p.c.keys().map(|k| k.0).max().unwrap());
+    let (qmin, qmax) = (p.c.keys().map(|k| k.1).min().unwrap(), p.c.keys().map(|k| k.1).max().unwrap());
+    let step = if p.c.keys().all(|k| (k.1 - qmin).rem_euclid(2) == 0) { 2 } else { 1 };
+    let qs: Vec<i32> = (qmin..=qmax).step_by(step).collect();
+    let w = qs.iter().map(|q| q.to_string().len()).chain(p.c.values().map(|k| k.to_string().len())).max().unwrap() + 2;
+    let lw = (tmin..=tmax).map(|t| t.to_string().len()).max().unwrap().max(3);
+    let mut out = vec!["  table (rows t, columns q):".to_string()];
+    let mut head = format!("  {:>lw$}", "t\\q", lw = lw);
+    for q in &qs {
+        head.push_str(&format!("{:>w$}", q, w = w));
+    }
+    out.push(head);
+    for t in tmin..=tmax {
+        let mut row = format!("  {:>lw$}", t, lw = lw);
+        for q in &qs {
+            match p.c.get(&(t, *q)) {
+                Some(k) => row.push_str(&format!("{:>w$}", k, w = w)),
+                None => row.push_str(&" ".repeat(w)),
+            }
+        }
+        out.push(row.trim_end().to_string());
+    }
+    out
+}
+
+/// RFC 4180 field: quoted (with doubled quotes) when it contains a comma, quote, CR or LF.
+fn csv_field(s: &str) -> String {
+    if s.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+/// Write `body` to `path` atomically when possible (temporary file in the same directory, then
+/// rename), so an abort never leaves a half-written file; falls back to a direct write.
+fn write_atomic(path: &str, body: &str) -> std::io::Result<()> {
+    let tmp = format!("{}.tmp{}", path, std::process::id());
+    if std::fs::write(&tmp, body).is_ok() && std::fs::rename(&tmp, path).is_ok() {
+        return Ok(());
+    }
+    let _ = std::fs::remove_file(&tmp);
+    std::fs::write(path, body)
 }
 
 /// The 3-4 strand box route (spec B step 5, C4).
@@ -615,7 +739,7 @@ fn item_json(item: &Item, o: &Opts, r: &Result<Outcome, CalcErr>, secs: f64) -> 
             let st = |b: &Option<BraidWord>| b.as_ref().map_or(0, |b| b.strands);
             let res: Vec<String> = out.results.iter().map(|(n, p)| format!("{{\"N\":{},\"P\":{},\"euler\":{}}}", n, poly_json(p), jstr(&p.euler().to_string()))).collect();
             format!(
-                "{{{},\"braid\":{},\"strands\":{},\"colors\":{:?},\"labels\":{:?},\"used_braid\":{},\"used_strands\":{}}},\"route\":{},\"coefficients\":{},\"library\":{},\"seeds\":{:?},\"mem_mb\":{},\"mem_cap_mb\":{},\"primes\":[{}],\"agree\":{},\"zero_N\":{:?},\"check_library\":{},\"results\":[{}],\"secs\":{:.2},\"env\":{{{}}},\"error\":null}}",
+                "{{{},\"braid\":{},\"strands\":{},\"colors\":{:?},\"labels\":{:?},\"used_braid\":{},\"used_strands\":{}}},\"route\":{},\"convention\":{},\"coefficients\":{},\"library\":{},\"seeds\":{:?},\"mem_mb\":{},\"mem_cap_mb\":{},\"primes\":[{}],\"agree\":{},\"zero_N\":{:?},\"check_library\":{},\"results\":[{}],\"secs\":{:.2},\"env\":{{{}}},\"error\":null}}",
                 common,
                 bw(&out.orig),
                 st(&out.orig),
@@ -624,6 +748,7 @@ fn item_json(item: &Item, o: &Opts, r: &Result<Outcome, CalcErr>, secs: f64) -> 
                 bw(&out.used),
                 st(&out.used),
                 jstr(out.route),
+                jstr(if o.knotjob { "knotjob (q -> q^-1)" } else { "krhom" }),
                 jstr(&out.coefficients),
                 out.library.clone().unwrap_or("null".into()),
                 out.seeds,
@@ -653,26 +778,77 @@ fn main() {
     }
     let (o, items, json, csv) = parse_args(&args).unwrap_or_else(|e| fail(e.code(), e.msg()));
     let batch = items.len() > 1 || matches!(items.first(), Some(Item { name: Some(_), .. })) && args.iter().any(|a| a == "--file");
+    // --mem-cap-mb applies on every route: set it before any engine work (review cli #1)
+    if let Some(c) = o.mem_cap_mb {
+        set_env("KRHOM_MEM_CAP_MB", &c.to_string());
+    }
+    // outputs are written incrementally, one record per finished item, so an abort (OOM under
+    // ulimit -v, SIGKILL, timeout) keeps the finished results (review cli #2); a bad path fails
+    // before any work
+    let mut csv_file = csv.as_ref().map(|p| std::fs::File::create(p).unwrap_or_else(|e| fail(1, &format!("--csv {}: {}", p, e))));
+    let csv_write = |f: &mut Option<std::fs::File>, rows: &[String]| {
+        use std::io::Write;
+        if rows.is_empty() {
+            return;
+        }
+        if let Some(f) = f.as_mut() {
+            let mut body = rows.join("\n");
+            body.push('\n');
+            if let Err(e) = f.write_all(body.as_bytes()).and_then(|_| f.flush()) {
+                fail(1, &format!("--csv {}: {}", csv.as_deref().unwrap_or(""), e));
+            }
+        }
+    };
+    csv_write(&mut csv_file, &["name,N,reduced,t,q,rank".to_string()]);
+    let json_write = |jsons: &[String]| {
+        if let Some(p) = &json {
+            let body = if batch { if jsons.is_empty() { "[\n]\n".to_string() } else { format!("[\n{}\n]\n", jsons.join(",\n")) } } else { format!("{}\n", jsons.first().map_or("", |s| s.as_str())) };
+            if let Err(e) = write_atomic(p, &body) {
+                fail(1, &format!("--json {}: {}", p, e));
+            }
+        }
+    };
+    if batch {
+        json_write(&[]);
+    } else if let Some(p) = &json {
+        // check the path is writable now (the record itself is written when the item finishes)
+        if let Err(e) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+            fail(1, &format!("--json {}: {}", p, e));
+        }
+    }
     let mut code = 0;
     let mut jsons = vec![];
-    let mut csv_rows = vec!["name,N,reduced,t,q,rank".to_string()];
     for item in &items {
         let t0 = Instant::now();
-        let r = run_item(item, &o);
+        let mut r = run_item(item, &o);
         let secs = t0.elapsed().as_secs_f64();
+        if o.knotjob {
+            if let Ok(out) = r.as_mut() {
+                out.results = out.results.iter().map(|(&n, p)| (n, to_knotjob(p))).collect();
+            }
+        }
+        let mut csv_rows = vec![];
         match &r {
             Ok(out) => {
                 if let Some(c) = &out.check_library {
                     println!("check-library: {}", c);
                 } else {
                     println!("coefficients: {}", out.coefficients);
+                    if o.knotjob {
+                        println!("convention: knotjob (q -> q^-1)");
+                    }
                     println!("time {:.2}s", secs);
+                    let nm = csv_field(item.name.as_deref().unwrap_or_default());
                     for (nn, p) in &out.results {
                         println!("N = {}", nn);
                         println!("  Poincare polynomial: {}", p);
                         println!("  total rank: {}", p.total_rank());
                         println!("  Euler characteristic: {}", p.euler());
-                        let nm = item.name.clone().unwrap_or_default();
+                        if o.table {
+                            for l in table_lines(p) {
+                                println!("{}", l);
+                            }
+                        }
                         if p.c.is_empty() {
                             csv_rows.push(format!("{},{},{},,,0", nm, nn, o.reduced));
                         }
@@ -683,9 +859,10 @@ fn main() {
                 }
             }
             Err(e) => {
-                eprintln!("krhom: {}{}", item.name.as_deref().map_or(String::new(), |n| format!("{}: ", n)), e.msg());
+                let who = item.name.as_deref().map_or(String::new(), |n| format!("{}: ", n));
+                eprintln!("krhom: {}{}", who, e.msg());
                 if batch {
-                    println!("error: exit {} ({})", e.code(), e.kind());
+                    println!("error: {}exit {} ({})", who, e.code(), e.kind());
                 }
                 if code == 0 {
                     code = e.code();
@@ -695,18 +872,13 @@ fn main() {
         if batch {
             println!();
         }
+        {
+            use std::io::Write;
+            let _ = std::io::stdout().flush();
+        }
+        csv_write(&mut csv_file, &csv_rows);
         jsons.push(item_json(item, &o, &r, secs));
-    }
-    if let Some(p) = json {
-        let body = if batch { format!("[\n{}\n]\n", jsons.join(",\n")) } else { format!("{}\n", jsons[0]) };
-        if let Err(e) = std::fs::write(&p, body) {
-            fail(1, &format!("--json {}: {}", p, e));
-        }
-    }
-    if let Some(p) = csv {
-        if let Err(e) = std::fs::write(&p, csv_rows.join("\n") + "\n") {
-            fail(1, &format!("--csv {}: {}", p, e));
-        }
+        json_write(&jsons);
     }
     std::process::exit(code);
 }

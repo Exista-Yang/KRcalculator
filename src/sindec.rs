@@ -50,7 +50,11 @@ pub const SINDEC_VERSION: &str = "krhom-sindec v2";
 pub const LADDER_STAMP: &str = "schur.ladder_minflow.v1";
 /// M5i: the idempotent of a decomposable canonical ladder (`SIndec::build_idem`: e_p = id − Σ
 /// ι_r π_r from certified pairs of the extra summands); enters the layer-A keys of maps that
-/// contain an e_q / e_p (eq=, ep=)
+/// contain an e_q / e_p (eq=, ep=). It is a constant: it does NOT fingerprint how e_q was built
+/// (prefix propagation, KRHOM_M5I_NO_PREFIX, the peel route chosen under the cost table), so two
+/// different idempotents with image B_q share a key. That fails closed, never open: loaded pairs
+/// built against another e_q' give Π∘Ι = e_q' ≠ e_q and `check_pi_iota` rejects the job
+/// (DecErr::Check); closure files are re-wrapped with the current e_p and re-certified.
 pub const M5I_STAMP: &str = "m5i-peel1";
 
 // ------------------------------------------------------------------ types
@@ -1166,8 +1170,13 @@ impl<F: Field> SIndec<F> {
     /// w[..j] is the canonical ladder of a type a, and Y is decomposed rung by rung from a
     /// (`dec_word(a, R·w[j..])`, the ordinary machinery, which never meets the non-local splitting
     /// of L_p). Returns per kept (q, s) the family (ι: L_q → X, π: X → L_q) transported through the
-    /// commutation isomorphism, Π∘Ι = δ: a basis of the multiplicity space of b_q⟨s⟩ in char X.
-    /// None if R does not commute past the last rung of w or w[..j] is not a canonical ladder.
+    /// commutation isomorphism, Π∘Ι = δ. When L_a is indecomposable (L_a = B_a), Y = B_a·R·w[j..]
+    /// and the family is a basis of the multiplicity space of b_q⟨s⟩ in char X, which is what the
+    /// callers' `len == mx` check requires. When L_a is decomposable, dec_word only decomposes
+    /// B_a ⊗ R·w[j..] (the family would have the term multiplicity, not that of char X, which
+    /// also counts the extra summands of L_a), so the reroute is not used: None (review engine #1;
+    /// fail-closed, the other routes are tried). None also if R does not commute past the last
+    /// rung of w or w[..j] is not a canonical ladder.
     #[allow(clippy::type_complexity)]
     fn reroute_family(&mut self, p: Tid, r: Rung) -> Result<Option<BTreeMap<(Tid, i32), (Vec<MapId>, Vec<MapId>)>>, DecErr> {
         if std::env::var("KRHOM_M5I_NO_REROUTE").is_ok() {
@@ -1186,6 +1195,9 @@ impl<F: Field> SIndec<F> {
         let ch = self.schur.ladder_char(&w1);
         let a = self.schur.expand(&ch).into_iter().map(|t| t.0).find(|&q| canonical_ladder(&mut self.schur, q) == w1);
         let Some(a) = a else { return Ok(None) };
+        if !is_indecomposable_of(&mut self.schur, &w1, a) {
+            return Ok(None);
+        }
         let key = (p, (r.i, r.dir as u8, r.r));
         if !self.busy.insert(key) {
             return Err(DecErr::Check(format!("M5i reroute cycle at {} ⊗ {}", self.tfmt(p), crate::smapio::rung_str(&r))));

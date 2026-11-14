@@ -68,7 +68,7 @@
 //!   checked to close to 0 at every requested N before the closure (`closure_kills_map`);
 //! * the closure is valid for every N' <= N (I_N ⊆ I_N'), and `XScan::close` refuses N' > N.
 
-use crate::cclose::{close_exact_colored, det_criterion, gram_of, rlambda_bases, solve_f, ClosureDataC, EPoly, LadderBasis, TypeBasisC};
+use crate::cclose::{close_exact_colored, det_criterion, try_close_exact_colored, gram_of, rlambda_bases, solve_f, ClosureDataC, EPoly, LadderBasis, TypeBasisC};
 use crate::crossing::Gen;
 use crate::cube::{apply_local_poly, local_cx, LocalCx};
 use crate::field::Field;
@@ -1937,6 +1937,12 @@ impl<F: Field> XScan<F> {
         close_guarded(&self.data, &self.final_d2, self.prune_n, ns, if reduced { Some(0) } else { None })
     }
 
+    /// As [`XScan::close`], with Err instead of a panic when the exact oracle refuses (memory
+    /// cap, unsupported shape) or a pruned scan is asked for N above its pruning level.
+    pub fn try_close(&self, ns: &[usize], reduced: bool) -> Result<BTreeMap<usize, Poincare>, String> {
+        try_close_guarded(&self.data, &self.final_d2, self.prune_n, ns, if reduced { Some(0) } else { None })
+    }
+
     /// Stages whose closure data were kept (`XOpts::close_stages`).
     pub fn closed_stages(&self) -> Vec<usize> {
         self.stage_data.keys().copied().collect()
@@ -1988,6 +1994,27 @@ fn close_guarded<F: Field>(data: &ClosureDataC<F>, final_d2: &[(usize, usize, Ve
         .collect()
 }
 
+/// As [`close_guarded`], with Err instead of a panic when the exact oracle refuses (memory
+/// estimate above the cap, an unsupported A_λ shape such as top weight > 255) or when a pruned
+/// scan is asked for N above its pruning level. The pruned-scan d∘d guard still panics (it is a
+/// certification check, unchanged).
+#[allow(clippy::type_complexity)]
+fn try_close_guarded<F: Field>(data: &ClosureDataC<F>, final_d2: &[(usize, usize, Vec<Vec<EPoly<F>>>)], prune_n: Option<usize>, ns: &[usize], marked: Option<usize>) -> Result<BTreeMap<usize, Poincare>, String> {
+    let mut out = BTreeMap::new();
+    for &nn in ns {
+        if let Some(n0) = prune_n {
+            if nn > n0 {
+                return Err(format!("a scan pruned at N = {} gives the gl_N homology only for N <= {} (requested N = {})", n0, n0, nn));
+            }
+            for (a, b, f) in final_d2 {
+                assert!(closure_kills_map(data, *a, *b, f, nn, marked), "pruned scan at N = {}: the d∘d component {} -> {} does not close to 0 at gl_{}", n0, a, b, nn);
+            }
+        }
+        out.insert(nn, try_close_exact_colored(data, nn, marked)?);
+    }
+    Ok(out)
+}
+
 impl<F: Field> XScan<F> {
 }
 
@@ -2008,10 +2035,12 @@ pub fn closure_kills_map<F: Field>(data: &ClosureDataC<F>, x: usize, w: usize, f
 
 /// Colored gl_N homology of the closure of a braid on at most 2 strands (labels per bottom
 /// position in 1..=3), for every N in `ns`, by the exact singular engine (one scan for all N).
-/// `reduced`: the block at bottom position 0 is marked (reduced unknot = q^0).
+/// `reduced`: the block at bottom position 0 is marked (reduced unknot = q^0). Err if the scan
+/// fails or the exact closure refuses (memory estimate above `KRHOM_MEM_CAP_MB`, or an A_λ
+/// shape the oracle does not support, e.g. top weight a(N − a) > 255); never panics on those.
 pub fn khr_singular_exact<F: Field>(labels: &[usize], word: &[Gen], ns: &[usize], reduced: bool) -> Result<BTreeMap<usize, Poincare>, String> {
     let scan = xscan::<F>(labels, word, &XOpts::default())?;
-    Ok(scan.close(ns, reduced))
+    scan.try_close(ns, reduced)
 }
 
 #[cfg(test)]
