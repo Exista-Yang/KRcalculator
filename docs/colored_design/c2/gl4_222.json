@@ -17,7 +17,6 @@
  "computed": 61,
  "failed": [],
  "one_prime_only": [
-  "10_99",
   "10_104"
  ],
  "knots": [
@@ -1523,9 +1522,10 @@
    ],
    "length": 10,
    "primes": [
-    "31"
+    "31",
+    "32b"
    ],
-   "primes_identical": false,
+   "primes_identical": true,
    "chi_ok": true,
    "scaling_ok": true,
    "secs_f31": 4731.06,
@@ -1549,7 +1549,7 @@
     "N4_mirror_symmetric": true
    },
    "red_rank4_eq_red_rank3_sq": true,
-   "status": "PARTIAL (one prime)"
+   "status": "PASS"
   },
   {
    "knot": "10_100",
