@@ -1,2 +1,6 @@
 10:03:49 guard: total 13698780 kB > limit, killing 12n_708_f32b (pid 9965)
 10:06:54 guard: total 13451916 kB > limit, killing 12n_830_f31 (pid 10108)
+11:13:34 retry 12a_909_f31
+11:20:26 guard: total 13366024 kB > limit, killing 12a_909_f31 (pid 15605)
+11:20:42 retry 12a_909_f31
+11:21:29 retry 12n_708_f32b
