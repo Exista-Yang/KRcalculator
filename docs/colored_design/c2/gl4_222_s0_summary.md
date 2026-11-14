@@ -14,10 +14,10 @@
 | 12n_467 | 1 -2 -2 -2 -2 1 1 2 2 2 2 2 | 2022 | 1849 | 87 | 43 | eq / eq | yes | yes | yes | PASS |
 | 12a_369 | 1 -2 -2 -2 -2 1 1 -2 -2 -2 -2 -2 | 4758 | 4489 | 135 | 67 | eq / eq | yes | yes | yes | PASS |
 | 12n_888 | 1 1 1 2 2 2 1 1 1 2 2 2 | 3306 | 2829 | 123 | 67 | eq / eq | yes | yes | yes | PASS |
-| 12n_114 | 1 1 1 2 2 -1 -1 2 2 2 2 2 | 4758 | 4489 | 135 | 67 | eq / eq | yes | yes | only 31 | PARTIAL (one prime) |
+| 12n_114 | 1 1 1 2 2 -1 -1 2 2 2 2 2 | 4758 | 4489 | 135 | 67 | eq / eq | yes | yes | yes | PASS |
 | 12a_1215 | 1 1 1 -2 1 -2 -2 1 1 1 1 -2 | - | - | - | - | - | - | - | - | FAIL |
 | 12a_920 | 1 -2 1 1 1 -2 -2 1 1 1 1 -2 | - | - | - | - | - | - | - | - | FAIL |
-| 12a_859 | 1 -2 1 -2 -2 1 -2 -2 -2 -2 -2 -2 | - | - | - | - | - | - | - | - | NOT COMPUTED (running / not started at snapshot) |
+| 12a_859 | 1 -2 1 -2 -2 1 -2 -2 -2 -2 -2 -2 | - | - | - | - | - | - | - | - | FAIL |
 | 12a_1218 | -1 2 -1 -1 -1 -1 2 2 2 2 -1 2 | - | - | - | - | - | - | - | - | NOT COMPUTED (running / not started at snapshot) |
 | 12n_674 | 1 1 1 -2 -2 1 1 2 2 2 2 2 | - | - | - | - | - | - | - | - | NOT COMPUTED (running / not started at snapshot) |
 | 12a_1220 | 1 -2 1 -2 -2 -2 -2 1 -2 -2 -2 -2 | - | - | - | - | - | - | - | - | NOT COMPUTED (running / not started at snapshot) |
@@ -41,4 +41,4 @@
 | 12a_1225 | -1 2 -1 -1 2 2 -1 -1 2 2 -1 2 | - | - | - | - | - | - | - | - | NOT COMPUTED (running / not started at snapshot) |
 | 12a_1248 | 1 -2 1 -2 1 -2 -2 1 -2 1 -2 -2 | - | - | - | - | - | - | - | - | NOT COMPUTED (running / not started at snapshot) |
 
-15 knots computed, 15 PASS, failures: ['12a_1215', '12a_920']
+15 knots computed, 15 PASS, failures: ['12a_1215', '12a_920', '12a_859']

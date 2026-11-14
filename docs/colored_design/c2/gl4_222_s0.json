@@ -44,11 +44,10 @@
  ],
  "failed": [
   "12a_1215",
-  "12a_920"
+  "12a_920",
+  "12a_859"
  ],
- "one_prime_only": [
-  "12n_114"
- ],
+ "one_prime_only": [],
  "knots": [
   {
    "knot": "12n_749",
@@ -706,7 +705,7 @@
    "primes": [],
    "status": "FAIL",
    "run_tail": {
-    "31": "library: 16 types, 16 closable, build 5.3s (0 provider calls, 233 layer-A loads), hash 29976eab291c85f3, commit 8fe55b54ca36401577893edd5ece587c0264bd45",
+    "31": "exit 137",
     "32b": "exit 137"
    },
    "detail": "sbox run(s) killed (exit 137 = kernel OOM kill at > 6 GB RSS, concurrent jobs); rerun alone scheduled (runs_c2/k3/s0/heavy.sh)"
@@ -776,9 +775,10 @@
    ],
    "length": 12,
    "primes": [
-    "31"
+    "31",
+    "32b"
    ],
-   "primes_identical": false,
+   "primes_identical": true,
    "chi_ok": true,
    "scaling_ok": true,
    "secs_f31": 16763.9,
@@ -802,7 +802,7 @@
     "N4_mirror_symmetric": false
    },
    "red_rank4_eq_red_rank3_sq": true,
-   "status": "PARTIAL (one prime)"
+   "status": "PASS"
   },
   {
    "knot": "12a_859",
@@ -822,12 +822,12 @@
    ],
    "length": 12,
    "primes": [],
-   "status": "NOT COMPUTED (running / not started at snapshot)",
+   "status": "FAIL",
    "run_tail": {
-    "31": "library: 16 types, 16 closable, build 4.6s (0 provider calls, 233 layer-A loads), hash 570ca635ce6f9ba0, commit 8fe55b54ca36401577893edd5ece587c0264bd45",
-    "32b": "not started"
+    "31": "exit 137",
+    "32b": "library: 16 types, 16 closable, build 5.3s (0 provider calls, 233 layer-A loads), hash d355626171f67e54, commit 8fe55b54ca36401577893edd5ece587c0264bd45"
    },
-   "detail": "no finished run"
+   "detail": "sbox run(s) killed (exit 137 = kernel OOM kill at > 6 GB RSS, concurrent jobs); rerun alone scheduled (runs_c2/k3/s0/heavy.sh)"
   },
   {
    "knot": "12a_1218",
@@ -850,7 +850,7 @@
    "status": "NOT COMPUTED (running / not started at snapshot)",
    "run_tail": {
     "31": "not started",
-    "32b": "not started"
+    "32b": "library: 16 types, 16 closable, build 5.1s (0 provider calls, 233 layer-A loads), hash e34eea04a879197b, commit 8fe55b54ca36401577893edd5ece587c0264bd45"
    },
    "detail": "no finished run"
   },
@@ -874,7 +874,7 @@
    "primes": [],
    "status": "NOT COMPUTED (running / not started at snapshot)",
    "run_tail": {
-    "31": "not started",
+    "31": "library: 16 types, 16 closable, build 5.0s (0 provider calls, 233 layer-A loads), hash 1bc0482e860d215e, commit 8fe55b54ca36401577893edd5ece587c0264bd45",
     "32b": "not started"
    },
    "detail": "no finished run"
