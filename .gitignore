@@ -4,3 +4,4 @@ src/bin/scratch_*
 # Claude Code local state (agent worktrees)
 /.claude/
 /tools/*/target
+runs_c2/k3/out_s1/*.d/
