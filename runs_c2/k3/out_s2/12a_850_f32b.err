@@ -1,1 +1,3 @@
 library: 16 types, 16 closable, build 6.6s (0 provider calls, 233 layer-A loads), hash a27445ee8e1fd0a7, commit 8fe55b54ca36401577893edd5ece587c0264bd45
+FATAL: box: staged rank stage for [2, 2, 2] at N = 4 needs about 77760 MB, above the memory cap of 12000 MB (set KRHOM_MEM_CAP_MB to raise it)
+exit 2
