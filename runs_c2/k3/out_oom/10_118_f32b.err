@@ -1,2 +1,9 @@
-library: 16 types, 16 closable, build 4.6s (0 provider calls, 233 layer-A loads), hash 4f4a694344886424, commit b5d579279cb51ad0657ef6b537fefa2ba8f2b96c
-exit 137
+library: 16 types, 16 closable, build 6.3s (0 provider calls, 233 layer-A loads), hash 4f4a694344886424, commit b5d579279cb51ad0657ef6b537fefa2ba8f2b96c
+memory allocation of memory allocation of memory allocation of 13444561152 bytes failed
+ bytes failed
+skipping backtrace printing to avoid potential recursion
+ bytes failed
+skipping backtrace printing to avoid potential recursion
+memory allocation of 512 bytes failed
+skipping backtrace printing to avoid potential recursion
+exit 134
