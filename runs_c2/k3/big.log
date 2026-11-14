@@ -1,2 +1,4 @@
-10_148_f32b exit 2 
-10_148_f31 exit 2 
+10_148_f32b exit 0 scan 536.3s
+10_148_f31 exit 0 scan 548.9s
+10_155_f32b exit 0 scan 1462.3s
+10_155_f31 exit 0 scan 1494.6s

@@ -1,3 +1,5 @@
 library: 16 types, 16 closable, build 4.7s (0 provider calls, 233 layer-A loads), hash dadb52a8660177e, commit b5d579279cb51ad0657ef6b537fefa2ba8f2b96c
-FATAL: box: staged rank stage for [2, 2, 2] at N = 4 needs about 19193 MB, above the memory cap of 12000 MB (set KRHOM_MEM_CAP_MB to raise it)
-exit 2
+scaling check: 1097094 entries checked, 199672 zero at both points, 0 declared 0 (19.4s)
+chi = decat_chi: 6 of 6 closures; determinant pass 6912 checks at 216 points
+216 points: scan 536.3s wall, per point mean 4.804s max 5.616s, engine peak 206.8 MB, eval memo 12.2 MB; closures 51.2s; record 4.9s; VmHWM 1373 MB
+exit 0
