@@ -457,6 +457,40 @@ pub fn run_prime<F: PrimeField>(reg: &RegEntry, inst: &InstalledLib, p: &BoxPara
     Ok(out)
 }
 
+/// `--box-live` (tests only, review F2): the box route on at most 2 strands with the live
+/// provider and an in-memory, unpruned library (`check_d2` on), box N = max(ns), as
+/// tests/swire.rs does. Never replay-only.
+pub fn run_prime_live<F: PrimeField>(lam: &[u8], costs: &Path, word: &[i32], ns: &[usize], reduced: bool, seed: u64) -> Result<PrimeOut, CalcErr> {
+    let t0 = Instant::now();
+    if lam.len() > 2 {
+        return Err(CalcErr::Unsupported("--box-live handles at most 2 strands".into()));
+    }
+    let n_box = *ns.iter().max().ok_or_else(|| CalcErr::Unsupported("--box-live: no N".into()))?;
+    if lam.iter().any(|&a| a as usize > n_box) {
+        return Err(CalcErr::Unsupported("--box-live: N below a color".into()));
+    }
+    crate::smapio::set_replay_only(false);
+    let (prov, stamp) = crate::sindec::provider_for_stamped::<F>(lam, Some(costs), 1.0);
+    let sd: SIndec<F> = SIndec::with_stamp(lam, prov, stamp, SIndecOpts { prune_n: None, ..Default::default() });
+    let lib = build_wlib(sd, &[word.to_vec()], true).map_err(|e| map_engine(&F::name(), format!("library: {}", e)))?;
+    let mode = if reduced { Some(0) } else { None };
+    let o = BoxOpts::new(n_box, seed, ns.to_vec(), vec![mode], vec![word.len()], EngOpts { check_d2: true, ..Default::default() });
+    let bo = box_word(&lib, word, &o).map_err(|e| map_engine(&F::name(), e))?;
+    let nclosed: usize = bo.stages.iter().map(|s| s.closed.len()).sum();
+    if bo.chi_checked != nclosed || bo.scaling.is_none() || bo.stages.len() != 1 {
+        return Err(CalcErr::Engine("--box-live: post-check failed".into()));
+    }
+    let mut out = PrimeOut { field: F::name().to_string(), seed, lib_build_secs: lib.build_secs, points: bo.points, record_secs: bo.record_secs, scan_secs: bo.scan_secs, close_secs: bo.close_secs, chi_checked: bo.chi_checked, closures: nclosed, det_pass: bo.det_pass, provider_calls: lib.stats.provider_calls, lib_types: lib.shapes.len(), ..Default::default() };
+    let sc = bo.scaling.as_ref().unwrap();
+    out.scaling = (sc.report.checked, sc.report.zero_both, sc.report.declared_zero);
+    for &nn in ns {
+        out.closed.insert(nn, bo.stages[0].closed.get(&(nn, mode)).cloned().ok_or_else(|| CalcErr::Engine(format!("--box-live: no closure for N' = {}", nn)))?);
+    }
+    out.secs = t0.elapsed().as_secs_f64();
+    out.vmhwm_kb = crate::xengine::rss_kb().1;
+    Ok(out)
+}
+
 /// Library jobs the word needs that are not `ok` in both primes' status files (spec C4
 /// `diagnose_missing`; logic of examples/m5i_cover.rs). Keys `pair K (p=TYPE, rung=R)` /
 /// `closure TABLE`.

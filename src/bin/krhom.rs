@@ -1,174 +1,690 @@
-//! krhom: colored Khovanov–Rozansky gl_N homology of links.
+//! krhom: colored Khovanov–Rozansky gl_N homology of links, as a one-command calculator.
 //!
-//! usage:
-//!   krhom N --pd "[[1,4,2,5],[3,6,4,1],[5,2,6,3]]" [--colors 1,2,...] [--cube] [--field q]
-//!   krhom N --braid "1 1 2 -3" --strands 4 [--colors ...] [--cube] [--field q]
-//!   uncolored (Soergel engine) or --colored-method singular: [--reduced]
-//!   colored: [--colored-method cable|cube|singular]
-//!   Soergel engine (uncolored, and colored with the cable method): [--closure tower|exact] [--end right|left|alt]
-//! N may be a comma-separated list (e.g. 2,3,4,10): uncolored links, and colored links with
-//! the cable method, are then computed from a single tangle-level scan.
-//! Colors are given per link component (default all 1). Uncolored links use the
-//! localized Soergel engine (--cube: the full cube instead).
-//! --colored-method: colored links are computed by cabling (src/colored.rs: a-colored strand =
-//!   a parallel strands with one B_{w0(S_a)} insertion, uncolored Soergel engine, division by
-//!   Π[a]! and per-crossing shifts; F_p only) or by the full cube of colored Rickard complexes
-//!   (exponential). Default: cable when `colored::cable_default` holds (at most 4 cable strands,
-//!   or 5 with all colors <= 2), else cube: larger cables did not get through the Soergel scan
-//!   (0.4-6 GB within seconds to minutes). --cube is the same as --colored-method cube.
-//!   singular: the exact singular Soergel engine (src/xengine.rs, milestone M6.0): braids on at
-//!   most 2 strands, colors 1..=3, one N-independent scan for all N, exact closure data;
-//!   also accepts uncolored input and --reduced (the strand at bottom position 0 is marked).
-//!   Computed over F_p for p = 2^31-1 and p = 4294967291 (SYNTHESIS §2.3, §4.2: final results
-//!   over two primes); the run fails if the two disagree. --single-prime skips the second prime.
-//! --closure: gl_N closure of the Soergel engine: the restriction tower (default) or the
-//!   exact pairing-matrix closure (the oracle). --end: strand end the tower closes first.
-//! --reduced: reduced homology, marking the strand at bottom position 0 of the braid
-//!   (normalized so that the reduced unknot is q^0).
-use krhom::crossing::{Gen, QConv};
+//! usage (see `krhom --help` and docs/CALCULATOR.md):
+//!   krhom N[,N...] --braid WORD [--strands n] [--colors c | c1,c2,...] [--reduced]
+//!   krhom N[,N...] --pd PD [--colors ...] [--reduced]
+//!   krhom N[,N...] --file BRAIDS [--colors ...] [--reduced] [--csv OUT]
+//! WORD is signed integers ("1 -2 1 -2") or KnotJob letters ("aBaB": a..i = σ1..σ9, A..I their
+//! inverses); --strands defaults to max |generator| + 1. A single color applies to every
+//! component. Every result is over Q: the randomized engines run over F_p for two large primes
+//! and must agree (certified over F_p for both primes; equal over Q unless both are torsion
+//! primes); the full cube is exact over Q.
+//!
+//! Routes (chosen automatically; `--colored-method cable|cube|singular` overrides):
+//! * all colors 1: the localized Soergel engine (engine2), any number of strands, two primes;
+//! * colored, at most 2 strands after simplification: the exact singular Soergel engine
+//!   (xengine), two primes;
+//! * colored, 3-4 strands, uniform color 2, N <= 4: the localized box engine with the prebuilt
+//!   layer-A library (src/calc.rs; tools/fetch_library.sh), two primes;
+//! * anything else colored: exit 1 with the support matrix (`--colored-method cube`: exact over Q,
+//!   tiny inputs only).
+//! Exit codes: 0 ok, 1 usage/unsupported, 2 engine/certification failure, 3 primes disagree,
+//! 4 library missing/damaged/not covering the word, 5 resource refusal.
+use krhom::calc::*;
 use krhom::colored::{cable_default, khr_colored_cable};
+use krhom::crossing::{Gen, QConv};
 use krhom::cube::{khr_full_cube, BraidLink};
 use krhom::engine2::Closure;
 use krhom::field::{F31, F32b, Q};
+use krhom::laurent::Poincare;
 use krhom::pd::{parse_pd, pd_to_braid, BraidWord};
 use krhom::tower::EndPolicy;
 use krhom::xengine::khr_singular_exact;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::time::Instant;
 
-fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 3 {
-        eprintln!("usage: krhom N (--pd PD | --braid WORD --strands n) [--colors c1,c2,..] [--cube] [--colored-method cable|cube|singular [--single-prime]] [--field q] [--closure tower|exact] [--end right|left|alt] [--reduced]");
-        std::process::exit(1);
+const USAGE: &str = "usage: krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS) [--colors c | c1,c2,...] [--reduced]
+             [--json OUT] [--csv OUT] [--no-simplify] [--check-library] [--lib-dir DIR]
+             [--seed S] [--seed-retries K] [--mem-mb M] [--mem-cap-mb M]
+             [--colored-method cable|cube|singular] [--cube] [--closure tower|exact] [--end right|left|alt]
+  N        gl_N ranks, a comma-separated list (e.g. 2,3,4)
+  --braid  signed integers \"1 -2 1 -2\" or KnotJob letters \"aBaB\" (a..i = sigma_1..sigma_9, A..I inverses)
+  --strands  default max |generator| + 1
+  --colors c applies to every component; c1,c2,... is one color per link component (default 1)
+  --reduced  reduced homology (the strand at bottom position 0 is marked)
+  --file   one braid per line, optional \"NAME;\" prefix, '#' comments; same N/colors/--reduced for all
+  --json OUT  machine-readable results (an array with --file); --csv OUT rows name,N,reduced,t,q,rank
+  colored 3-4 strands (uniform color 2, N <= 4) need the prebuilt library: tools/fetch_library.sh l222_n4 l2222_n4
+  results are over Q (two large primes must agree; the full cube is exact over Q); docs/CALCULATOR.md";
+
+const VALUE_OPTS: [&str; 18] = ["--pd", "--braid", "--strands", "--colors", "--colored-method", "--field", "--closure", "--end", "--json", "--csv", "--file", "--lib-dir", "--seed", "--seed-f32b", "--seed-retries", "--mem-mb", "--mem-cap-mb", "--name"];
+const FLAG_OPTS: [&str; 8] = ["--cube", "--reduced", "--single-prime", "--no-simplify", "--check-library", "--box-live", "--help", "-h"];
+
+#[derive(Clone, Debug)]
+struct Opts {
+    ns: Vec<usize>,
+    colors: Option<Vec<usize>>,
+    strands: Option<usize>,
+    method: Option<String>,
+    cube: bool,
+    reduced: bool,
+    single_prime: bool,
+    no_simplify: bool,
+    check_library: bool,
+    box_live: bool,
+    closure: Closure,
+    lib_dir: Option<String>,
+    seed: u64,
+    seed2: u64,
+    retries: u64,
+    mem_mb: Option<u64>,
+    mem_cap_mb: Option<u64>,
+    /// KRHOM_MEM_CAP_MB as given by the user's environment at start
+    env_mem_cap: bool,
+    env_any_host: bool,
+}
+
+enum Input {
+    Braid(String),
+    Pd(String),
+}
+struct Item {
+    name: Option<String>,
+    input: Input,
+}
+
+/// What one item produced.
+#[derive(Default)]
+struct Outcome {
+    route: &'static str,
+    used: Option<BraidWord>,
+    orig: Option<BraidWord>,
+    colors: Vec<usize>,
+    labels: Vec<usize>,
+    results: BTreeMap<usize, Poincare>,
+    zero_ns: Vec<usize>,
+    primes: Vec<PrimeOut>,
+    seeds: Vec<u64>,
+    agree: Option<bool>,
+    library: Option<String>,
+    coefficients: String,
+    check_library: Option<String>,
+    mem_cap_mb: Option<u64>,
+    mem_mb: Option<u64>,
+}
+
+fn fail(code: i32, msg: &str) -> ! {
+    eprintln!("krhom: {}", msg);
+    std::process::exit(code)
+}
+
+fn parse_args(args: &[String]) -> Result<(Opts, Vec<Item>, Option<String>, Option<String>), CalcErr> {
+    let un = |m: String| CalcErr::Unsupported(m);
+    // validate the option names first (a typo must not silently change the route)
+    let mut i = 2;
+    let mut seen: Vec<&str> = vec![];
+    while i < args.len() {
+        let a = args[i].as_str();
+        if VALUE_OPTS.contains(&a) {
+            if i + 1 >= args.len() {
+                return Err(un(format!("{} needs a value", a)));
+            }
+            if seen.contains(&a) {
+                return Err(un(format!("{} given twice", a)));
+            }
+            seen.push(a);
+            i += 2;
+        } else if FLAG_OPTS.contains(&a) {
+            i += 1;
+        } else {
+            return Err(un(format!("unknown argument {:?}\n{}", a, USAGE)));
+        }
     }
-    let ns: Vec<usize> = args[1].split(',').map(|x| x.parse().expect("N")).collect();
-    let get = |k: &str| args.iter().position(|a| a == k).and_then(|i| args.get(i + 1)).cloned();
-    let flag = |k: &str| args.iter().any(|a| a == k);
-    let bw: BraidWord = if let Some(pd) = get("--pd") {
-        let pd = parse_pd(&pd).expect("invalid PD code");
-        pd_to_braid(&pd)
-    } else {
-        let w: Vec<i64> = get("--braid").expect("--braid").split_whitespace().map(|t| t.parse().unwrap()).collect();
-        let strands: usize = get("--strands").map(|s| s.parse().unwrap()).unwrap_or_else(|| w.iter().map(|x| x.unsigned_abs() as usize).max().unwrap_or(0) + 1);
-        BraidWord::from_signed(strands, &w)
+    let get = |k: &str| args.iter().skip(2).position(|a| a == k).and_then(|i| args.get(i + 3)).cloned();
+    let flag = |k: &str| args.iter().skip(2).any(|a| a == k);
+    let ns: Vec<usize> = args[1].split(',').map(|x| x.trim().parse::<usize>().map_err(|_| un(format!("N list {:?}: expected comma-separated integers >= 1 (e.g. 2,3,4)", args[1])))).collect::<Result<_, _>>()?;
+    if ns.is_empty() || ns.iter().any(|&n| n == 0) {
+        return Err(un(format!("N list {:?}: every N must be at least 1", args[1])));
+    }
+    let mut ns_sorted = ns.clone();
+    ns_sorted.sort();
+    ns_sorted.dedup();
+    let colors = match get("--colors") {
+        Some(c) => Some(c.split(',').map(|x| x.trim().parse::<usize>().ok().filter(|&v| v >= 1).ok_or_else(|| un(format!("--colors {:?}: colors are integers >= 1", c)))).collect::<Result<Vec<_>, _>>()?),
+        None => None,
     };
-    let ncomp = bw.num_components();
-    let colors: Vec<usize> = match get("--colors") {
-        Some(c) => c.split(',').map(|x| x.parse().unwrap()).collect(),
-        None => vec![1; ncomp],
+    let strands = match get("--strands") {
+        Some(s) => Some(s.trim().parse::<usize>().ok().filter(|&v| (1..=64).contains(&v)).ok_or_else(|| un(format!("--strands {:?}: expected an integer in 1..=64", s)))?),
+        None => None,
     };
-    assert_eq!(colors.len(), ncomp, "need one color per component ({} components)", ncomp);
-    assert!(colors.iter().all(|&c| c >= 1), "colors must be at least 1");
-    let labels: Vec<usize> = bw.components.iter().map(|&c| colors[c]).collect();
-    let word: Vec<Gen> = bw.word.clone();
-    println!("gl_N for N in {:?}  strands {}  crossings {}  components {}  colors {:?}", ns, bw.strands, word.len(), ncomp, colors);
-    println!("braid: {}", bw.signed().iter().map(|x| x.to_string()).collect::<Vec<_>>().join(" "));
-    let t0 = std::time::Instant::now();
-    let uncolored = labels.iter().all(|&l| l == 1);
-    let field_q = get("--field").map(|f| f == "q").unwrap_or(false);
-    let reduced = flag("--reduced");
+    let method = get("--colored-method");
+    if let Some(m) = &method {
+        if !["cable", "cube", "singular"].contains(&m.as_str()) {
+            return Err(un(format!("--colored-method must be cable, cube or singular, not {}", m)));
+        }
+    }
     let end = match get("--end") {
-        Some(e) => EndPolicy::parse(&e).unwrap_or_else(|| {
-            eprintln!("--end must be right, left or alt");
-            std::process::exit(1)
-        }),
+        Some(e) => EndPolicy::parse(&e).ok_or_else(|| un("--end must be right, left or alt".into()))?,
         None => EndPolicy::Right,
     };
     let closure = match get("--closure").as_deref() {
         None | Some("tower") => Closure::Tower(end),
         Some("exact") => Closure::Exact,
-        Some(c) => Closure::parse(c).unwrap_or_else(|| {
-            eprintln!("--closure must be tower or exact");
-            std::process::exit(1)
-        }),
+        Some(c) => Closure::parse(c).ok_or_else(|| un("--closure must be tower or exact".into()))?,
     };
-    let singular = get("--colored-method").as_deref() == Some("singular") && !flag("--cube");
-    let soergel = uncolored && !flag("--cube") && !singular;
-    if reduced && !soergel && !singular {
-        eprintln!("--reduced is only supported for uncolored links with the Soergel engine and with --colored-method singular");
-        std::process::exit(1);
+    let num = |k: &str, d: Option<u64>| -> Result<Option<u64>, CalcErr> {
+        match get(k) {
+            Some(v) => v.trim().parse::<u64>().map(Some).map_err(|_| un(format!("{} {:?}: expected a non-negative integer", k, v))),
+            None => Ok(d),
+        }
+    };
+    let seed = num("--seed", Some(201))?.unwrap();
+    let seed2 = num("--seed-f32b", Some(seed))?.unwrap();
+    let retries = num("--seed-retries", Some(2))?.unwrap();
+    let mem_mb = num("--mem-mb", None)?;
+    let mem_cap_mb = num("--mem-cap-mb", None)?;
+    if get("--field").is_some() {
+        eprintln!("krhom: note: --field is a developer option and has no effect; results are over Q");
     }
-    if singular && bw.strands > 2 {
-        eprintln!("--colored-method singular handles braids on at most 2 strands (this braid has {}); use cable or cube", bw.strands);
-        std::process::exit(1);
+    let opts = Opts {
+        ns: ns_sorted,
+        colors,
+        strands,
+        method,
+        cube: flag("--cube"),
+        reduced: flag("--reduced"),
+        single_prime: flag("--single-prime"),
+        no_simplify: flag("--no-simplify"),
+        check_library: flag("--check-library"),
+        box_live: flag("--box-live"),
+        closure,
+        lib_dir: get("--lib-dir"),
+        seed,
+        seed2,
+        retries,
+        mem_mb,
+        mem_cap_mb,
+        env_mem_cap: std::env::var_os("KRHOM_MEM_CAP_MB").is_some(),
+        env_any_host: std::env::var_os("KRHOM_COSTS_ANY_HOST").is_some(),
+    };
+    let nin = ["--braid", "--pd", "--file"].iter().filter(|k| get(k).is_some()).count();
+    if nin != 1 {
+        return Err(un(format!("give exactly one of --braid, --pd, --file\n{}", USAGE)));
     }
-    let cable_strands: usize = labels.iter().sum();
-    let cable = !uncolored
-        && match get("--colored-method").as_deref() {
-            _ if flag("--cube") => false,
-            Some("cable") => true,
-            Some("cube") | Some("singular") => false,
-            None => cable_default(&labels),
-            Some(m) => {
-                eprintln!("--colored-method must be cable, cube or singular, not {}", m);
-                std::process::exit(1)
+    let mut items = vec![];
+    if let Some(b) = get("--braid") {
+        items.push(Item { name: get("--name"), input: Input::Braid(b) });
+    } else if let Some(p) = get("--pd") {
+        items.push(Item { name: get("--name"), input: Input::Pd(p) });
+    } else if let Some(f) = get("--file") {
+        let text = std::fs::read_to_string(&f).map_err(|e| un(format!("--file {}: {}", f, e)))?;
+        for (ln, line) in text.lines().enumerate() {
+            let l = line.split('#').next().unwrap_or("").trim();
+            if l.is_empty() {
+                continue;
             }
-        };
-    if soergel || cable {
-        println!("closure: {}{}", match closure { Closure::Exact => "exact".to_string(), Closure::Tower(e) => format!("tower ({:?} end first)", e) }, if reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
-    }
-    if singular {
-        println!("method: singular (exact 2-strand singular Soergel engine){}", if reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
-    } else if !uncolored {
-        println!("colored method: {}", if cable { format!("cable ({} strands)", cable_strands) } else { "full cube".to_string() });
-        if cable && !cable_default(&labels) {
-            eprintln!("warning: a cable of this size ({} strands, colors {:?}) used 0.4-6 GB within seconds in tests", cable_strands, colors);
+            let (name, w) = match l.split_once(';') {
+                Some((n, w)) => (n.trim().to_string(), w.trim().to_string()),
+                None => (format!("line{}", ln + 1), l.to_string()),
+            };
+            items.push(Item { name: Some(name), input: Input::Braid(w) });
+        }
+        if items.is_empty() {
+            return Err(un(format!("--file {}: no braids", f)));
         }
     }
-    let results: Vec<(usize, krhom::laurent::Poincare)> = if singular {
-        let single = flag("--single-prime");
-        if field_q {
-            eprintln!("note: the singular method runs over F_p (p = 2^31-1{})", if single { "" } else { " and p = 4294967291" });
+    if opts.check_library && opts.method.as_deref().is_some_and(|m| m != "singular") {
+        return Err(un("--check-library implies the singular route; drop --colored-method".into()));
+    }
+    Ok((opts, items, get("--json"), get("--csv")))
+}
+
+fn sigstr(w: &[i64]) -> String {
+    w.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(" ")
+}
+
+/// Run an engine closure, turning a panic into an engine error (exit 2, the batch continues).
+fn guard<T>(what: &str, f: impl FnOnce() -> Result<T, CalcErr>) -> Result<T, CalcErr> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(r) => r,
+        Err(e) => {
+            let m = e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_else(|| "panic".into());
+            Err(CalcErr::Engine(format!("{} panicked: {} (please report this)", what, m)))
         }
-        let fail = |e: String| -> ! {
-            eprintln!("singular method failed: {}", e);
-            std::process::exit(2)
-        };
-        let r = khr_singular_exact::<F31>(&labels, &word, &ns, reduced).unwrap_or_else(|e| fail(e));
-        if single {
-            println!("fields: F_2147483647 only (--single-prime)");
+    }
+}
+
+/// Two-prime certification of an F_p computation: run F31 (seed a) and, unless --single-prime,
+/// F32b (seed b), and compare.
+fn two_primes(o: &Opts, out: &mut Outcome, ns: &[usize], f31: impl FnOnce() -> Result<BTreeMap<usize, Poincare>, CalcErr>, f32b: impl FnOnce() -> Result<BTreeMap<usize, Poincare>, CalcErr>) -> Result<BTreeMap<usize, Poincare>, CalcErr> {
+    let t = Instant::now();
+    let a = guard("engine (F_2147483647)", f31)?;
+    eprintln!("[F_2147483647] {:.2}s", t.elapsed().as_secs_f64());
+    if o.single_prime {
+        out.coefficients = "F_2147483647 (developer option --single-prime: not certified over Q)".into();
+        return Ok(a);
+    }
+    let t = Instant::now();
+    let b = guard("engine (F_4294967291)", f32b)?;
+    eprintln!("[F_4294967291] {:.2}s", t.elapsed().as_secs_f64());
+    compare_primes(ns, &a, &b).map_err(|e| {
+        out.agree = Some(false);
+        CalcErr::Disagree(e)
+    })?;
+    out.agree = Some(true);
+    eprintln!("krhom: F_2147483647 and F_4294967291 agree: certified over both primes (equal over Q unless both are torsion primes)");
+    Ok(a)
+}
+
+fn set_env(k: &str, v: &str) {
+    // SAFETY: called from the main thread between items, when no engine thread is running
+    unsafe { std::env::set_var(k, v) };
+}
+
+fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
+    let un = |m: String| CalcErr::Unsupported(m);
+    let mut out = Outcome { coefficients: "Q".into(), ..Default::default() };
+    // ---- input
+    let (mut bw, is_braid) = match &item.input {
+        Input::Braid(s) => {
+            let w = parse_braid(s).map_err(un)?;
+            let need = w.iter().map(|x| x.unsigned_abs() as usize).max().unwrap_or(0) + 1;
+            let strands = match o.strands {
+                Some(n) if n < need => return Err(un(format!("--strands {} is too small for the braid (generator {} needs {} strands)", n, need - 1, need))),
+                Some(n) => n,
+                None => need,
+            };
+            (BraidWord::from_signed(strands, &w), true)
+        }
+        Input::Pd(s) => {
+            let pd = parse_pd(s).map_err(|e| un(format!("invalid PD code: {}", e)))?;
+            let r = std::panic::catch_unwind(|| pd_to_braid(&pd)).map_err(|_| un("invalid PD code (cannot convert it to a braid)".into()))?;
+            (r, false)
+        }
+    };
+    let ncomp = bw.num_components();
+    let colors: Vec<usize> = match &o.colors {
+        None => vec![1; ncomp],
+        Some(c) if c.len() == 1 => vec![c[0]; ncomp],
+        Some(c) if c.len() == ncomp => c.clone(),
+        Some(c) => return Err(un(format!("{} colors given, but the link has {} components (give one color for all, or one per component)", c.len(), ncomp))),
+    };
+    let lab = |b: &BraidWord| -> Vec<usize> { b.components.iter().map(|&c| colors[c]).collect() };
+    let mut labels = lab(&bw);
+    out.colors = colors.clone();
+    out.orig = Some(bw.clone());
+    let uncolored = labels.iter().all(|&l| l == 1);
+    let method = if o.cube { Some("cube") } else { o.method.as_deref() };
+    let route_kind = match (method, uncolored) {
+        (Some("cube"), _) => "cube",
+        (Some("cable"), false) => "cable",
+        (Some("cable"), true) => "soergel",
+        (Some("singular"), _) => "singular",
+        (None, true) => "soergel",
+        (None, false) => "singular",
+        _ => unreachable!(),
+    };
+    if o.check_library && route_kind != "singular" {
+        return Err(un("--check-library applies to colored braids on 3-4 strands".into()));
+    }
+    if o.reduced && (route_kind == "cube" || route_kind == "cable") {
+        return Err(un("--reduced is only supported for uncolored links with the Soergel engine and with the singular route".into()));
+    }
+    if let Some(n) = &item.name {
+        println!("name: {}", n);
+    }
+    println!("gl_N for N in {:?}  strands {}  crossings {}  components {}  colors {:?}", o.ns, bw.strands, bw.word.len(), ncomp, colors);
+    println!("braid: {}", sigstr(&bw.signed()));
+    // ---- N below a color: wedge^a C^N = 0 (review K14 / Q5), on every route
+    let amax = *labels.iter().max().unwrap_or(&1);
+    out.zero_ns = o.ns.iter().copied().filter(|&n| n < amax).collect();
+    let run_ns: Vec<usize> = o.ns.iter().copied().filter(|&n| n >= amax).collect();
+    if !out.zero_ns.is_empty() {
+        eprintln!("krhom: note: N = {:?} is below the color {}: the homology is 0 there (wedge^a C^N = 0 for a > N); not computed", out.zero_ns, amax);
+    }
+    let word: Vec<Gen> = bw.word.clone();
+    let results: BTreeMap<usize, Poincare> = match route_kind {
+        "soergel" => {
+            out.route = "soergel";
+            println!("closure: {}{}", match o.closure { Closure::Exact => "exact".to_string(), Closure::Tower(e) => format!("tower ({:?} end first)", e) }, if o.reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
+            out.seeds = vec![7, 11];
+            let (n, cl, red) = (bw.strands, o.closure, o.reduced);
+            let (w1, w2, ns1, ns2) = (word.clone(), word.clone(), run_ns.clone(), run_ns.clone());
+            two_primes(o, &mut out, &run_ns, move || Ok(krhom::engine2::khr_engine2_closure::<F31>(n, &w1, &ns1, &[], 7, red, cl).poincare.into_iter().collect()), move || Ok(krhom::engine2::khr_engine2_closure::<F32b>(n, &w2, &ns2, &[], 11, red, cl).poincare.into_iter().collect()))?
+        }
+        "cable" => {
+            out.route = "cable";
+            let cable_strands: usize = labels.iter().sum();
+            println!("colored method: cable ({} strands)", cable_strands);
+            if !cable_default(&labels) {
+                eprintln!("warning: a cable of this size ({} strands, colors {:?}) used 0.4-6 GB within seconds in tests", cable_strands, colors);
+            }
+            out.seeds = vec![7, 11];
+            let (l1, l2, w1, w2, ns1, ns2, cl) = (labels.clone(), labels.clone(), word.clone(), word.clone(), run_ns.clone(), run_ns.clone(), o.closure);
+            two_primes(
+                o,
+                &mut out,
+                &run_ns,
+                move || khr_colored_cable::<F31>(&l1, &w1, &ns1, 7, cl).map(|r| r.colored.into_iter().collect()).map_err(|e| CalcErr::Engine(format!("cable method failed: {}", e))),
+                move || khr_colored_cable::<F32b>(&l2, &w2, &ns2, 11, cl).map(|r| r.colored.into_iter().collect()).map_err(|e| CalcErr::Engine(format!("cable method failed: {}", e))),
+            )?
+        }
+        "cube" => {
+            out.route = "cube";
+            println!("{}method: full cube (exact over Q)", if uncolored { "" } else { "colored " });
+            let mut r = BTreeMap::new();
+            for &nn in &run_ns {
+                let link = BraidLink { n: nn, labels: labels.clone(), word: word.clone() };
+                r.insert(nn, guard("full cube", || Ok(khr_full_cube::<Q>(&link, QConv::A).poincare))?);
+            }
+            r
+        }
+        _ => {
+            // ---- the singular route: simplification (spec B step 3)
+            if is_braid && !o.no_simplify {
+                let s = bw.simplify();
+                if use_simplified(bw.strands, bw.components[0], s.strands, s.components.first().copied().unwrap_or(0), o.reduced, ncomp) {
+                    println!("simplified braid: {}  (strands {})", sigstr(&s.signed()), s.strands);
+                    bw = s;
+                    labels = lab(&bw);
+                }
+            }
+            let word: Vec<Gen> = bw.word.clone();
+            let wi: Vec<i32> = bw.signed().iter().map(|&x| x as i32).collect();
+            if bw.strands <= 2 && !o.box_live {
+                out.route = "exact2";
+                if o.check_library {
+                    return Err(un("--check-library: this braid is on at most 2 strands (after simplification); the exact 2-strand engine needs no library".into()));
+                }
+                if labels.iter().any(|&a| a > 3) {
+                    return Err(un(format!("colors {:?}: the exact 2-strand engine handles colors 1..=3; --colored-method cube is exact over Q (tiny inputs only)", colors)));
+                }
+                println!("method: singular (exact 2-strand singular Soergel engine){}", if o.reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
+                let red = o.reduced;
+                let (l1, l2, w1, w2, ns1, ns2) = (labels.clone(), labels.clone(), word.clone(), word.clone(), run_ns.clone(), run_ns.clone());
+                let em = |e: String| if e.contains("above the memory cap") { CalcErr::Resource(e) } else { CalcErr::Engine(format!("singular method failed: {}", e)) };
+                two_primes(o, &mut out, &run_ns, move || khr_singular_exact::<F31>(&l1, &w1, &ns1, red).map_err(em), move || khr_singular_exact::<F32b>(&l2, &w2, &ns2, red).map_err(em))?
+            } else if o.box_live {
+                out.route = "box-live";
+                if bw.strands != 2 || wi.is_empty() {
+                    return Err(un("--box-live (tests only) handles nonempty braids on exactly 2 strands".into()));
+                }
+                let lam: Vec<u8> = labels.iter().map(|&a| a as u8).collect();
+                println!("method: singular (localized box engine, live provider, in-memory unpruned library, box N {}, seed {}){}", run_ns.iter().max().copied().unwrap_or(0), o.seed, if o.reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
+                let costs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/homprov/costs_cloud.txt");
+                if run_ns.is_empty() {
+                    BTreeMap::new()
+                } else {
+                    let pr = std::cell::RefCell::new(vec![]);
+                    let (red, s1, s2) = (o.reduced, o.seed, o.seed2);
+                    let r = two_primes(
+                        o,
+                        &mut out,
+                        &run_ns,
+                        || {
+                            let p = run_prime_live::<F31>(&lam, &costs, &wi, &run_ns, red, s1)?;
+                            let c = p.closed.clone();
+                            pr.borrow_mut().push(p);
+                            Ok(c)
+                        },
+                        || {
+                            let p = run_prime_live::<F32b>(&lam, &costs, &wi, &run_ns, red, s2)?;
+                            let c = p.closed.clone();
+                            pr.borrow_mut().push(p);
+                            Ok(c)
+                        },
+                    );
+                    out.primes = pr.into_inner();
+                    r?
+                }
+            } else {
+                box_route(o, &mut out, &bw, &labels, &wi, &run_ns)?
+            }
+        }
+    };
+    out.used = Some(bw);
+    out.labels = labels;
+    out.results = results;
+    for &n in &out.zero_ns.clone() {
+        out.results.insert(n, Poincare::default());
+    }
+    Ok(out)
+}
+
+/// The 3-4 strand box route (spec B step 5, C4).
+fn box_route(o: &Opts, out: &mut Outcome, bw: &BraidWord, labels: &[usize], wi: &[i32], run_ns: &[usize]) -> Result<BTreeMap<usize, Poincare>, CalcErr> {
+    let un = |m: String| CalcErr::Unsupported(m);
+    out.route = "box";
+    let cube_hint = "--colored-method cube is exact over Q but exponential (tiny inputs only)";
+    if labels.iter().all(|&l| l == 1) {
+        return Err(un("uncolored input: drop --colored-method singular; the Soergel engine handles any number of strands".into()));
+    }
+    if labels.iter().any(|&l| l != labels[0]) {
+        return Err(un(format!("labels {:?} on {} strands are not uniform; supported on 3-4 strands: {}. {}", labels, bw.strands, supported_matrix(), cube_hint)));
+    }
+    let lam: Vec<u8> = labels.iter().map(|&a| a.min(255) as u8).collect();
+    let Some(reg31) = reg_for(&lam, "f31") else {
+        return Err(un(format!("no library for labels {:?} on {} strands; supported on 3-4 strands: {}. {}", labels, bw.strands, supported_matrix(), cube_hint)));
+    };
+    let reg32 = reg_for(&lam, "f32b").expect("registry has both primes");
+    if let Some(&bad) = o.ns.iter().find(|&&n| n > reg31.n as usize) {
+        return Err(un(format!("N = {} is above the library's N <= {} for labels {:?} (library {}); supported: {}", bad, reg31.n, labels, reg31.id, supported_matrix())));
+    }
+    let used: std::collections::BTreeSet<usize> = bw.word.iter().map(|g| g.i).collect();
+    if let Some(i) = (0..bw.strands - 1).find(|i| !used.contains(i)) {
+        return Err(un(format!("split link (sigma_{} never occurs): compute the pieces separately", i + 1)));
+    }
+    let refused = refused_env_set();
+    if !refused.is_empty() {
+        return Err(un(format!("validation-only environment switches change the computation on the box route: unset {}", refused.join(", "))));
+    }
+    // environment before any engine thread (spec C6; review K7: thread-aware closure cap)
+    if !o.env_any_host {
+        set_env("KRHOM_COSTS_ANY_HOST", "1");
+    }
+    let threads = krhom::num_threads() as u64;
+    let cap = match (o.mem_cap_mb, o.env_mem_cap) {
+        (Some(c), _) => {
+            set_env("KRHOM_MEM_CAP_MB", &c.to_string());
+            c
+        }
+        (None, true) => std::env::var("KRHOM_MEM_CAP_MB").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(0),
+        (None, false) => {
+            let c = if bw.strands == 3 { 4500 * (threads / 2).max(1) } else { 200_000 };
+            set_env("KRHOM_MEM_CAP_MB", &c.to_string());
+            c
+        }
+    };
+    out.mem_cap_mb = Some(cap);
+    let mem_mb = o.mem_mb.unwrap_or(if bw.strands == 3 { 3200 } else { 3000 });
+    out.mem_mb = Some(mem_mb);
+    if run_ns.is_empty() && !o.check_library {
+        // every N is below the color: the homology is 0, no library or engine needed (Q5)
+        println!("method: singular (every N is below the color: zero, nothing to compute)");
+        return Ok(BTreeMap::new());
+    }
+    let root = lib_root(o.lib_dir.as_deref());
+    let inst31 = locate(&reg31, &root)?;
+    let inst32 = if o.single_prime { None } else { Some(locate(&reg32, &root)?) };
+    out.library = Some(format!("{{\"id\":{},\"fields\":[{}],\"data_commit\":{},\"dir\":{}}}", jstr(&reg31.id), if o.single_prime { "\"F_2147483647\"".to_string() } else { "\"F_2147483647\",\"F_4294967291\"".to_string() }, jstr(&reg31.data_commit), jstr(&root.join(&reg31.id).display().to_string())));
+    let seeds = if o.seed == o.seed2 || o.single_prime { format!("seed {}", o.seed) } else { format!("seeds F31 {} / F32b {}", o.seed, o.seed2) };
+    println!(
+        "method: singular (localized box engine; library {} @ data {}, labels ({}), prune {}, box N {}, {}){}",
+        reg31.id,
+        &reg31.data_commit[..7],
+        lam.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","),
+        reg31.n,
+        reg31.n,
+        seeds,
+        if o.reduced { ", reduced (strand at bottom position 0 marked)" } else { "" }
+    );
+    out.seeds = vec![o.seed, o.seed2];
+    let mk = |seed: u64, replay_only: bool| BoxParams { word: wi.to_vec(), ns: run_ns.to_vec(), reduced: o.reduced, seed, retries: o.retries, mem_mb, check_only: o.check_library, replay_only };
+    // one prime with the library diagnosis of review K2 and the template-recompute retry (Q3)
+    let status_files: Vec<PathBuf> = [Some(&inst31), inst32.as_ref()].into_iter().flatten().filter_map(|i| i.status.clone()).collect();
+    let complete = inst31.status.is_none();
+    let diag = |e: CalcErr| -> CalcErr {
+        if e.code() != 4 {
+            return e;
+        }
+        let first = e.msg().lines().next().unwrap_or("").chars().take(400).collect::<String>();
+        if !complete {
+            eprintln!("krhom: library error ({}); diagnosing which jobs the word needs ...", first);
+            match diagnose_missing(&lam, reg31.n, wi, &status_files) {
+                Ok(m) if !m.is_empty() => {
+                    return CalcErr::Library(format!("library {} does not cover this word: {} jobs not certified for both primes: {}", reg31.id, m.len(), m.join(", ")));
+                }
+                Ok(_) => {}
+                Err(d) => eprintln!("krhom: diagnosis failed: {}", d),
+            }
+            CalcErr::Library(format!("library {} files are present but were rejected on load (see the [sindec] layer A ... (rejected) lines above; template cache or stamp): {}; run tools/fetch_library.sh --force {}", reg31.id, first, reg31.id))
         } else {
-            let r2 = khr_singular_exact::<F32b>(&labels, &word, &ns, reduced).unwrap_or_else(|e| fail(e));
-            if r != r2 {
-                for &nn in &ns {
-                    if r.get(&nn) != r2.get(&nn) {
-                        eprintln!("N = {}: F_2147483647 gives {:?}, F_4294967291 gives {:?}", nn, r.get(&nn).map(|p| p.to_string()), r2.get(&nn).map(|p| p.to_string()));
+            CalcErr::Library(format!("damaged install: library {} is complete but a map is missing or rejected ({}): run tools/fetch_library.sh --force {}", reg31.id, first, reg31.id))
+        }
+    };
+    fn one<F: krhom::boxclose::PrimeField>(reg: &RegEntry, inst: &InstalledLib, p: BoxParams, retry: BoxParams) -> Result<PrimeOut, CalcErr> {
+        match guard(&format!("box engine ({})", F::name()), || run_prime::<F>(reg, inst, &p)) {
+            Err(e) if e.code() == 4 && e.msg().contains("not in layer A") && p.replay_only => {
+                eprintln!("[{}] a layer-A map was not found in replay-only mode; retrying once with template recomputation enabled (deterministic; loaded maps are re-certified)", F::name());
+                guard(&format!("box engine ({})", F::name()), || run_prime::<F>(reg, inst, &retry))
+            }
+            r => r,
+        }
+    }
+    let report = |p: &PrimeOut| {
+        if p.check_only {
+            eprintln!("[{}] library: {} layer-A loads ({} rejected, {} by route stamp; preflight {} stamped files ok, {} legacy), {} types, {:.1}s; record scan {}; {:.1}s; VmHWM {} MB", p.field, p.layer_a.0, p.layer_a.2, p.layer_a.1, p.stamp_ok, p.stamp_legacy, p.lib_types, p.lib_build_secs, if p.record_scan { "run" } else { "not needed (closure data for every closable type)" }, p.secs, p.vmhwm_kb / 1024);
+        } else {
+            eprintln!(
+                "[{}] library: {} layer-A loads ({} rejected, {} by route stamp; preflight {} stamped files ok, {} legacy), {:.1}s; {} box points, record {:.1}s, scan {:.1}s, close {:.1}s; chi = decat_chi for {} closures; scaling: {} entries checked ({} zero at both, {} declared 0); determinant pass {} checks at {} points; seed {}{}; total {:.1}s; VmHWM {} MB",
+                p.field, p.layer_a.0, p.layer_a.2, p.layer_a.1, p.stamp_ok, p.stamp_legacy, p.lib_build_secs, p.points, p.record_secs, p.scan_secs, p.close_secs, p.chi_checked, p.scaling.0, p.scaling.1, p.scaling.2, p.det_pass.1, p.det_pass.0, p.seed, if p.template_recompute { "; templates recomputed" } else { "" }, p.secs, p.vmhwm_kb / 1024
+            );
+        }
+    };
+    let a = one::<F31>(&reg31, &inst31, mk(o.seed, true), mk(o.seed, false)).map_err(diag)?;
+    report(&a);
+    out.primes.push(a.clone());
+    if let Some(inst32) = &inst32 {
+        let b = one::<F32b>(&reg32, inst32, mk(o.seed2, true), mk(o.seed2, false)).map_err(diag)?;
+        report(&b);
+        out.primes.push(b.clone());
+        if !o.check_library {
+            if let Err(e) = compare_primes(run_ns, &a.closed, &b.closed) {
+                out.agree = Some(false);
+                if o.seed != o.seed2 {
+                    return Err(CalcErr::Disagree(format!("{}\n  (seeds differ: {} / {}; rerun with equal seeds to separate prime dependence from seed dependence)", e, o.seed, o.seed2)));
+                }
+                return Err(CalcErr::Disagree(e));
+            }
+            out.agree = Some(true);
+            eprintln!("krhom: F_2147483647 and F_4294967291 agree: certified over both primes (equal over Q unless both are torsion primes)");
+        }
+    } else {
+        out.coefficients = "F_2147483647 (developer option --single-prime: not certified over Q)".into();
+    }
+    if o.check_library {
+        out.check_library = Some(format!("library {} covers this word ({} prime{}; no box scan run)", reg31.id, out.primes.len(), if out.primes.len() == 1 { "" } else { "s" }));
+    }
+    Ok(a.closed)
+}
+
+fn item_json(item: &Item, o: &Opts, r: &Result<Outcome, CalcErr>, secs: f64) -> String {
+    let name = item.name.as_deref().map_or("null".to_string(), jstr);
+    let (inp, inkind) = match &item.input {
+        Input::Braid(s) => (s.clone(), "braid"),
+        Input::Pd(s) => (s.clone(), "pd"),
+    };
+    let env: Vec<String> = krhom_env().iter().map(|(k, v)| format!("{}:{}", jstr(k), jstr(v))).collect();
+    let common = format!("\"tool\":\"krhom\",\"commit\":{},\"name\":{},\"input\":{{\"kind\":\"{}\",\"text\":{},\"N\":{:?},\"reduced\":{}", jstr(krhom::boxrun::build_commit()), name, inkind, jstr(&inp), o.ns, o.reduced);
+    match r {
+        Ok(out) => {
+            let bw = |b: &Option<BraidWord>| b.as_ref().map_or("null".to_string(), |b| format!("{:?}", b.signed()));
+            let st = |b: &Option<BraidWord>| b.as_ref().map_or(0, |b| b.strands);
+            let res: Vec<String> = out.results.iter().map(|(n, p)| format!("{{\"N\":{},\"P\":{},\"euler\":{}}}", n, poly_json(p), jstr(&p.euler().to_string()))).collect();
+            format!(
+                "{{{},\"braid\":{},\"strands\":{},\"colors\":{:?},\"labels\":{:?},\"used_braid\":{},\"used_strands\":{}}},\"route\":{},\"coefficients\":{},\"library\":{},\"seeds\":{:?},\"mem_mb\":{},\"mem_cap_mb\":{},\"primes\":[{}],\"agree\":{},\"zero_N\":{:?},\"check_library\":{},\"results\":[{}],\"secs\":{:.2},\"env\":{{{}}},\"error\":null}}",
+                common,
+                bw(&out.orig),
+                st(&out.orig),
+                out.colors,
+                out.labels,
+                bw(&out.used),
+                st(&out.used),
+                jstr(out.route),
+                jstr(&out.coefficients),
+                out.library.clone().unwrap_or("null".into()),
+                out.seeds,
+                out.mem_mb.map_or("null".into(), |v| v.to_string()),
+                out.mem_cap_mb.map_or("null".into(), |v| v.to_string()),
+                out.primes.iter().map(prime_json).collect::<Vec<_>>().join(","),
+                out.agree.map_or("null".into(), |a| a.to_string()),
+                out.zero_ns,
+                out.check_library.as_deref().map_or("null".into(), jstr),
+                res.join(","),
+                secs,
+                env.join(","),
+            )
+        }
+        Err(e) => format!("{{{}}},\"results\":[],\"secs\":{:.2},\"env\":{{{}}},\"error\":{{\"code\":{},\"kind\":{},\"message\":{}}}}}", common, secs, env.join(","), e.code(), jstr(e.kind()), jstr(e.msg())),
+    }
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("{}", USAGE);
+        return;
+    }
+    if args.len() < 3 || args[1].starts_with('-') {
+        fail(1, USAGE);
+    }
+    let (o, items, json, csv) = parse_args(&args).unwrap_or_else(|e| fail(e.code(), e.msg()));
+    let batch = items.len() > 1 || matches!(items.first(), Some(Item { name: Some(_), .. })) && args.iter().any(|a| a == "--file");
+    let mut code = 0;
+    let mut jsons = vec![];
+    let mut csv_rows = vec!["name,N,reduced,t,q,rank".to_string()];
+    for item in &items {
+        let t0 = Instant::now();
+        let r = run_item(item, &o);
+        let secs = t0.elapsed().as_secs_f64();
+        match &r {
+            Ok(out) => {
+                if let Some(c) = &out.check_library {
+                    println!("check-library: {}", c);
+                } else {
+                    println!("coefficients: {}", out.coefficients);
+                    println!("time {:.2}s", secs);
+                    for (nn, p) in &out.results {
+                        println!("N = {}", nn);
+                        println!("  Poincare polynomial: {}", p);
+                        println!("  total rank: {}", p.total_rank());
+                        println!("  Euler characteristic: {}", p.euler());
+                        let nm = item.name.clone().unwrap_or_default();
+                        if p.c.is_empty() {
+                            csv_rows.push(format!("{},{},{},,,0", nm, nn, o.reduced));
+                        }
+                        for (&(t, q), &k) in &p.c {
+                            csv_rows.push(format!("{},{},{},{},{},{}", nm, nn, o.reduced, t, q, k));
+                        }
                     }
                 }
-                eprintln!("singular method: the two primes disagree (torsion or a bug); no result printed");
-                std::process::exit(3);
             }
-            println!("fields: F_2147483647 and F_4294967291 (results agree)");
+            Err(e) => {
+                eprintln!("krhom: {}{}", item.name.as_deref().map_or(String::new(), |n| format!("{}: ", n)), e.msg());
+                if batch {
+                    println!("error: exit {} ({})", e.code(), e.kind());
+                }
+                if code == 0 {
+                    code = e.code();
+                }
+            }
         }
-        r.into_iter().collect()
-    } else if cable {
-        if field_q {
-            eprintln!("note: the cable method runs over F_p (p = 2^31-1); use --colored-method cube for exact Q");
+        if batch {
+            println!();
         }
-        let r = khr_colored_cable::<F31>(&labels, &word, &ns, 7, closure).unwrap_or_else(|e| {
-            eprintln!("cable method failed: {}", e);
-            std::process::exit(2)
-        });
-        r.colored.into_iter().collect()
-    } else if soergel {
-        if field_q {
-            eprintln!("note: the Soergel engine runs over F_p (p = 2^31-1); use --cube for exact Q");
-        }
-        let r = krhom::engine2::khr_engine2_closure::<F31>(bw.strands, &word, &ns, &[], 7, reduced, closure);
-        r.poincare.into_iter().collect()
-    } else {
-        ns.iter()
-            .map(|&nn| {
-                let link = BraidLink { n: nn, labels: labels.clone(), word: word.clone() };
-                let p = if field_q { khr_full_cube::<Q>(&link, QConv::A).poincare } else { khr_full_cube::<F31>(&link, QConv::A).poincare };
-                (nn, p)
-            })
-            .collect()
-    };
-    println!("time {:.2}s", t0.elapsed().as_secs_f64());
-    for (nn, p) in results {
-        println!("N = {}", nn);
-        println!("  Poincare polynomial: {}", p);
-        println!("  total rank: {}", p.total_rank());
-        println!("  Euler characteristic: {}", p.euler());
+        jsons.push(item_json(item, &o, &r, secs));
     }
+    if let Some(p) = json {
+        let body = if batch { format!("[\n{}\n]\n", jsons.join(",\n")) } else { format!("{}\n", jsons[0]) };
+        if let Err(e) = std::fs::write(&p, body) {
+            fail(1, &format!("--json {}: {}", p, e));
+        }
+    }
+    if let Some(p) = csv {
+        if let Err(e) = std::fs::write(&p, csv_rows.join("\n") + "\n") {
+            fail(1, &format!("--csv {}: {}", p, e));
+        }
+    }
+    std::process::exit(code);
 }

@@ -19,7 +19,7 @@
 use krhom::boxclose::*;
 use krhom::boxrun::*;
 use krhom::field::{F31, F32b};
-use krhom::laurent::Poincare;
+use krhom::calc::poly_json;
 use krhom::sengine::EngOpts;
 use krhom::sindec::*;
 use krhom::swire::*;
@@ -34,10 +34,6 @@ fn flag(a: &[String], k: &str) -> bool {
 }
 fn list<T: std::str::FromStr>(s: &str) -> Vec<T> {
     s.split([',', ' ']).filter(|x| !x.is_empty()).map(|x| x.parse().ok().expect("bad list")).collect()
-}
-fn poly_json(p: &Poincare) -> String {
-    let terms: Vec<String> = p.c.iter().map(|(&(t, q), &k)| format!("[{},{},{}]", t, q, k)).collect();
-    format!("{{\"str\":\"{}\",\"rank\":{},\"terms\":[{}]}}", p, p.total_rank(), terms.join(","))
 }
 fn hwm_kb() -> usize {
     krhom::xengine::rss_kb().1

@@ -642,14 +642,19 @@ fn cli_singular_method_matches_cube_output() {
         String::from_utf8_lossy(&out.stdout).to_string()
     };
     let two = full(&[]);
-    assert!(two.contains("fields: F_2147483647 and F_4294967291 (results agree)"), "{}", two);
+    assert!(two.contains("coefficients: Q"), "{}", two);
     let red = full(&["--reduced"]);
-    assert!(red.contains("fields: F_2147483647 and F_4294967291 (results agree)") && red.contains("t^0q^-4 + t^2q^-8 + t^3q^-12"), "{}", red);
+    assert!(red.contains("coefficients: Q") && red.contains("t^0q^-4 + t^2q^-8 + t^3q^-12"), "{}", red);
     let one = full(&["--single-prime"]);
-    assert!(one.contains("fields: F_2147483647 only (--single-prime)"), "{}", one);
-    let out = std::process::Command::new(exe).args(["3", "--braid", "1 2", "--strands", "3", "--colors", "2", "--colored-method", "singular"]).output().unwrap();
-    assert!(!out.status.success());
-    assert!(String::from_utf8_lossy(&out.stderr).contains("at most 2 strands"));
+    assert!(one.contains("coefficients: F_2147483647 (developer option --single-prime: not certified over Q)"), "{}", one);
+    // CALC-1: "1 2" on 3 strands destabilizes to the 1-strand unknot ([3 2]_q, rank 3); the
+    // refusals of the 3-4 strand route are in tests/calc.rs
+    let lib = std::env::temp_dir().join(format!("krhom_xengine_emptylib_{}", std::process::id()));
+    std::fs::create_dir_all(&lib).unwrap();
+    let out = std::process::Command::new(exe).args(["3", "--braid", "1 2", "--strands", "3", "--colors", "2", "--colored-method", "singular"]).env("KRHOM_THREADS", "1").env("KRHOM_LIB_DIR", &lib).output().unwrap();
+    let so = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(so.contains("simplified braid:") && so.contains("total rank: 3"), "{}", so);
 }
 
 // ------------------------------------------------------------------ 3 colors
