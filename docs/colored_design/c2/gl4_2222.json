@@ -575,5 +575,13 @@
    ],
    "status": "PASS"
   }
- ]
+ ],
+ "c2_4": {
+  "session": "C2-4 (branch colored-2c4-m5i)",
+  "m5i": "implemented (sindec e_p by peeling / prefix propagation, decomposable sources via commutation reroute, closure through e_p, reduced coordinates in swire/sengine)",
+  "knots_computed": [],
+  "blocked": "every class-A knot (6_1, 7_x, 8_x, 9_x) misses 6 library jobs: pairs 1235, 1444, 1470, 1894 (non-M5i, C2-5) and 1769, 1812 (M5i, decomposable targets behind a non-local splitting); see C2_4_report.md section 4",
+  "revalidated_words": "the 11 words above recomputed with the C2-4 binary on the C2-5 library (--provider m4c-lf --replay): identical closure by closure (runs_c2/k4m/markov)",
+  "library": "data-gl6 c2/l2222_n4_c25 + c2/l2222_n4_c24 (M5i delta), costs_2222_c25.txt, --provider m4c-lf --stamp-route"
+ }
 }
