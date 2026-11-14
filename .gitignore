@@ -5,3 +5,4 @@ src/bin/scratch_*
 /.claude/
 /tools/*/target
 __pycache__/
+runs_random/*/randcheck-*/
