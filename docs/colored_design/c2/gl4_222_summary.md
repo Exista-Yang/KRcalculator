@@ -13,6 +13,7 @@
 | 8_10 | -1 -1 -1 2 -1 -1 2 2 | 838 | 729 | 55 | 27 | eq / eq | yes | yes | yes | PASS |
 | 8_16 | -1 -1 2 -1 -1 2 -1 2 | 1366 | 1225 | 71 | 35 | eq / eq | yes | yes | yes | PASS |
 | 8_17 | 1 1 -2 1 -2 1 -2 -2 | 1518 | 1369 | 75 | 37 | eq / eq | yes | yes | yes | PASS |
+| 8_18 | 1 -2 1 -2 1 -2 1 -2 | 2206 | 2025 | 91 | 45 | eq / eq | yes | yes | yes | PASS |
 | 8_19 | 1 1 1 2 1 1 1 2 | 90 | 29 | 19 | 11 | eq / eq | yes | yes | yes | PASS |
 | 8_20 | 1 1 1 -2 -1 -1 -1 -2 | 118 | 81 | 19 | 9 | eq / eq | yes | yes | yes | PASS |
 | 8_21 | 1 1 1 2 -1 -1 2 2 | 286 | 225 | 31 | 15 | eq / eq | yes | yes | yes | PASS |
@@ -52,4 +53,4 @@
 | 12n_235 | 1 2 2 1 1 -2 -2 -2 -2 -2 -2 -2 | 258 | 181 | 33 | 19 | eq / eq | yes | yes | yes | PASS |
 | 12n_242 | 1 2 2 1 1 2 2 2 2 2 2 2 | 226 | 101 | 35 | 23 | eq / eq | yes | yes | yes | PASS |
 
-51 knots computed, 51 PASS, failures: []
+52 knots computed, 52 PASS, failures: []
