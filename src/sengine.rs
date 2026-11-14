@@ -217,16 +217,36 @@ pub fn rep_coset(schur: &Schur, lam: &[u8], p: Tid) -> u64 {
     cs.rank(&cs.rep(&tab))
 }
 
-/// The shape of a library type: flows of its canonical ladder per coset (e_p = None). `rep` is
-/// `rep_coset(&builder.schur, lam, p)`, taken before `freeze` (Tids are per Schur instance).
+/// The shape of a library type: flows of its canonical ladder per coset (e_p = None), or for an
+/// idempotent type (M5i) the ranks of block(e_p) per coset (cosets of rank 0 dropped), read at two
+/// fixed generic points that must agree. `rep` is `rep_coset(&builder.schur, lam, p)`, taken
+/// before `freeze` (Tids are per Schur instance).
 pub fn lib_shape<F: Field, L: SLib<F> + ?Sized>(lib: &L, p: Tid, rep: u64) -> Result<TypeShape, SErr> {
     let t = lib.ty(p)?;
-    if t.e.is_some() {
-        return Err(SErr::Lib(format!("type {}: idempotent reduced coordinates are M5i", p)));
-    }
     let fi = lib.ar().flows(t.lad);
-    let dims: Vec<u32> = (0..fi.cosets.len()).map(|i| fi.start[i + 1] - fi.start[i]).collect();
-    TypeShape::new(p, fi.cosets.clone(), dims, rep)
+    match t.e {
+        None => {
+            let dims: Vec<u32> = (0..fi.cosets.len()).map(|i| fi.start[i + 1] - fi.start[i]).collect();
+            TypeShape::new(p, fi.cosets.clone(), dims, rep)
+        }
+        Some(_) => {
+            let pts = crate::smap::points::<F>(lib.ar().k(), 0x5ba9_e1d1, 2, 0);
+            let mut evs: Vec<Eval<F>> = pts.into_iter().map(|pt| Eval::new(lib.ar(), pt)).collect();
+            let (mut cos, mut dims) = (vec![], vec![]);
+            for &c in &fi.cosets {
+                let m0 = lib.reduced(&mut evs[0], p, c)?.m;
+                let m1 = lib.reduced(&mut evs[1], p, c)?.m;
+                if m0 != m1 {
+                    return Err(SErr::Lib(format!("type {}: rank of e_p at coset {} differs between two points ({} vs {})", p, c, m0, m1)));
+                }
+                if m0 > 0 {
+                    cos.push(c);
+                    dims.push(m0 as u32);
+                }
+            }
+            TypeShape::new(p, cos, dims, rep)
+        }
+    }
 }
 
 fn layout_bytes(l: &Layout) -> u64 {
