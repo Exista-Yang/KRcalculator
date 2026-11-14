@@ -69,7 +69,7 @@ fn run<F: Field>(a: &[String]) {
             }
         };
         let w = sd.ar.expr_of(lad).rungs.clone();
-        let log = sd.idem_log.last().cloned().unwrap_or_default();
+        let log = sd.idem_log.iter().find(|x| x.0 == name).cloned().unwrap_or_default();
         println!("IDEM {} block {:?} flows {} rank B_p {} e_p {} in {:.1}s: extra {}", name, mu, flows(&lam, &w), rank, e.is_some(), t0.elapsed().as_secs_f64(), log.1);
         let Some(e) = e else { continue };
         if let Some(mx) = end0max {
@@ -79,7 +79,7 @@ fn run<F: Field>(a: &[String]) {
                 let mut ex = Exact { max_label: 9, max_fibre_product: u64::MAX, max_unknowns: u64::MAX, max_call_s: 1e9, ..Exact::default() };
                 match HomProvider::<F>::end0(&mut ex, &mut sd.ar, &mut sd.schur, lad, &Budget::default()) {
                     Ok((basis, _)) => {
-                        let nextra = log.1.matches('+').count() + 1;
+                        let nextra = { let ch = sd.schur.ladder_char(&w); sd.schur.expand(&ch).len() - 1 };
                         let cos = sd.ar.flows(lad).cosets.clone();
                         let pts = points::<F>(sd.ar.k(), 0xe0e0, 2, 0);
                         let st = Eval::stacked(&sd.ar, &basis, &pts, &cos);

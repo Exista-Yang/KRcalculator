@@ -634,6 +634,15 @@ impl<F: Field> SIndec<F> {
     /// every coset at a third point with Σ_c rank = rank B_p.
     fn build_idem(&mut self, p: Tid, lad: ExprId, w: &[Rung]) -> Result<MapId, DecErr> {
         let t0 = Instant::now();
+        // prefix propagation: L_p = L_{p'} ⊗ R with L_{p'} the (decomposable) canonical ladder of a
+        // type p' and b_{p'}·R = b_p: then e_p = Kron(e_{p'}, R) (its image is B_{p'} ⊗ R ≅ B_p)
+        if let Some((pp, e)) = self.idem_by_prefix(p, w)? {
+            let what = format!("M5i e_p of {} (prefix {})", self.tfmt(p), self.tfmt(pp));
+            self.idem_checks(p, lad, e, &what)?;
+            self.stats.idempotents += 1;
+            self.idem_log.push((self.tfmt(p), format!("Kron(e of {}, {})", self.tfmt(pp), crate::smapio::rung_str(&w[w.len() - 1])), t0.elapsed().as_secs_f64()));
+            return Ok(e);
+        }
         let ch = self.schur.ladder_char(w);
         let ex = self.schur.expand(&ch);
         let mut tg: Vec<(Tid, i32, usize)> = vec![];
@@ -684,7 +693,41 @@ impl<F: Field> SIndec<F> {
             terms.push((mone.clone(), ip));
         }
         let e = self.ar.add(MapNode::Lin(terms), "m5i e_p").map_err(DecErr::Check)?;
-        // checks (spec §5.2 step 6)
+        self.idem_checks(p, lad, e, &what)?;
+        self.stats.idempotents += 1;
+        self.idem_log.push((self.tfmt(p), desc.join(" + "), t0.elapsed().as_secs_f64()));
+        Ok(e)
+    }
+
+    /// prefix propagation of [`SIndec::build_idem`]: Some((p', Kron(e_{p'}, R))) when w = L_{p'}·R
+    /// with L_{p'} the canonical ladder of a decomposable type p' and term_mult(p', R) = b_p
+    fn idem_by_prefix(&mut self, p: Tid, w: &[Rung]) -> Result<Option<(Tid, MapId)>, DecErr> {
+        if w.len() < 2 || std::env::var("KRHOM_M5I_NO_PREFIX").is_ok() {
+            return Ok(None);
+        }
+        let (w1, r) = (&w[..w.len() - 1], w[w.len() - 1]);
+        let ch = self.schur.ladder_char(w1);
+        let cands: Vec<Tid> = self.schur.expand(&ch).into_iter().map(|t| t.0).collect();
+        for pp in cands {
+            if canonical_ladder(&mut self.schur, pp) != w1 || is_indecomposable_of(&mut self.schur, w1, pp) {
+                continue;
+            }
+            let tm = self.schur.term_mult(pp, &[r]);
+            if tm.len() != 1 || tm[0].0 != p || tm[0].1 != Lp::one() {
+                continue;
+            }
+            let (_, epp, _) = self.ty_full(pp)?;
+            let Some(epp) = epp else { continue };
+            let e = self.ar.add(MapNode::Kron(epp, vec![r]), "m5i Kron(e_p', R)").map_err(DecErr::Check)?;
+            return Ok(Some((pp, e)));
+        }
+        Ok(None)
+    }
+
+    /// the checks of an idempotent e_p of L_p (spec §5.2 step 6): `check_idempotent` at 2 points
+    /// (e² = e and rank c_t(b_p)(1) at rep(t) of every table of char L_p, top scalar 1), then e² = e
+    /// on every coset at a third point with Σ_c rank = rank B_p
+    fn idem_checks(&mut self, p: Tid, lad: ExprId, e: MapId, what: &str) -> Result<(), DecErr> {
         let tc = Instant::now();
         check_idempotent(&self.ar, &mut self.schur, lad, p, e, self.opts.seed ^ 0x1de3).map_err(|m| DecErr::Check(format!("{}: {}", what, m)))?;
         let pt = self.pts(3, 0x1de3_e5a1).remove(2);
@@ -707,9 +750,7 @@ impl<F: Field> SIndec<F> {
             return Err(DecErr::Check(format!("{}: Σ_c rank(e_c) = {} != rank B_p = {}", what, tot, rk)));
         }
         self.stats.check_secs += tc.elapsed().as_secs_f64();
-        self.stats.idempotents += 1;
-        self.idem_log.push((self.tfmt(p), desc.join(" + "), t0.elapsed().as_secs_f64()));
-        Ok(e)
+        Ok(())
     }
 
     /// the form π_j∘ι_i at rep(q) at check_points (≥ 2) points, equal at all of them
@@ -954,8 +995,26 @@ impl<F: Field> SIndec<F> {
             return Ok((ins, outs));
         }
         let b = self.opts.budget.clone();
-        let r = DecHom::pairs(&mut *self.prov, &mut self.ar, &mut self.schur, t, &b);
+        let mut r = DecHom::pairs(&mut *self.prov, &mut self.ar, &mut self.schur, t, &b);
         self.stats.provider_calls += 1;
+        if let Err(f) = &r {
+            // M5i: an extra summand of a decomposable canonical ladder is a global (not local)
+            // splitting, which Search's windows do not see; Exact with raised caps
+            // (KRHOM_M5I_EXACT_UNK unknowns, default 2.5 M) is the fallback, its output certified
+            // as any provider's (DecHom output checks, then M5's own)
+            let cap: u64 = std::env::var("KRHOM_M5I_EXACT_UNK").ok().and_then(|v| v.parse().ok()).unwrap_or(2_500_000);
+            let m5i = key.starts_with("kind=idem") || t.eq.is_some() || self.types.get(&p).is_some_and(|x| x.e.is_some());
+            if m5i && !f.guard && cap > 0 {
+                let (xw, qw) = (word_of(&self.ar, t.x), word_of(&self.ar, t.lq));
+                let unk = crate::homprov::hom_unknowns(&self.lam, &qw, &xw, t.s).max(crate::homprov::hom_unknowns(&self.lam, &xw, &qw, -t.s));
+                if unk <= cap as u128 {
+                    eprintln!("[sindec] M5i: provider chain failed for {} -> {} ({}); Exact fallback ({} unknowns)", self.tfmt(t.q), self.tfmt(p), f.text.chars().take(120).collect::<String>(), unk);
+                    let mut ex = Exact { max_label: 9, max_fibre_product: u64::MAX, max_unknowns: u64::MAX, max_call_s: 1e9, ..Exact::default() };
+                    r = DecHom::pairs(&mut ex, &mut self.ar, &mut self.schur, t, &b);
+                    self.stats.provider_calls += 1;
+                }
+            }
+        }
         match r {
             Ok(o) => {
                 self.stats.provider_secs += o.secs;
@@ -1305,11 +1364,30 @@ impl<F: Field> SIndec<F> {
         for (k, outs) in [false, true].into_iter().enumerate() {
             let key = self.closure_key(p, outs);
             let ms = match self.layer_a_load(&key, want.len())? {
-                Some(v) => v,
+                // M5i: a loaded generator carries its own (imported) copy of e_p; re-wrap with this
+                // builder's e_p so that certify_closure sees Comp(e_p, g) / Comp(g, e_p) (it then
+                // re-checks the family numerically: rank n at the identity coset at 2 points)
+                Some(v) => match ep {
+                    None => v,
+                    Some(e) => v.into_iter().map(|m| self.ar.add(if outs { MapNode::Comp(m, e) } else { MapNode::Comp(e, m) }, "m5i rewrap e_p")).collect::<Result<Vec<_>, _>>().map_err(DecErr::Check)?,
+                },
                 None => {
                     let b = self.opts.budget.clone();
-                    let r = DecHom::closure(&mut *self.prov, &mut self.ar, &mut self.schur, lad, p, ep, outs, &b);
+                    let mut r = DecHom::closure(&mut *self.prov, &mut self.ar, &mut self.schur, lad, p, ep, outs, &b);
                     self.stats.provider_calls += 1;
+                    if let (Err(f), Some(_)) = (&r, ep) {
+                        // M5i: closure through e_p, Exact fallback with raised caps (as for pairs)
+                        let cap: u64 = std::env::var("KRHOM_M5I_EXACT_UNK").ok().and_then(|v| v.parse().ok()).unwrap_or(2_500_000);
+                        let w = word_of(&self.ar, lad);
+                        let dmax = want.iter().copied().max().unwrap_or(0);
+                        let unk = (0..=dmax.max(0)).map(|d| crate::homprov::hom_unknowns(&self.lam, &[], &w, d).max(crate::homprov::hom_unknowns(&self.lam, &w, &[], d))).max().unwrap_or(0);
+                        if !f.guard && cap > 0 && unk <= cap as u128 {
+                            eprintln!("[sindec] M5i: closure of {} ({}) failed through the chain ({}); Exact fallback (≤ {} unknowns per degree)", self.tfmt(p), if outs { "outs" } else { "ins" }, f.text.chars().take(120).collect::<String>(), unk);
+                            let mut ex = Exact { max_label: 9, max_fibre_product: u64::MAX, max_unknowns: u64::MAX, max_call_s: 1e9, ..Exact::default() };
+                            r = DecHom::closure(&mut ex, &mut self.ar, &mut self.schur, lad, p, ep, outs, &b);
+                            self.stats.provider_calls += 1;
+                        }
+                    }
                     match r {
                         Ok(o) => {
                             self.stats.provider_secs += o.secs;

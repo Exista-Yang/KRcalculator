@@ -302,6 +302,9 @@ pub fn build_wlib<F: Field>(mut sd: SIndec<F>, words: &[Vec<i32>], closure: bool
     for &p in &idem {
         h.u64(0x1de3).u64(p as u64).str(crate::sindec::M5I_STAMP);
     }
+    if !idem.is_empty() {
+        eprintln!("[swire] M5i: {} idempotent types in the library: {}", idem.len(), idem.iter().map(|p| format!("{} (m = {})", names[p], shapes[p].rank())).collect::<Vec<_>>().join(", "));
+    }
     Ok(WLib { dd, lam, prune_n: prune, shapes, names, by_name, id_tid: id, id_coset, closure: cl, no_closure: no_cl, words: words.to_vec(), hash: h.get(), build_secs: t0.elapsed().as_secs_f64(), stats, kron: Default::default(), idem })
 }
 
