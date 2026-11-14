@@ -1,0 +1,43 @@
+START 3,3,3;E0.3,F0.1,E1.3,F1.3;E0.1,F0.1,E1.1,F1.1,E0.2;0 05:06:55
+MEASURE 3,3,3;E0.3,F0.1,E1.3,F1.3;E0.1,F0.1,E1.1,F1.1,E0.2;0 : fibres 24x432 unknowns 180155 dim 1 75.08s peak RSS 1129 MB
+END rc=0 05:08:11
+START 3,3,3;E0.1,F0.1,E1.3,E0.1;E1.1,E0.2,F0.1,E1.2;0 05:08:11
+MEASURE 3,3,3;E0.1,F0.1,E1.3,E0.1;E1.1,E0.2,F0.1,E1.2;0 : fibres 72x90 unknowns 123240 dim 1 48.42s peak RSS 844 MB
+END rc=0 05:08:59
+START 3,3,3;E0.1,F0.1,E1.1,F1.1,E0.2;E0.3,F0.1,E1.3,F1.3;0 05:08:59
+MEASURE 3,3,3;E0.1,F0.1,E1.1,F1.1,E0.2;E0.3,F0.1,E1.3,F1.3;0 : fibres 432x24 unknowns 180155 dim 1 91.44s peak RSS 1180 MB
+END rc=0 05:10:31
+START 3,3,3;E1.2,F0.1,F1.2;E1.1,F1.1,F0.1;3 05:10:31
+MEASURE 3,3,3;E1.2,F0.1,F1.2;E1.1,F1.1,F0.1;3 : fibres 135x36 unknowns 218515 dim 1 68.53s peak RSS 1036 MB
+END rc=0 05:11:39
+START 3,3,3;F0.2,E0.1,E1.2,E0.1;E0.1,F0.1,E1.2;2 05:11:39
+MEASURE 3,3,3;F0.2,E0.1,E1.2,E0.1;E0.1,F0.1,E1.2;2 : fibres 270x36 unknowns 333995 dim 1 211.05s peak RSS 2170 MB
+END rc=0 05:15:10
+ALLDONE
+START 3,3,3;E0.1,F0.1,E1.1,F1.1,E0.2;E0.3,F0.1,E1.3,F1.3;2 05:16:22
+MEASURE 3,3,3;E0.1,F0.1,E1.1,F1.1,E0.2;E0.3,F0.1,E1.3,F1.3;2 : fibres 432x24 unknowns 347450 dim 8 213.14s peak RSS 2260 MB
+END rc=0 05:19:55
+START 3,3,3;E1.2,F0.1,F1.2;E1.1,F1.1,F0.1;5 05:19:55
+MEASURE 3,3,3;E1.2,F0.1,F1.2;E1.1,F1.1,F0.1;5 : fibres 135x36 unknowns 396704 dim 7 143.41s peak RSS 1869 MB
+END rc=0 05:22:19
+ALLDONE
+START pair 227 05:15:47
+RESULT {"ok":false,"p":"0,1,2/2,0,1/1,2,0","rung":"E0.3","wall":2.957,"errors":[{"what":"dec pair 227","kind":"Refused","text":"provider failed (engineering): [inner] [Search] Search pairs: tiers S0-S2 refused by admission (1 stuck branches, 1 by admission, 0 tiers refused) (0 candidates) [Refused, degree -5, 0/1]; [inner] [Exact] Exact pairs: not admitted: labels [3, 3, 3] (max 3 > 3 or caps: fibre product 86400 / 1600, unknowns 609721 / 40000) and no cost-table entry [Refused, degree -5, 0/1]; [inner] [Search] Search pairs: tiers S3-S6 refused by admission (1 stuck branches, 1 by admission, 1 tiers refused) (0 candidates) [Refused, degree -5, 0/1]; [Leaves] Leaves pairs (Lemma A): step call [3, 3, 3] [E0.2,F0.2,E1.3,E0.1] -> [E1.1,E0.3,F0.2,E1.2] d=0: 1192238 unknowns > hard cap 400000 [Refused, degree -5, 0/1]"}],"stats":{"decomps":0,"identity":0,"all_killed":0,"targets":0,"sum_mult":0,"provider_calls":1,"provider_secs":0.000,"max_x_flows":7200,"layer_a_loaded":0,"layer_a_route":0,"layer_a_saved":0,"layer_a_rejected":0,"rickard":0,"closure":0,"scaling_entries":0,"scaling_zero":0,"check_secs":0.000},"arena_bytes":4113945,"fresh":[]}
+END pair 227 rc=0 05:15:50
+START pair 127 05:15:50
+RESULT {"ok":false,"p":"0,1,2/3,0,0/0,2,1","rung":"E0.2","wall":1.587,"errors":[{"what":"dec pair 127","kind":"Refused","text":"provider failed (engineering): [inner] [Search] Search pairs: tiers S0-S2 refused by admission (1 stuck branches, 1 by admission, 0 tiers refused) (0 candidates) [Refused, degree -3, 0/1]; [inner] [Exact] Exact pairs: not admitted: labels [3, 3, 3] (max 3 > 3 or caps: fibre product 43200 / 1600, unknowns 698828 / 40000) and no cost-table entry [Refused, degree -3, 0/1]; [inner] [Search] Search pairs: tiers S3-S6 refused by admission (1 stuck branches, 1 by admission, 1 tiers refused) (0 candidates) [Refused, degree -3, 0/1]; [Leaves] Leaves pairs (Lemma A): step call [3, 3, 3] [E0.1,F0.1,E1.1,F1.1,E0.2] -> [E0.3,F0.1,E1.3,F1.3] d=2: 347450 unknowns > budget 100000 and no uncensored exact-shape cost record [Refused, degree -3, 0/1]"}],"stats":{"decomps":0,"identity":0,"all_killed":0,"targets":0,"sum_mult":0,"provider_calls":1,"provider_secs":0.000,"max_x_flows":1800,"layer_a_loaded":0,"layer_a_route":0,"layer_a_saved":0,"layer_a_rejected":0,"rickard":0,"closure":0,"scaling_entries":0,"scaling_zero":0,"check_secs":0.000},"arena_bytes":6669399,"fresh":[]}
+END pair 127 rc=0 05:15:52
+START pair 385 05:15:52
+RESULT {"ok":false,"p":"1,1,1/0,2,1/2,0,1","rung":"E1.2","wall":2.197,"errors":[{"what":"dec pair 385","kind":"Refused","text":"provider failed (engineering): [inner] [Search] Search pairs: tiers S0-S2 refused by admission (1 stuck branches, 1 by admission, 0 tiers refused) (0 candidates) [Refused, degree -2, 0/1]; [inner] [Exact] Exact pairs: not admitted: labels [3, 3, 3] (max 3 > 3 or caps: fibre product 4374000 / 1600, unknowns 161816739 / 40000) and no cost-table entry [Refused, degree -2, 0/1]; [inner] [Search] Search pairs: tiers S3-S6 refused by admission (1 stuck branches, 1 by admission, 1 tiers refused) (0 candidates) [Refused, degree -2, 0/1]; [Leaves] Leaves pairs (Lemma A): step call [3, 3, 3] [E1.2,F0.1,F1.2] -> [E1.1,F1.1,F0.1] d=5: 396704 unknowns > budget 100000 and no uncensored exact-shape cost record [Refused, degree -2, 0/1]"}],"stats":{"decomps":0,"identity":0,"all_killed":0,"targets":0,"sum_mult":0,"provider_calls":1,"provider_secs":0.000,"max_x_flows":8100,"layer_a_loaded":0,"layer_a_route":0,"layer_a_saved":0,"layer_a_rejected":0,"rickard":0,"closure":0,"scaling_entries":0,"scaling_zero":0,"check_secs":0.000},"arena_bytes":1351078,"fresh":[]}
+END pair 385 rc=0 05:15:54
+START pair 137 05:15:54
+RESULT {"ok":false,"p":"1,0,2/1,2,0/1,1,1","rung":"E0.2","wall":2.746,"errors":[{"what":"dec pair 137","kind":"Refused","text":"provider failed (engineering): [inner] [Search] Search pairs: tiers S0-S2 refused by admission (1 stuck branches, 1 by admission, 0 tiers refused) (0 candidates) [Refused, degree -2, 0/1]; [inner] [Exact] Exact pairs: not admitted: labels [3, 3, 3] (max 3 > 3 or caps: fibre product 2332800 / 1600, unknowns 73389281 / 40000) and no cost-table entry [Refused, degree -2, 0/1]; [inner] [Search] Search pairs: tiers S3-S6 refused by admission (1 stuck branches, 1 by admission, 1 tiers refused) (0 candidates) [Refused, degree -2, 0/1]; [Leaves] Leaves pairs (Lemma A): step call [3, 3, 3] [F0.2,E0.1,E1.2,E0.1] -> [E0.1,F0.1,E1.2] d=4: 615219 unknowns > hard cap 400000 [Refused, degree -2, 0/1]"}],"stats":{"decomps":0,"identity":0,"all_killed":0,"targets":0,"sum_mult":0,"provider_calls":1,"provider_secs":0.000,"max_x_flows":8100,"layer_a_loaded":0,"layer_a_route":0,"layer_a_saved":0,"layer_a_rejected":0,"rickard":0,"closure":0,"scaling_entries":0,"scaling_zero":0,"check_secs":0.000},"arena_bytes":5462865,"fresh":[]}
+END pair 137 rc=0 05:15:57
+ALLDONE
+START pair 127 05:22:19
+RESULT {"ok":false,"p":"0,1,2/3,0,0/0,2,1","rung":"E0.2","wall":1.645,"errors":[{"what":"dec pair 127","kind":"Refused","text":"provider failed (engineering): [inner] [Search] Search pairs: tiers S0-S2 refused by admission (1 stuck branches, 1 by admission, 0 tiers refused) (0 candidates) [Refused, degree -3, 0/1]; [inner] [Exact] Exact pairs: not admitted: labels [3, 3, 3] (max 3 > 3 or caps: fibre product 43200 / 1600, unknowns 698828 / 40000) and no cost-table entry [Refused, degree -3, 0/1]; [inner] [Search] Search pairs: tiers S3-S6 refused by admission (1 stuck branches, 1 by admission, 1 tiers refused) (0 candidates) [Refused, degree -3, 0/1]; [Leaves] Leaves pairs (Lemma A): step call [3, 3, 3] [E0.1,F0.1,E1.1,F1.1,E0.2] -> [E0.3,F0.1,E1.3,F1.3] d=4: 641683 unknowns > hard cap 400000 [Refused, degree -3, 0/1]"}],"stats":{"decomps":0,"identity":0,"all_killed":0,"targets":0,"sum_mult":0,"provider_calls":1,"provider_secs":0.000,"max_x_flows":1800,"layer_a_loaded":0,"layer_a_route":0,"layer_a_saved":0,"layer_a_rejected":0,"rickard":0,"closure":0,"scaling_entries":0,"scaling_zero":0,"check_secs":0.000},"arena_bytes":7772871,"fresh":[]}
+END pair 127 rc=0 05:22:20
+START pair 385 05:22:20
+RESULT {"ok":false,"p":"1,1,1/0,2,1/2,0,1","rung":"E1.2","wall":6.828,"errors":[{"what":"dec pair 385","kind":"Refused","text":"provider failed (engineering): [inner] [Search] Search pairs: tiers S0-S2 refused by admission (1 stuck branches, 1 by admission, 0 tiers refused) (0 candidates) [Refused, degree -2, 0/1]; [inner] [Exact] Exact pairs: not admitted: labels [3, 3, 3] (max 3 > 3 or caps: fibre product 4374000 / 1600, unknowns 161816739 / 40000) and no cost-table entry [Refused, degree -2, 0/1]; [inner] [Search] Search pairs: tiers S3-S6 refused by admission (1 stuck branches, 1 by admission, 1 tiers refused) (0 candidates) [Refused, degree -2, 0/1]; [Leaves] Leaves pairs (Lemma A): step call [3, 3, 3] [E1.2,F1.2,F0.2,E0.2] -> [E0.1,E1.3,E0.1,F1.3,F0.2] d=1: 31382321 unknowns > hard cap 400000 [Refused, degree -2, 0/1]"}],"stats":{"decomps":0,"identity":0,"all_killed":0,"targets":0,"sum_mult":0,"provider_calls":1,"provider_secs":0.000,"max_x_flows":8100,"layer_a_loaded":0,"layer_a_route":0,"layer_a_saved":0,"layer_a_rejected":0,"rickard":0,"closure":0,"scaling_entries":0,"scaling_zero":0,"check_secs":0.000},"arena_bytes":2492216,"fresh":[]}
+END pair 385 rc=0 05:22:27
+ALLDONE
