@@ -521,8 +521,12 @@ pub struct SIndec<F: Field> {
     rick: HashMap<(Tid, usize, bool, usize), Arc<Vec<(usize, usize, MapId)>>>,
     clos: HashMap<Tid, Arc<ClosureGens>>,
     stats: DecStats,
-    /// per idempotent type: (table, extra summands as "q{s}", seconds, End^0-free checks passed)
+    /// per idempotent type: (table, construction, seconds)
     pub idem_log: Vec<(String, String, f64)>,
+    /// (p, rung) source-idempotent decompositions in progress (commutation reroute; cycle guard)
+    busy: std::collections::HashSet<(Tid, (usize, u8, usize))>,
+    /// per source-idempotent decomposition: (p, rung, route) for the report
+    pub route_log: Vec<(String, String, String)>,
     /// per fresh provider call: (p table, q table or "closure-ins|outs", s, mult, seconds,
     /// provider summary with tier hits), for the report
     pub target_log: Vec<(String, String, i32, usize, f64, String)>,
@@ -557,6 +561,8 @@ impl<F: Field> SIndec<F> {
             clos: HashMap::new(),
             stats: DecStats::default(),
             idem_log: vec![],
+            busy: std::collections::HashSet::new(),
+            route_log: vec![],
             target_log: vec![],
             target_log_file: None,
         }
@@ -914,6 +920,19 @@ impl<F: Field> SIndec<F> {
         // targets in SPEC order: l_max(q) descending, then s ascending
         let mut tg: Vec<(Tid, i32, usize)> = kept.iter().map(|(&(q, s), &c)| (q, s, c)).collect();
         tg.sort_by(|a, b| self.schur.lmax_of(b.0).cmp(&self.schur.lmax_of(a.0)).then(a.0.cmp(&b.0)).then(a.1.cmp(&b.1)));
+        // M5i: X equal to the canonical ladder of a decomposable type xq (its extra-summand pairs
+        // are those of e_xq); a decomposable source: the commutation reroute family
+        let xq: Option<Tid> = {
+            let ch = self.schur.ladder_char(&xw);
+            let mut f = None;
+            for (q, _) in self.schur.expand(&ch) {
+                if canonical_ladder(&mut self.schur, q) == xw && !is_indecomposable_of(&mut self.schur, &xw, q) {
+                    f = Some(q);
+                }
+            }
+            f
+        };
+        let fam = if ex.is_some() && xq.is_none() { self.reroute_family(p, r)? } else { None };
         let mut sums: Vec<SSummand> = vec![];
         for (q, s, cnt) in tg {
             let (lq, eq) = {
@@ -928,7 +947,23 @@ impl<F: Field> SIndec<F> {
                 return Err(DecErr::Check(format!("M5i: multiplicity {} in char X < {} in term_mult", mx, cnt)));
             }
             let t = PairTarget { x, q, lq, eq, s, mult: mx };
-            let (mut ins, mut outs) = self.target_pairs(p, &rs, &t)?;
+            let (mut ins, mut outs) = if let (Some(e), true, 0, 1) = (eq, lq == x, s, mx) {
+                // X is the (decomposable) canonical ladder of q itself: ι = π = e_q
+                (vec![e], vec![e])
+            } else if let Some(fam) = fam.as_ref() {
+                // source idempotent: the family of X from the commutation reroute
+                let (a, b) = fam.get(&(q, s)).cloned().unwrap_or_default();
+                if a.len() != mx || b.len() != mx {
+                    return Err(DecErr::Check(format!("M5i reroute of {} ⊗ {}: {} pairs for {} at v^{}, char X has {}", self.tfmt(p), crate::smapio::rung_str(&r), a.len(), self.tfmt(q), s, mx)));
+                }
+                (a, b)
+            } else if let Some(xq) = xq {
+                // X = L_{xq} (decomposable): the extra-summand pairs of e_{xq} (layer A kind=idem)
+                let key = self.idem_key(xq, &t);
+                self.target_pairs_keyed(key, p, &t)?
+            } else {
+                self.target_pairs(p, &rs, &t)?
+            };
             if let Some(e) = ex {
                 // apply the source idempotent: ι ↦ Kron(e_p, R)∘ι, π ↦ π∘Kron(e_p, R)
                 for m in ins.iter_mut() {
@@ -975,6 +1010,126 @@ impl<F: Field> SIndec<F> {
         self.check_pi_iota(x, &sums, ex, full, &format!("{} ⊗ {}", self.tfmt(p), crate::smapio::rung_str(&r)))?;
         self.stats.decomps += 1;
         Ok(Decomp { p, rungs: rs.to_vec(), x, summands: sums, identity: false, all_killed: false, killed: Self::killed_list(&kill) })
+    }
+
+    /// the commutation isomorphism of rungs i, i+1 of w (commuting rungs): (w → w', w' → w),
+    /// mutually inverse, from the degree-0 window templates (as homprov's Search)
+    fn swap_iso(&mut self, w: &[Rung], i: usize) -> Result<(MapId, MapId, Vec<Rung>), DecErr> {
+        let lam = self.lam.clone();
+        let (r1, r2) = (w[i], w[i + 1]);
+        let lo = r1.i.min(r2.i);
+        let hi = r1.i.max(r2.i) + 1;
+        let labels = crate::homprov::level_of(&lam, w, i)[lo..=hi].to_vec();
+        let sh = |r: Rung| Rung { i: r.i - lo, ..r };
+        let rel = vec![sh(r1), sh(r2)];
+        let swr = vec![rel[1], rel[0]];
+        let (wa, wb) = (crate::tmpl::Window::new(&labels, &rel), crate::tmpl::Window::new(&labels, &swr));
+        let tf = self.ar.lib().try_hom_basis_cap(&wa, &wb, 0, u128::MAX).map_err(DecErr::Check)?;
+        let tb = self.ar.lib().try_hom_basis_cap(&wb, &wa, 0, u128::MAX).map_err(DecErr::Check)?;
+        if tf.len() != 1 || tb.len() != 1 {
+            return Err(DecErr::Check(format!("commutation {:?} {}: Hom^0 dims {} / {}", labels, crate::smapio::rungs_str(&rel), tf.len(), tb.len())));
+        }
+        let mut sw = w.to_vec();
+        sw.swap(i, i + 1);
+        let a = self.ar.expr(Expr::new(&lam, w).map_err(DecErr::Invalid)?);
+        let b = self.ar.expr(Expr::new(&lam, &sw).map_err(DecErr::Invalid)?);
+        let f = self.ar.add(MapNode::Local { src: a, tgt: b, at: i, first: lo, tmpl: tf[0] }, "m5i commute").map_err(DecErr::Check)?;
+        let g = self.ar.add(MapNode::Local { src: b, tgt: a, at: i, first: lo, tmpl: tb[0] }, "m5i commute back").map_err(DecErr::Check)?;
+        // g∘f = c·id (one-dimensional End^0 of the window word): normalize
+        let gf = self.ar.add(MapNode::Comp(g, f), "m5i commute gf").map_err(DecErr::Check)?;
+        let pt = self.pts(1, 0xc0aa).remove(0);
+        let mut ev = Eval::new(&self.ar, pt);
+        let cos = self.ar.flows(a).cosets.clone();
+        let mut c: Option<F> = None;
+        for &cc in &cos {
+            let blk = ev.block(gf, cc);
+            let n = blk.rows as usize;
+            if n == 0 {
+                continue;
+            }
+            let c0 = blk.a[0].clone();
+            let mut want = crate::smap::Block::<F>::zeros(n, n);
+            for k in 0..n {
+                want.a[k * n + k] = c0.clone();
+            }
+            if *blk != want {
+                return Err(DecErr::Check(format!("commutation {:?} {}: g∘f is not scalar", labels, crate::smapio::rungs_str(&rel))));
+            }
+            if c.is_none() {
+                c = Some(c0);
+            } else if c.as_ref() != Some(&c0) {
+                return Err(DecErr::Check("commutation: g∘f scalar differs between cosets".into()));
+            }
+        }
+        let c = c.filter(|x| !x.is_zero()).ok_or_else(|| DecErr::Check("commutation: g∘f = 0".into()))?;
+        let g = self.ar.add(MapNode::Lin(vec![(c.inv(), g)]), "m5i commute inverse").map_err(DecErr::Check)?;
+        Ok((f, g, sw))
+    }
+
+    /// M5i, decomposable source (C2-4): the decomposition of X = L_p·R through the commutation
+    /// class: R commutes with the tail w[j..] of w = L_p (j < |w| minimal), so X ≅ Y = w[..j]·R·w[j..];
+    /// w[..j] is the canonical ladder of a type a, and Y is decomposed rung by rung from a
+    /// (`dec_word(a, R·w[j..])`, the ordinary machinery, which never meets the non-local splitting
+    /// of L_p). Returns per kept (q, s) the family (ι: L_q → X, π: X → L_q) transported through the
+    /// commutation isomorphism, Π∘Ι = δ: a basis of the multiplicity space of b_q⟨s⟩ in char X.
+    /// None if R does not commute past the last rung of w or w[..j] is not a canonical ladder.
+    #[allow(clippy::type_complexity)]
+    fn reroute_family(&mut self, p: Tid, r: Rung) -> Result<Option<BTreeMap<(Tid, i32), (Vec<MapId>, Vec<MapId>)>>, DecErr> {
+        if std::env::var("KRHOM_M5I_NO_REROUTE").is_ok() {
+            return Ok(None);
+        }
+        let lad = self.ty(p)?.lad;
+        let w = word_of(&self.ar, lad);
+        let mut j = w.len();
+        while j > 0 && crate::homprov::rungs_commute(&w[j - 1], &r) {
+            j -= 1;
+        }
+        if j == w.len() {
+            return Ok(None);
+        }
+        let w1 = w[..j].to_vec();
+        let ch = self.schur.ladder_char(&w1);
+        let a = self.schur.expand(&ch).into_iter().map(|t| t.0).find(|&q| canonical_ladder(&mut self.schur, q) == w1);
+        let Some(a) = a else { return Ok(None) };
+        let key = (p, (r.i, r.dir as u8, r.r));
+        if !self.busy.insert(key) {
+            return Err(DecErr::Check(format!("M5i reroute cycle at {} ⊗ {}", self.tfmt(p), crate::smapio::rung_str(&r))));
+        }
+        let mut rs2 = vec![r];
+        rs2.extend_from_slice(&w[j..]);
+        let d = self.dec_word(a, &rs2);
+        self.busy.remove(&key);
+        let d = d?;
+        // commutation chain X = w·R → Y (R moved from position |w| to j)
+        let mut cur = w.clone();
+        cur.push(r);
+        let (mut fwd, mut bwd): (Option<MapId>, Option<MapId>) = (None, None);
+        for i in (j..w.len()).rev() {
+            let (f, g, sw) = self.swap_iso(&cur, i)?;
+            fwd = Some(match fwd {
+                None => f,
+                Some(x) => self.ar.add(MapNode::Comp(f, x), "m5i chain").map_err(DecErr::Check)?,
+            });
+            bwd = Some(match bwd {
+                None => g,
+                Some(x) => self.ar.add(MapNode::Comp(x, g), "m5i chain back").map_err(DecErr::Check)?,
+            });
+            cur = sw;
+        }
+        let (c, cb) = (fwd.unwrap(), bwd.unwrap());
+        if self.ar.info(c).tgt != d.x {
+            return Err(DecErr::Check("M5i reroute: the commuted word is not the decomposed X".into()));
+        }
+        let mut fam: BTreeMap<(Tid, i32), (Vec<MapId>, Vec<MapId>)> = BTreeMap::new();
+        for sm in &d.summands {
+            let io = self.ar.add(MapNode::Comp(cb, sm.iota), "m5i reroute iota").map_err(DecErr::Check)?;
+            let pi = self.ar.add(MapNode::Comp(sm.pi, c), "m5i reroute pi").map_err(DecErr::Check)?;
+            let e = fam.entry((sm.q, sm.s)).or_default();
+            e.0.push(io);
+            e.1.push(pi);
+        }
+        self.route_log.push((self.tfmt(p), crate::smapio::rung_str(&r), format!("dec_word({}, {})", self.tfmt(a), crate::smapio::rungs_str(&rs2))));
+        Ok(Some(fam))
     }
 
     /// layer-A lookup or a provider call for one target

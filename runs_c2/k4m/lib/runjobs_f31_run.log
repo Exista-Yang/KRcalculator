@@ -1,0 +1,19 @@
+04:13:35 pair 109 "ok":false 65s
+04:13:57 pair 132 "ok":false 22s
+04:14:08 pair 202 "ok":false 11s
+04:14:19 pair 403 "ok":false 11s
+Terminated
+04:17:00 pair 595 "ok":false 161s
+04:17:22 pair 618 "ok":true 22s
+04:17:33 pair 688 "ok":false 11s
+04:17:58 pair 926 "ok":false 25s
+04:18:28 pair 949 "ok":false 30s
+04:19:00 pair 972 "ok":true 32s
+04:19:26 pair 986 "ok":false 26s
+04:19:52 pair 997 "ok":false 26s
+04:20:06 pair 1042 "ok":false 14s
+04:20:34 pair 1175 "ok":true 28s
+04:21:00 pair 1190 "ok":true 26s
+04:21:25 pair 1209 "ok":true 25s
+04:22:00 pair 1371 "ok":true 35s
+04:22:26 pair 1390 "ok":true 26s
