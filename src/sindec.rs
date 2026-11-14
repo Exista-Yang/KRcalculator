@@ -161,6 +161,18 @@ pub enum DecErr {
     /// layer-A cache error
     Cache(String),
 }
+impl DecErr {
+    /// the same error with a context prefix on its text (variant, hence the failure kind, kept)
+    pub fn ctx(self, c: &str) -> DecErr {
+        match self {
+            DecErr::Refused(t) => DecErr::Refused(format!("{}: {}", c, t)),
+            DecErr::Provider { engineering, text } => DecErr::Provider { engineering, text: format!("{}: {}", c, text) },
+            DecErr::Check(t) => DecErr::Check(format!("{}: {}", c, t)),
+            DecErr::Cache(t) => DecErr::Cache(format!("{}: {}", c, t)),
+            e => e,
+        }
+    }
+}
 impl std::fmt::Display for DecErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -932,7 +944,8 @@ impl<F: Field> SIndec<F> {
             }
             f
         };
-        let fam = if ex.is_some() && xq.is_none() { self.reroute_family(p, r)? } else { None };
+        let mut fam_tried = ex.is_some() && xq.is_none();
+        let mut fam = if fam_tried { self.reroute_family(p, r).map_err(|e| e.ctx(&format!("M5i reroute of {} ⊗ {}", self.tfmt(p), crate::smapio::rung_str(&r))))? } else { None };
         let mut sums: Vec<SSummand> = vec![];
         for (q, s, cnt) in tg {
             let (lq, eq) = {
@@ -962,7 +975,23 @@ impl<F: Field> SIndec<F> {
                 let key = self.idem_key(xq, &t);
                 self.target_pairs_keyed(key, p, &t)?
             } else {
-                self.target_pairs(p, &rs, &t)?
+                let what = format!("target {} at v^{} of {} ⊗ {}", self.tfmt(q), s, self.tfmt(p), crate::smapio::rung_str(&r));
+                match self.target_pairs(p, &rs, &t) {
+                    Ok(x) => x,
+                    Err(err) if eq.is_some() && !fam_tried => {
+                        // M5i: an idempotent target the provider cannot reach (no leaf of a
+                        // decomposable ladder in Search's tree): the commutation reroute of X
+                        fam_tried = true;
+                        fam = self.reroute_family(p, r).map_err(|e| e.ctx(&format!("{} (reroute after: {})", what, err)))?;
+                        let Some(f) = fam.as_ref() else { return Err(err.ctx(&format!("{} (no reroute)", what))) };
+                        let (a, b) = f.get(&(q, s)).cloned().unwrap_or_default();
+                        if a.len() != mx || b.len() != mx {
+                            return Err(DecErr::Check(format!("M5i reroute: {}: {} pairs, char X has {}", what, a.len(), mx)));
+                        }
+                        (a, b)
+                    }
+                    Err(err) => return Err(err.ctx(&what)),
+                }
             };
             if let Some(e) = ex {
                 // apply the source idempotent: ι ↦ Kron(e_p, R)∘ι, π ↦ π∘Kron(e_p, R)
@@ -1099,7 +1128,7 @@ impl<F: Field> SIndec<F> {
         rs2.extend_from_slice(&w[j..]);
         let d = self.dec_word(a, &rs2);
         self.busy.remove(&key);
-        let d = d?;
+        let d = d.map_err(|e| e.ctx(&format!("rerouted dec_word({}, {})", self.tfmt(a), crate::smapio::rungs_str(&rs2))))?;
         // commutation chain X = w·R → Y (R moved from position |w| to j)
         let mut cur = w.clone();
         cur.push(r);
