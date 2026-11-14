@@ -21,3 +21,10 @@ Real peak memory grows with the knot's cost in order.txt: up to ~2.8 GB per job 
 10_104 (cost 7.3e5?) reached VmHWM 8.4 GB (3 threads). Three runs (10_123, 10_118, 10_99, 10_91, 10_112 attempts, kept in
 runs_c2/k3/out_oom/) were killed by the cgroup OOM killer when 2-4 jobs ran in parallel (7+ GB each), or aborted at ulimit -v 6.8 GB
 (10_112): these are NOT check failures, they are re-run alone with ulimit -v 12 GB (queue5.sh: cost >= 4e5 one job at a time).
+
+## Status at this checkpoint (continuing)
+- Knots computed: **61** (47 from C2-1/C2-3 + 14 new: 8_18, 10_85, 10_100, 10_148, 10_155 (the 5 refused), 10_149, 10_94, 10_159, 10_82, 10_157, 10_106, 10_99, 10_104, + 1 more listed in gl4_222.json); all **61 PASS** both primes, 0 FAIL, 0 one-prime-only.
+- Largest real peaks (VmHWM): 10_99 9.8 GB (3 threads, cost 8.7e5), 10_104 8.4 GB, 10_100 3.3 GB. Jobs of cost >= 7e5 need ~8-10 GB each, so they run one at a time (ulimit -v 12 GB).
+- Remaining: the rest of the <=10-crossing queue (10_116, 10_91, 10_112, 10_118, 10_109, 10_123 pending/retry) and 11-12-crossing knots;
+  each heavy knot costs ~2.5-3 h (two primes sequentially), so the full 185 is far beyond one session. Runs continue; later checkpoints refresh gl4_222.json / gl4_222_summary.md.
+- OOM events (not check failures): runs_c2/k3/out_oom/ (10_109, 10_123, 10_118, 10_116?/10_99 first attempt, 10_91, 10_112); out_refused_* hold the original cap refusals.
