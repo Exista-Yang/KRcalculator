@@ -2,5 +2,10 @@
 |---|---|---|---|---|---|---|---|---|---|---|
 | 11a_355 | 1 1 1 1 1 1 1 2 -1 2 2 2 | 2206 | 2025 | 91 | 45 | eq / eq | yes | yes | yes | PASS |
 | 12n_721 | -1 -2 -2 -1 -1 -1 -1 2 2 2 2 2 | 726 | 625 | 51 | 25 | eq / eq | yes | yes | yes | PASS |
+| 11a_334 | 1 1 1 1 1 1 2 -1 2 2 2 2 | 2598 | 2401 | 99 | 49 | eq / eq | yes | yes | yes | PASS |
+| 12n_574 | 1 2 2 2 2 2 2 1 1 2 2 2 | 498 | 309 | 51 | 31 | eq / eq | yes | yes | yes | PASS |
+| 12n_466 | 1 -2 -2 -2 1 -2 -1 2 -1 -2 -2 -2 | 3022 | 2809 | 107 | 53 | eq / eq | yes | yes | only 32b | PARTIAL (one prime) |
+| 12n_417 | -1 2 2 1 1 2 2 2 1 1 2 2 | 2242 | 1861 | 99 | 53 | eq / eq | yes | yes | yes | PASS |
+| 12n_468 | 1 2 2 2 2 1 1 -2 -2 -2 -2 -2 | 1518 | 1369 | 75 | 37 | eq / eq | yes | yes | yes | PASS |
 
-2 knots computed, 2 PASS, failures: []
+7 knots computed, 7 PASS, failures: []
