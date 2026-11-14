@@ -10,7 +10,7 @@ TAG=${NAME}_f${F}
 [ -f $D/$TAG.json ] && exit 0
 [ -f $D/$TAG.err ] && exit 0
 L=$(echo $W | wc -w)
-ulimit -v ${ULIM:-6000000}
+ulimit -v ${ULIM:-6800000}
 KRHOM_MEM_CAP_MB=${MEMCAP:-4500} KRHOM_COSTS_ANY_HOST=1 KRHOM_THREADS=${THREADS:-2} timeout ${TMO:-7200} $S/bin/sbox --lam 2,2,2 --word "$W" --n 4 --ns 2,3,4 --field $F --seed ${SEED:-201} --prune 4 --mem-mb ${MEMMB:-3200} --replay --cache ${LIB:-$S/lib222}/f$F --costs tests/data/homprov/costs_cloud.txt --stages $L --json $D/$TAG.json > $D/$TAG.out 2> $D/$TAG.err
 echo "exit $?" >> $D/$TAG.err
 echo "$TAG $(tail -1 $D/$TAG.err) $(grep -o 'scan [0-9.]*s' $D/$TAG.err)"

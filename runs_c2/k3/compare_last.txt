@@ -1,2 +1,2 @@
-55 knots computed, 55 PASS (both primes), failures: [], one prime only: []
-reduced rank4 == (reduced rank3)^2 for 47 of 55 ; not for ['8_19', '10_124', '10_125', '10_139', '10_152', '10_161', '12n_235', '12n_242']
+57 knots computed, 57 PASS (both primes), failures: [], one prime only: []
+reduced rank4 == (reduced rank3)^2 for 49 of 57 ; not for ['8_19', '10_124', '10_125', '10_139', '10_152', '10_161', '12n_235', '12n_242']
