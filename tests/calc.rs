@@ -78,7 +78,7 @@ fn refusals_exit_1() {
     refused(&["2", "--braid", "a1"], 1, "mixes letters and integers");
     refused(&["2", "--braid", "a b"], 1, "no spaces");
     refused(&["2", "--braid", "1 2", "--strands", "2"], 1, "too small");
-    refused(&["2", "--braid", "1 x"], 1, "not a signed integer");
+    refused(&["2", "--braid", "1 1.5"], 1, "not a signed integer");
     refused(&["2", "--braid", "1 1", "--colors", "0"], 1, "colors are integers >= 1");
     refused(&["2", "--braid", "1 1", "--colors", "2,x"], 1, "colors are integers >= 1");
     refused(&["2", "--pd", "[[1,2,3]]"], 1, "invalid PD code");
@@ -129,8 +129,8 @@ fn uncolored_route_two_primes_and_letters() {
     let b = krhom(&["2,3", "--braid", "1 -2 1 -2", "--strands", "3"]);
     ok(&b, "1 -2 1 -2");
     assert_eq!(blocks(&a.out), blocks(&b.out));
-    // the Khovanov (N=2) figure-eight has total rank 8 unreduced
-    assert!(a.out.contains("total rank: 8"), "{}", a.out);
+    // the Khovanov (N=2) figure-eight has total rank 6 unreduced
+    assert!(a.out.contains("total rank: 6"), "{}", a.out);
     // PD input
     let c = krhom(&["2", "--pd", "[[1,4,2,5],[3,6,4,1],[5,2,6,3]]"]);
     ok(&c, "PD trefoil");
@@ -194,9 +194,9 @@ fn json_csv_and_batch() {
     assert!(sj.starts_with("[\n{") && sj.matches("\"tool\":\"krhom\"").count() == 4 && sj.contains("\"kind\":\"unsupported\""), "{}", sj);
     let sc = std::fs::read_to_string(&cb).unwrap();
     assert!(sc.starts_with("name,N,reduced,t,q,rank\n") && sc.contains("trefoil,2,false,"), "{}", sc);
-    // the figure-eight Khovanov homology: rank 8 = sum of the CSV ranks
+    // the figure-eight Khovanov homology: rank 6 = sum of the CSV ranks
     let r8: i64 = sc.lines().filter(|l| l.starts_with("fig8,")).map(|l| l.rsplit(',').next().unwrap().parse::<i64>().unwrap()).sum();
-    assert_eq!(r8, 8, "{}", sc);
+    assert_eq!(r8, 6, "{}", sc);
 }
 
 #[test]

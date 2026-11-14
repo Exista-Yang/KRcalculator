@@ -1,0 +1,18 @@
+gl_N for N in [2, 3, 4]  strands 4  crossings 3  components 1  colors [2]
+braid: 1 2 3
+method: singular (localized box engine; library l2222_n4 @ data ee548d2, labels (2,2,2,2), prune 4, box N 4, seed 201)
+coefficients: Q
+time 209.13s
+N = 2
+  Poincare polynomial: t^0q^0
+  total rank: 1
+  Euler characteristic: 1
+N = 3
+  Poincare polynomial: t^0q^-2 + t^0q^0 + t^0q^2
+  total rank: 3
+  Euler characteristic: q^2 + 1 + q^-2
+N = 4
+  Poincare polynomial: t^0q^-4 + t^0q^-2 + 2t^0q^0 + t^0q^2 + t^0q^4
+  total rank: 6
+  Euler characteristic: q^4 + q^2 + 2 + q^-2 + q^-4
+exit 0

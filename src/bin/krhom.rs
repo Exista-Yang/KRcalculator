@@ -515,8 +515,8 @@ fn box_route(o: &Opts, out: &mut Outcome, bw: &BraidWord, labels: &[usize], wi: 
     let status_files: Vec<PathBuf> = [Some(&inst31), inst32.as_ref()].into_iter().flatten().filter_map(|i| i.status.clone()).collect();
     let complete = inst31.status.is_none();
     let diag = |e: CalcErr| -> CalcErr {
-        if e.code() != 4 {
-            return e;
+        if e.code() != 4 || e.msg().contains("this binary's route stamp") {
+            return e; // not a library error, or the stamp preflight's own message
         }
         let first = e.msg().lines().next().unwrap_or("").chars().take(400).collect::<String>();
         if !complete {

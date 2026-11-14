@@ -84,7 +84,7 @@ verify_installed() {
   local bad
   bad="$(cd "$dest" && sed -n '/^files:$/,$p' LIBRARY.txt | tail -n +2 | awk '{print $2"  "$3}' | sha -c --quiet 2>&1 || true)"
   if [ -n "$bad" ]; then
-    [ "$quiet" = 1 ] || { echo "  $id/$fld: $(echo "$bad" | grep -c . ) listed file(s) missing or changed, e.g.:" >&2; echo "$bad" | head -3 | sed 's/^/    /' >&2; }
+    [ "$quiet" = 1 ] || { echo "  $id/$fld: $(echo "$bad" | grep -c "FAILED") listed file(s) missing or changed, e.g.:" >&2; echo "$bad" | head -3 | sed 's/^/    /' >&2; }
     return 1
   fi
   return 0
