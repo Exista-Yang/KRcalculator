@@ -1,1 +1,8 @@
 library: 16 types, 16 closable, build 5.9s (0 provider calls, 233 layer-A loads), hash d7f41254bac1d360, commit 8fe55b54ca36401577893edd5ece587c0264bd45
+box exit 0
+library: 16 types, 16 closable, build 6.2s (0 provider calls, 233 layer-A loads), hash d7f41254bac1d360, commit 8fe55b54ca36401577893edd5ece587c0264bd45
+word [1, -2, -2, 1, 1, -2, -2, -2, -2, -2, -2, -2]: chi = decat_chi for 6 closures; scaling: 660358 entries checked, 138430 zero at both points, 0 declared 0
+  accumulator stage 12 mode None: 216 points, digest 8fdfcb6508709eed
+  accumulator stage 12 mode Some(0): 36 points, digest fa107c9cf7fae12d
+finish: shards [(0, 1)], determinant pass 6912 checks at 216 points, close 210.0s, total 279.7s
+finish exit 0
