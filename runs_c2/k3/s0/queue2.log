@@ -13,3 +13,4 @@ runs_c2/k3/s0/one.sh: line 14: 30898 Killed                  KRHOM_MEM_CAP_MB=${
 Terminated
 12a_1218_f31 exit 143 
 12n_114_f32b exit 0 scan 16047.4s
+12a_1218_f32b exit 2 
