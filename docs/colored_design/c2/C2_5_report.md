@@ -176,7 +176,14 @@ so class A stays blocked by them even after M5i, unless a finer Lemma A plan (or
   the only inputs that changed are cost records (measurements) and the provider chain (B4w's, as merged).
 - Calibration records are measurements of exactly the calls the providers asked for (no record was edited; the
   120.4 s measurement that keeps pair 214 out was kept).
-@@SUITE@@
+- **Full suite** `KRHOM_COSTS_ANY_HOST=1 KRHOM_THREADS=4 cargo test --release --no-fail-fast`: **285 passed, 0 failed,
+  36 ignored** (58 test binaries; runs_c2/k4/fix/full_suite.log). A first run without `KRHOM_COSTS_ANY_HOST`
+  (runs_c2/k4/fix/full_suite_run1_hoststamp_race.log) failed `tests/sindec.rs::d7_layer_a_round_trip_and_stale_stamp`
+  ("layer A not used", 62 vs 0): this container reports 2.30 GHz, the test cost table is stamped 2.10 GHz, so the
+  table is rejected, and `tests/sindec.rs:790` sets `KRHOM_COSTS_ANY_HOST` in-process while d7 runs in parallel, so
+  d7's two builders see different provider stamps. Pre-existing and host-dependent (not touched by this session;
+  sindec tests are C2-4's area); with the variable set from the start the test passes. Worth fixing by not mutating
+  the process environment in tests.
 
 ## 7. Open problems
 
@@ -190,4 +197,9 @@ so class A stays blocked by them even after M5i, unless a finer Lemma A plan (or
    1235 (84 M), 1894 (185 M) need a better Lemma A plan (smaller windows) or another route.
 4. **1235 / 1471**: Search is exhausted on the (1,4,2) windows (π∘ι not a scalar, i.e. the summand is not split by
    that window), not refused: no further calibration can help the chain there.
-5. M5i (C2-4) remains the dominant blocker of every 4-strand knot.
+5. **Test race** (section 6): tests/sindec.rs:790 sets `KRHOM_COSTS_ANY_HOST` in-process; on a host whose CPU
+   stamp differs from the test cost table this breaks d7 when run without the variable.
+6. `sbox --provider m4c-lf --replay` was compiled and wired but not exercised on a 4-strand word (nothing new is
+   coverable before M5i); the first M5i 4-strand run should use it.
+7. M5i (C2-4) remains the dominant blocker of every 4-strand knot; after M5i, class A still needs pairs 1235, 1444,
+   1470, 1894 (problem 3).
