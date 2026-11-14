@@ -1,0 +1,13 @@
+[libbuild] replay corner-markov-ext-n4 F31: 144 jobs, 0 already certified, 144 to run, 4 workers
+[libbuild] cross 2,0,0,0/0,2,0,0/0,0,2,0/0,0,0,2 0 pos x1 -> ok in 9.5s (peak 70 MB, X 6)
+[libbuild] cross 1,1,0,0/1,1,0,0/0,0,2,0/0,0,0,2 0 neg x1 -> ok in 9.5s (peak 70 MB, X 36)
+[libbuild] cross 2,0,0,0/0,2,0,0/0,0,2,0/0,0,0,2 0 neg x1 -> ok in 9.5s (peak 70 MB, X 6)
+[libbuild] cross 1,1,0,0/1,1,0,0/0,0,2,0/0,0,0,2 0 pos x1 -> ok in 10.3s (peak 70 MB, X 36)
+[libbuild] cross 2,0,0,0/0,1,1,0/0,1,1,0/0,0,0,2 0 neg x1 -> ok in 11.4s (peak 70 MB, X 36)
+[libbuild] cross 0,2,0,0/2,0,0,0/0,0,2,0/0,0,0,2 0 pos x1 -> ok in 11.9s (peak 70 MB, X 36)
+[libbuild] cross 2,0,0,0/0,1,1,0/0,1,1,0/0,0,0,2 0 pos x1 -> ok in 11.9s (peak 70 MB, X 36)
+[libbuild] cross 0,2,0,0/2,0,0,0/0,0,2,0/0,0,0,2 0 neg x1 -> ok in 12.1s (peak 70 MB, X 36)
+[libbuild] cross 1,1,0,0/1,0,1,0/0,1,1,0/0,0,0,2 0 pos x1 -> ok in 8.5s (peak 70 MB, X 108)
+[libbuild] cross 2,0,0,0/0,0,2,0/0,2,0,0/0,0,0,2 0 neg x1 -> ok in 8.8s (peak 71 MB, X 36)
+[libbuild] cross 2,0,0,0/0,0,2,0/0,2,0,0/0,0,0,2 0 pos x1 -> ok in 9.3s (peak 70 MB, X 36)
+[libbuild] cross 1,1,0,0/1,0,1,0/0,1,1,0/0,0,0,2 0 neg x1 -> ok in 8.8s (peak 70 MB, X 108)
