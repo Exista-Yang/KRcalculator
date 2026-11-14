@@ -453,9 +453,12 @@ impl<F: Field, P: HomProvider<F> + ?Sized> DecHom<F> for P {
 }
 
 /// A layer-A header with the cost-table token reduced to its solver generation
-/// (`costs=hs-kl1:273recs:b8c4…` -> `costs=hs-kl1`), for `SIndecOpts::layer_a_route_stamp`.
+/// (`costs=hs-kl1:273recs:b8c4…` -> `costs=hs-kl1`), without the C2-7 route token `c27=…`, for
+/// `SIndecOpts::layer_a_route_stamp`.
 pub fn route_header(h: &str) -> String {
     h.split(' ')
+        // C2-7: the `c27=` token only steers which Leaves words / routes are attempted
+        .filter(|t| !t.starts_with("c27="))
         .map(|t| match t.strip_prefix("costs=") {
             Some(v) => format!("costs={}", v.split(':').next().unwrap_or("")),
             None => t.to_string(),

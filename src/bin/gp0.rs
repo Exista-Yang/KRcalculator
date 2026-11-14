@@ -67,6 +67,14 @@ fn main() {
         return;
     }
     let lam: Vec<u8> = opt(&args, "--lam").unwrap_or_else(|| "3,3,3".into()).split(',').map(|x| x.parse().unwrap()).collect();
+    // C2-7: gp0 --lam L --steps "P|RUNG|Q;..." [--joint] [--joint-suffix K] [--plan-only]: every
+    // Lemma A step of the executor's own plan (Leaves::plan_words, the words build_leaves uses)
+    // for X = L_P·RUNG and target Q, with window / whole unknowns per degree, then the exit chain
+    // W_q -> L_q dry run (B2 planner, leaf_pair_plan_opts).
+    if let Some(spec) = opt(&args, "--steps") {
+        steps_census(&lam, &spec, &args);
+        return;
+    }
     let n: u8 = opt(&args, "--n").expect("--n").parse().unwrap();
     let pairs: Vec<usize> = match opt(&args, "--pairs") {
         Some(p) => p.split(',').map(|x| x.parse().unwrap()).collect(),
@@ -380,5 +388,98 @@ fn b4<F: krhom::field::Field>(lam: &[u8], n: u8, pairs: &[usize], args: &[String
                 Err(e) => println!("B4 {} pair {} q {}: FAILED: {}", F::name(), k, s.table(tg.q).fmt(), e),
             }
         }
+    }
+}
+
+/// C2-7 all-steps census (see `--steps` in main).
+fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
+    use krhom::leaves::plan_steps;
+    let mut s = Schur::new(lam);
+    let id = s.intern(Table::identity(lam));
+    let mut leaves = Leaves::default();
+    leaves.joint = args.iter().any(|a| a == "--joint");
+    if let Some(v) = opt(args, "--joint-suffix") {
+        leaves.joint_suffix = v.parse().unwrap();
+    }
+    if let Some(v) = opt(args, "--joint-keep") {
+        leaves.joint_keep = v.parse().unwrap();
+    }
+    if let Some(v) = opt(args, "--joint-cap") {
+        leaves.joint_cap = v.parse().unwrap();
+    }
+    if let Some(v) = opt(args, "--alt-len") {
+        leaves.alt_len = v.parse().unwrap();
+    }
+    leaves.verbose = args.iter().any(|a| a == "--verbose");
+    let costs = opt(args, "--costs").map(|p| CostTable::load(std::path::Path::new(&p)).expect("cost table"));
+    for one in spec.split(';').filter(|x| !x.is_empty()) {
+        let f: Vec<&str> = one.split('|').collect();
+        let p = s.intern(Table::parse(f[0]));
+        let rung = krhom::smapio::parse_rung(f[1]).unwrap();
+        let q = s.intern(Table::parse(f[2]));
+        let mut x = canonical_ladder(&mut s, p);
+        x.push(rung);
+        let t0 = Instant::now();
+        let mut sc = StepCache::new();
+        let js = junction_types(&mut s, &mut sc, &x, &[q]);
+        let plan = leaves.plan_words(&mut s, &mut sc, &x, &js, id);
+        let steps = plan_steps(&mut s, &mut sc, &x, &plan);
+        let mut mx = 0u128;
+        let mut over = 0usize;
+        println!("== X = L_{}·{} [{}] ({} flows), q = {}{}: {} steps, plan {:.1} s", f[0], f[1], rungs_str(&x), flows(lam, &x), f[2], if leaves.joint { " [joint]" } else { "" }, steps.len(), t0.elapsed().as_secs_f64());
+        for st in &steps {
+            mx = mx.max(st.score_w);
+            let ov = st.score_w > 100_000;
+            over += ov as usize;
+            let mut rec = String::new();
+            if ov {
+                // admission: ≤ 4e5 with an uncensored exact-shape record (window if proper, else whole)
+                let mut a = st.wfrom.clone();
+                a.push(st.rho);
+                let ws = krhom::homprov::win_split(lam, &a, &st.wto);
+                let (labs, wa, wb) = if ws.at > 0 || ws.suffix > 0 { (ws.labels.clone(), ws.a.clone(), ws.b.clone()) } else { (lam.to_vec(), a.clone(), st.wto.clone()) };
+                for &(d, _, _) in &st.degs {
+                    for (sa, sb) in [(&wa, &wb), (&wb, &wa)] {
+                        let u = krhom::homprov::hom_unknowns(&labs, sa, sb, d);
+                        if u > 100_000 {
+                            let r = costs.as_ref().and_then(|c| c.predict_exact(&labs, flows(&labs, sa), flows(&labs, sb), u, d));
+                            rec.push_str(&format!(" [{:?} {}->{} d={} {} {}]", labs, flows(&labs, sa), flows(&labs, sb), d, u, match r { Some(t) => format!("rec {:.0}s", t), None => "norec".into() }));
+                        }
+                    }
+                }
+            }
+            println!(
+                "  L{} {} -> {} G={} {}[{}]·{} -> [{}] win at {} suf {} {:?} score {} W12 {} score_w {}{}{}",
+                st.level,
+                s.table(st.from).fmt(),
+                s.table(st.to).fmt(),
+                st.g.fmt_ec(),
+                if st.to == q { "FINAL " } else { "" },
+                rungs_str(&st.wfrom),
+                rungs_str(&[st.rho]),
+                rungs_str(&st.wto),
+                st.win_at,
+                st.win_suffix,
+                st.win_labels,
+                st.score,
+                st.w12,
+                st.score_w,
+                st.degs.iter().map(|(d, wh, wi)| format!(" d{}:{}/{}", d, wh, if *wi == u128::MAX { "-".to_string() } else { wi.to_string() })).collect::<String>(),
+                rec
+            );
+        }
+        // exit chain dry run
+        let wq = plan[x.len()].iter().find(|e| e.0 == q).map(|e| e.1.clone()).unwrap_or_default();
+        let lq = canonical_ladder(&mut s, q);
+        let ex = if wq == lq {
+            "W_q = L_q".to_string()
+        } else {
+            let mut pl = Planner::new();
+            match pl.plan(&mut s, q, &wq, &lq, &krhom::leaves::leaf_pair_plan_opts()) {
+                Ok(c) => format!("exit chain len {} (template ≤ {} flows, exact ≤ {})", c.len(), c.max_template_flows(), c.max_exact_unknowns()),
+                Err(e) => format!("exit chain: {}", e),
+            }
+        };
+        println!("  max step {} ; steps > 1e5: {} ; W_q [{}] {}", mx, over, rungs_str(&wq), ex);
     }
 }
