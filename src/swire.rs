@@ -1211,7 +1211,9 @@ pub fn generator_pass<F: PrimeField>(lib: &WLib<F>, nodes: &BoxNodes<F>, grid: &
         let mut ev = Eval::new(ar, Point { id, x: box_x(nodes, &mu) });
         let mut red: RedCache<F> = RedCache::default();
         let mut n = 0;
+        let gprof = std::env::var_os("KRHOM_GPROF").is_some();
         for (p, c) in &lib.closure {
+            let tg = std::time::Instant::now();
             for (side, maps) in [("ins", &c.ins), ("outs", &c.outs)] {
                 let outs = side == "outs";
                 let v: Vec<Vec<F>> = maps.iter().map(|&m| red.red_block(lib, &mut ev, m, if outs { Some(*p) } else { None }, if outs { None } else { Some(*p) }, cid).map(|b| b.a)).collect::<Result<_, _>>()?;
@@ -1220,6 +1222,9 @@ pub fn generator_pass<F: PrimeField>(lib: &WLib<F>, nodes: &BoxNodes<F>, grid: &
                     return Err(format!("generator determinant fails at box point {:?} for type {} ({}: {} vectors of length {}): redraw the nodes (another --seed) before any scan", mu, lib.names[p], side, v.len(), dim));
                 }
                 n += 1;
+            }
+            if gprof {
+                eprintln!("[gprof] point {} type {}: {} + {} generators, {:.3}s", id, lib.names[p], c.ins.len(), c.outs.len(), tg.elapsed().as_secs_f64());
             }
         }
         Ok(n)

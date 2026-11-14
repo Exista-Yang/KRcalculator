@@ -220,6 +220,64 @@ pub fn inverse<F: Field>(a: &[Vec<F>]) -> Option<Vec<Vec<F>>> {
     Some(aug.into_iter().map(|r| r[n..].to_vec()).collect())
 }
 
+/// C2-7: the columns `cols` of a⁻¹ (n × k, column order of `cols`) by Gaussian elimination of
+/// [a | E_cols] (forward elimination with row pivoting, then back substitution): n³/3 + n²k
+/// instead of the n³-type rref of [a | I] in `inverse`. None if a is singular.
+pub fn inverse_cols<F: Field>(a: &[Vec<F>], cols: &[usize]) -> Option<Vec<Vec<F>>> {
+    let n = a.len();
+    let k = cols.len();
+    let mut m: Vec<Vec<F>> = a.to_vec();
+    let mut r: Vec<Vec<F>> = (0..n).map(|i| cols.iter().map(|&c| if c == i { F::one() } else { F::zero() }).collect()).collect();
+    for c in 0..n {
+        let piv = (c..n).find(|&i| !m[i][c].is_zero())?;
+        m.swap(c, piv);
+        r.swap(c, piv);
+        let inv = m[c][c].inv();
+        let (top, bot) = m.split_at_mut(c + 1);
+        let (rtop, rbot) = r.split_at_mut(c + 1);
+        let prow = &top[c];
+        let prr = &rtop[c];
+        for (row, rr) in bot.iter_mut().zip(rbot.iter_mut()) {
+            if row[c].is_zero() {
+                continue;
+            }
+            let f = row[c].mul(&inv).neg();
+            for j in c..n {
+                if !prow[j].is_zero() {
+                    row[j].fma(&f, &prow[j]);
+                }
+            }
+            for j in 0..k {
+                if !prr[j].is_zero() {
+                    rr[j].fma(&f, &prr[j]);
+                }
+            }
+        }
+    }
+    // back substitution: x_i = (r_i - Σ_{j>i} m_ij x_j) / m_ii
+    let mut x: Vec<Vec<F>> = vec![vec![F::zero(); k]; n];
+    for i in (0..n).rev() {
+        let mut v = r[i].clone();
+        for j in i + 1..n {
+            if m[i][j].is_zero() {
+                continue;
+            }
+            let f = m[i][j].neg();
+            for t in 0..k {
+                if !x[j][t].is_zero() {
+                    v[t].fma(&f, &x[j][t]);
+                }
+            }
+        }
+        let inv = m[i][i].inv();
+        for t in 0..k {
+            v[t] = v[t].mul(&inv);
+        }
+        x[i] = v;
+    }
+    Some(x)
+}
+
 /// Localize a bimodule map Φ: B -> B' at x: f = L' Φ L^{-1} (|P'| × |P|).
 pub fn localize_map<F: Field>(b: &SBim<F>, bp: &SBim<F>, phi: &PMat<F>, x: &[F]) -> (Vec<FixedPoint>, Vec<FixedPoint>, Vec<Vec<F>>) {
     let p = fixed_points(b);
