@@ -35,7 +35,17 @@ for name, lam, w, _ in knots:
     word = list(map(int, w.split()))
     runs = {F: json.load(open('%s/%s_f%s.json' % (K, name, F))) for F in ('31', '32b') if os.path.exists('%s/%s_f%s.json' % (K, name, F))}
     if not runs:
-        notrun.append(name); continue
+        errs = {}
+        for F in ('31', '32b'):
+            f = '%s/%s_f%s.err' % (K, name, F)
+            errs[F] = (open(f).read().strip().splitlines() or [''])[-1] if os.path.exists(f) else 'not started'
+        killed = any(e.startswith('exit') and e != 'exit 0' for e in errs.values())
+        notrun.append(name)
+        out.append({'knot': name, 'word': list(map(int, w.split())), 'length': len(w.split()), 'primes': [],
+                    'status': 'FAIL' if killed else 'NOT COMPUTED (running / not started at snapshot)', 'run_tail': errs,
+                    'detail': 'sbox run(s) killed (exit 137 = kernel OOM kill at > 6 GB RSS, concurrent jobs); rerun alone scheduled (runs_c2/k3/s0/heavy.sh)' if killed else 'no finished run'})
+        if killed: fails.append(name)
+        continue
     R = {F: {(r['N'], r['reduced']): r for r in d['results']} for F, d in runs.items()}
     base = R['31'] if '31' in R else next(iter(R.values()))
     primes_ok = len(runs) == 2 and all({k: T(v['P']) for k, v in r.items()} == {k: T(v['P']) for k, v in base.items()} for r in R.values())
@@ -72,6 +82,9 @@ doc = {'lam': [2, 2, 2], 'prune': 4, 'box_N': 4, 'closures': [2, 3, 4], 'seed': 
 os.makedirs('docs/colored_design/c2', exist_ok=True)
 json.dump(doc, open('docs/colored_design/c2/gl4_222_s0.json', 'w'), indent=1)
 hdr = ["| knot | word | N=4 unred | N=4 red | N=3 unred | N=3 red | N=3 vs gl_3 reversed (u / r) | χ | scaling | primes | status |", "|---|---|---|---|---|---|---|---|---|---|---|"]
-open('docs/colored_design/c2/gl4_222_s0_summary.md', 'w').write('\n'.join(hdr + rows) + '\n\n%d knots computed, %d PASS, failures: %s\n' % (ncomp, ncomp - len(fails), fails))
+for r in out:
+    if 'unreduced' not in r:
+        rows.append('| %s | %s | - | - | - | - | - | - | - | - | %s |' % (r['knot'], ' '.join(map(str, r['word'])), r['status']))
+open('docs/colored_design/c2/gl4_222_s0_summary.md', 'w').write('\n'.join(hdr + rows) + '\n\n%d knots computed, %d PASS, failures: %s\n' % (ncomp, ncomp - len([f for f in fails if f not in notrun]), fails))
 print('%d knots computed, %d PASS (both primes), failures: %s, one prime only: %s' % (ncomp, ncomp - len(partial), fails, [x for x in partial if x not in fails]))
-print('reduced rank4 == (reduced rank3)^2 for', sum(r['red_rank4_eq_red_rank3_sq'] for r in out), 'of', ncomp, '; not for', [r['knot'] for r in out if not r['red_rank4_eq_red_rank3_sq']])
+print('reduced rank4 == (reduced rank3)^2 for', sum(r.get('red_rank4_eq_red_rank3_sq', False) for r in out), 'of', ncomp, '; not for', [r['knot'] for r in out if 'unreduced' in r and not r['red_rank4_eq_red_rank3_sq']])
