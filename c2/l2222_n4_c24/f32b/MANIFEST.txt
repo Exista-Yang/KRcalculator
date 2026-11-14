@@ -1,0 +1,11 @@
+lambda: 2,2,2,2
+field: F32B
+label: l2222_n4_c24/f32b (delta on top of l2222_n4_c25/f32b)
+code commit: 1d5cfed (branch colored-2c4-m5i)
+layer-A stamps: as l2222_n4_c25 (provider m4c-lf, M4c-lf stamp); new keys kind=idem and eq=/ep=m5i-peel1 (M5i)
+files: 247 layer_a, 244 tmpl (new relative to c25)
+restore: restore l2222_n4_c25/f32b first, then: cat layerA_tmpl_delta.tar.gz.part-* | tar -C CACHE_DIR -xzf -
+use: KRHOM_COSTS_ANY_HOST=1 libbuild one/replay | sbox --replay --cache CACHE_DIR --costs c2/costs_2222_c25.txt --provider m4c-lf --stamp-route
+jobs: the 43 C2-2 NeedsIdempotent jobs, see colored-2c4-m5i docs/colored_design/c2/C2_4_report.md
+sha256:
+07724ac568f7b0e6fb8eaa5f846becd241b6d85f002f580ec56e5f8ddb32b903  layerA_tmpl_delta.tar.gz.part-000

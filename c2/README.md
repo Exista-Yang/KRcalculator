@@ -22,3 +22,10 @@ Restore: see each MANIFEST.txt (KRHOM_COSTS_ANY_HOST=1, --costs tests/data/hompr
   docs/colored_design/c2/C2_5_report.md.
 - costs_2222_c25.txt: costs_2222.txt + the C2-5 window / Leaves-step records (calibration rounds 1-5).
 - runs2222_c25/: C2-5 replay JSON lines and logs.
+
+## C2-4: M5i delta of the (2,2,2,2) library (session C2-4, branch colored-2c4-m5i)
+
+- l2222_n4_c24/{f31,f32b}: layer-A + template files added by the 43 C2-2 NeedsIdempotent jobs (M5i) on top of
+  l2222_n4_c25 (restore c25 first, then the delta; same M4c-lf stamp, `--provider m4c-lf --stamp-route`,
+  costs_2222_c25.txt). 31 / 43 jobs certified for each prime (run = replay); new key kinds `kind=idem` and
+  `eq=`/`ep=m5i-peel1`. See colored-2c4-m5i docs/colored_design/c2/C2_4_report.md.
