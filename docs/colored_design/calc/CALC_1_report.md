@@ -148,7 +148,17 @@ t^0q^-4: 2 vs 1`), exit 1.
 
 ### H11. Checker default run
 
-See section 6.
+`tools/randcheck.py --seed 20261115` (runs_calc/h11_default.log; runs_random/20261115/), `--jobs 2`
+(2 threads per krhom), 31 min:
+
+```
+seed=20261115 n=24 PASS 24 FAIL 0 WARN 0 SKIP 0 TIMEOUT 0 ERROR 0; checks: primes 47, seeds 31, chi 94, isotopy 10, markov 15, mirror 17, duality-N3 41, reversal 4, N2 47, lewark 22, unknot 6, closed-form 72, cross-engine 16; 1871s
+```
+
+No WARN. T2 8, T3 12 (6 Mode A including 2 unknot cores, 6 Mode B: partners reverse x4,
+mirror, rotate), T4 4 (all 120 T4 candidate words were covered by the library; the 4
+words `1 3 2`, `-1 2 -1 -1 3`, `-1 3 -1 -1 -2`, `1 1 -3 1 -2` took 160-510 s per example). Every
+box run used different node seeds for the two primes (201 and 202 + subseed mod 97) and agreed.
 
 ## 3. Timings (per prime, this branch, 4 threads)
 
