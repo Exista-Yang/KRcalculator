@@ -2,7 +2,7 @@
 # memory guard + retry runner for slice 2: kill the youngest sbox when total RSS > LIM_KB; retry killed/refused knot-primes later (one at a time, when RSS < LOW_KB and < 4 sbox)
 cd /home/user/KRcalculator
 LIM=${LIM_KB:-13300000}; LOW=${LOW_KB:-8500000}
-export S=/tmp/claude-0/-home-user-KRcalculator/f29f8b74-5f26-5b1e-b5d7-0d65e52edefb/scratchpad MEMCAP=${CAP:-16000} MEMMB=${CAP:-16000} THREADS=1 TMO=14400
+export S=/tmp/claude-0/-home-user-KRcalculator/f29f8b74-5f26-5b1e-b5d7-0d65e52edefb/scratchpad MEMCAP=${CAP:-16000} MEMMB=${CAP:-16000} THREADS=1 TMO=${TMO:-43200}
 mkdir -p runs_c2/k3/out_s2/killed
 declare -A started
 while true; do
