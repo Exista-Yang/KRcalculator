@@ -11,7 +11,8 @@ library data on data-gl6 under c2/l2222_n4/.
   **144 / 144** for both. Failures by cause (both primes): **43 NeedsIdempotent** (40 pairs + 3 closure types),
   19 pair failures by admission / search (9 Refused, 10 Exhausted at 2x), 8 closure types Refused. Max X certified
   15 552 flows (the maximum of the level set); job wall mean 18-20 s, p90 25 s; peak child RSS 0.35 / 2.1 GB.
-  REPLAY_SUMMARY
+  Replay (provider refusing every call, all from layer A): every certified job reproduces, both primes (level
+  1 087 / 1 157 = all certified, corner 144 / 144).
 - **New blocker: M5i (idempotents).** 7 kept types of (2,2,2,2) at N = 4 (25 over all levels) have a decomposable
   minimal-flow canonical ladder (char L_p = b_p + b_r, one with two extra summands), so `SIndec::ty` returns
   NeedsIdempotent and the engine has no reduced coordinates for them (sengine `lib_shape`). C2-1's census did not
@@ -23,7 +24,7 @@ library data on data-gl6 under c2/l2222_n4/.
 - **First 4-strand (2,2,2,2) gl_4 values** (the words that avoid the M5i types): the Markov words
   σ_1^m σ_2^{±1} σ_3^{±1} (m = 1…5), σ_1σ_2σ_1σ_3, and the stabilized 3-strand knots 4_1·σ_3 and 5_2·σ_3:
   **11 words, all PASS** (χ = decat_chi on all 6 closures, D14 scaling, N' = 3 = engine2 gl_3 of the reversed
-  braid, N' = 2 rank 1, PRIMES_SUMMARY). The Markov words equal the 2-strand (2,2) σ^m values exactly at N' = 2, 3, 4,
+  braid, N' = 2 rank 1, F31 = F32b closure by closure). The Markov words equal the 2-strand (2,2) σ^m values exactly at N' = 2, 3, 4,
   reduced and unreduced; 4_1·σ_3 and 5_2·σ_3 equal C2-1's 3-strand (2,2,2) values exactly (N' = 3, 4, both
   modes); σ_1σ_2σ_3 is the colored unknot [4 choose 2]_q. These are the first runs of the 4-strand localized
   pipeline on a (2,2,2,2) library: they validate the library (layer A, replay), the sharded box size (1 296
@@ -38,7 +39,8 @@ library data on data-gl6 under c2/l2222_n4/.
 - **Code change**: src/bin/libbuild.rs — a child `pair K` job locates its plan pair without building the whole plan
   (`plan_pair_at`, same enumeration as `pruned_plan`; 23 s → 8 s per child at (2,2,2,2); KRHOM_LIBBUILD_FULLPLAN=1
   restores the old path; identical (p, rung) checked on 4 pairs). New examples: idem_list, idem_end0, ladder_search
-  (M5i scoping). FULL_SUITE
+  (M5i scoping). Full suite `KRHOM_THREADS=4 cargo test --release`: **282 passed, 0 failed, 36 ignored**
+  (runs_c2/k4/full_suite.log).
 
 ## 1. (2,2,2,2) library (runs_c2/k4/lib, runs_c2/k4/calib) [M]
 
@@ -54,10 +56,10 @@ has no `--provider`; and the dominant failure, NeedsIdempotent, is not a provide
 
 | set | prime | jobs | run | after fix (calibrated table) | replay | wall (run) | max X | failures |
 |---|---|---|---|---|---|---|---|---|
-| level-n4 (1 032 pairs + 125 closure) | F31 | 1 157 | 1 066 (92.1 %) | **1 087 (93.9 %)** | REPLAY_F31_L | 4 992 s | 15 552 | 70 |
-| level-n4 | F32b | 1 157 | **1 087 (93.9 %)** | (calibrated from the start) | REPLAY_F32B_L | 4 763 s* | 15 552 | 70 |
-| corner-markov-ext-n4 (96 cross + 48 closure) | F31 | 144 | 141 | **144** | REPLAY_F31_C | 362 s | 1 296 | 0 |
-| corner-markov-ext-n4 | F32b | 144 | **144** | – | REPLAY_F32B_C | 281 s | 1 296 | 0 |
+| level-n4 (1 032 pairs + 125 closure) | F31 | 1 157 | 1 066 (92.1 %) | **1 087 (93.9 %)** | 1 087 (all certified) | 4 992 s | 15 552 | 70 |
+| level-n4 | F32b | 1 157 | **1 087 (93.9 %)** | (calibrated from the start) | 1 087 (all certified) | 4 763 s* | 15 552 | 70 |
+| corner-markov-ext-n4 (96 cross + 48 closure) | F31 | 144 | 141 | **144** | 144 | 362 s | 1 296 | 0 |
+| corner-markov-ext-n4 | F32b | 144 | **144** | – | 144 | 281 s | 1 296 | 0 |
 
 \* F32b wall includes a restart (3 → 4 workers, resumed) and contention with the 4-strand scans.
 
@@ -136,7 +138,22 @@ Command per (word, prime) (runs_c2/k4/markov/one.sh): `sbox --lam 2,2,2,2 --word
 see section 4). References: 2-strand (2,2) σ^m xscan of C2-1 (runs_c2/xscan/s{m}_f{F}_p4.json), C2-1's 3-strand
 (2,2,2) values (gl4_222.json), engine2 gl_3 of the reversed braid (runs_c2/k4/e2ref), N' = 2 rank 1.
 
-WORDS_TABLE
+| word | braid | N'=4 u / r | N'=3 u / r | N'=2 | N'=3 vs gl_3 reversed (u / r) | reference | comparison | χ | scaling | primes | status |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| m1 | 1 2 3 | 6 / 1 | 3 / 1 | 1 / 1 | eq / eq | colored unknot | u4:eq r4:eq u3:eq | yes | yes | F31 = F32b | PASS |
+| m2 | 1 1 2 3 | 36 / 6 | 9 / 3 | 1 / 1 | eq / eq | 2-strand sigma^2 (xscan) | u2:eq r2:eq u3:eq r3:eq u4:eq r4:eq | yes | yes | F31 = F32b | PASS |
+| m3 | 1 1 1 2 3 | 22 / 9 | 7 / 3 | 1 / 1 | eq / eq | 2-strand sigma^3 (xscan) | u2:eq r2:eq u3:eq r3:eq u4:eq r4:eq | yes | yes | F31 = F32b | PASS |
+| m4 | 1 1 1 1 2 3 | 64 / 18 | 13 / 5 | 1 / 1 | eq / eq | 2-strand sigma^4 (xscan) | u2:eq r2:eq u3:eq r3:eq u4:eq r4:eq | yes | yes | F31 = F32b | PASS |
+| m5 | 1 1 1 1 1 2 3 | 46 / 25 | 11 / 5 | 1 / 1 | eq / eq | 2-strand sigma^5 (xscan) | u2:eq r2:eq u3:eq r3:eq u4:eq r4:eq | yes | yes | F31 = F32b | PASS |
+| m3n | 1 1 1 -2 3 | 22 / 9 | 7 / 3 | 1 / 1 | eq / eq | 2-strand sigma^3 (xscan) | u2:eq r2:eq u3:eq r3:eq u4:eq r4:eq | yes | yes | F31 = F32b | PASS |
+| m3nn | 1 1 1 2 -3 | 22 / 9 | 7 / 3 | 1 / 1 | eq / eq | 2-strand sigma^3 (xscan) | u2:eq r2:eq u3:eq r3:eq u4:eq r4:eq | yes | yes | F31 = F32b | PASS |
+| m3x | 1 1 1 -2 -3 | 22 / 9 | 7 / 3 | 1 / 1 | eq / eq | 2-strand sigma^3 (xscan) | u2:eq r2:eq u3:eq r3:eq u4:eq r4:eq | yes | yes | F31 = F32b | PASS |
+| u_s3 | 1 2 1 3 | 36 / 6 | 9 / 3 | 1 / 1 | eq / eq | 2-strand sigma^2 (xscan) | u2:eq r2:eq u3:eq r3:eq u4:eq r4:eq | yes | yes | F31 = F32b | PASS |
+| w41s | 1 -2 1 -2 3 | 46 / 25 | 11 / 5 | 1 / 1 | eq / eq | 3-strand 4_1 (C2-1) | u3:eq u4:eq r3:eq r4:eq | yes | yes | F31 = F32b | PASS |
+| w52s | 1 1 1 2 -1 2 3 | 78 / 49 | 15 / 7 | 1 / 1 | eq / eq | 3-strand 5_2 (C2-1) | u3:eq u4:eq r3:eq r4:eq | yes | yes | F31 = F32b | PASS |
+
+**11 words, 11 PASS, both primes.** (u_s3 = σ_1σ_2σ_1σ_3 is the Hopf link, = 2-strand σ^2.) F32b runs are
+3-10x slower per point than F31 here (field arithmetic plus contention with the replays).
 
 Unreduced N' = 4 Poincaré polynomials (full set in docs/colored_design/c2/gl4_2222.json):
 - σ_1σ_2σ_3 (unknot): q^-4 + q^-2 + 2 + q^2 + q^4 = [4 choose 2]_q; reduced 1.
@@ -199,12 +216,12 @@ a 1-2 session scan after M5i, not the 148 core-h of C2-1's projection; the next 
 
 - χ = decat_chi: all 6 closures of every run (sbox exits nonzero otherwise).
 - D14 scaling: passed in every run (2 points; 3 340-63 082 entries checked).
-- Both primes identical: CHECK_PRIMES
+- Both primes identical: all 11 words, closure by closure (6 closures each).
 - N' = 3 duality: N' = 3 = uncolored gl_3 of the reversed braid (engine2), equal as polynomials, unreduced and
   reduced, all 11 words.
 - N' = 2: rank 1 (unreduced and reduced), all 11 words.
 - Markov: σ_1^m σ_2^{±1} σ_3^{±1} = 2-strand σ^m at N' = 2, 3, 4 (u and r), m = 1…5 (m = 1: colored unknot).
-- Library: replay (provider refusing every call) REPLAY_CHECK.
+- Library: replay (provider refusing every call) certifies every job certified by the run, both primes (level 1 087, corner 144).
 - The 4-strand knots themselves (6_1, 7_6, 7_7, …): not computed (M5i).
 
 ## 7. Open problems
