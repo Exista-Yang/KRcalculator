@@ -50,7 +50,10 @@ Outputs, stderr and JSON are in runs_calc/.
 
 ### H1. Test suite
 
-See section 6 (filled in at the end of the session).
+`KRHOM_THREADS=4 cargo test --release` (runs_calc/full_suite.log): **306 passed, 0 failed, 41
+ignored** (the m5i base was 287 / 37; new: 8 calc unit tests, 8 tests/calc.rs, 4 ignored library
+tests, plus the C2-7 tests of the base). The 4 ignored library tests of tests/calc.rs (H3-H6 via
+cargo) were also run with the libraries installed: see section 6.
 
 ### H2. Fetch tool
 
@@ -244,3 +247,20 @@ VmHWM is process-wide (the F32b number includes the F31 run in the same process)
     4_1 anchor (also skipped with `--only`); the quick and default outputs of the same seed would
     share `runs_random/<seed>/`, so the quick run is kept under `runs_random/20261115-quick/`.
 15. The data commit is fetched by SHA with a fallback to the `data-gl6` branch (K11).
+
+## 6. Ignored library tests (F3)
+
+`KRHOM_THREADS=4 cargo test --release --test calc -- --ignored` with both libraries installed
+(runs_calc/f3_ignored.log): 4 passed (lib_41_three_strands, lib_stabilized_trefoil,
+lib_four_strands_markov, lib_check_library_4_strands), 559 s with the four tests in parallel.
+After them, H8 still holds: no file newer than LIBRARY.txt in any library directory, and
+`--verify-only` passes for all four.
+
+## 7. Example commands in the new syntax (runs_calc/examples_new_syntax.out)
+
+- `krhom 2,3,4 --braid aaa --colors 2`: letters, default strands 2, exact path, ranks 1, 7, 22.
+- `krhom 2,3 --braid aBaB`: uncolored 4_1, default strands 3, Soergel engine on both primes,
+  ranks 6 (Khovanov) and 11.
+- `krhom 2,3,4 --braid abc --colors 2 --reduced`: default strands 4, simplified to the 1-strand
+  unknot (`simplified braid: (empty)  (strands 1)`), t^0q^0 for every N.
+No `--colored-method` is needed for any of them.
