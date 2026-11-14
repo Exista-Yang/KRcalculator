@@ -485,15 +485,17 @@
     3
    ],
    "primes": [
-    "31"
+    "31",
+    "32b"
    ],
    "secs": {
-    "31": 584.91
+    "31": 584.91,
+    "32b": 1596.67
    },
    "points": 1296,
    "point_secs_mean": 0.499,
    "vmhwm_mb": 294,
-   "primes_identical": false,
+   "primes_identical": true,
    "chi_ok": true,
    "scaling_ok": true,
    "N3_gl3_reversed": {
@@ -534,15 +536,17 @@
     3
    ],
    "primes": [
-    "31"
+    "31",
+    "32b"
    ],
    "secs": {
-    "31": 713.03
+    "31": 713.03,
+    "32b": 2693.23
    },
    "points": 1296,
    "point_secs_mean": 0.6528,
    "vmhwm_mb": 408,
-   "primes_identical": false,
+   "primes_identical": true,
    "chi_ok": true,
    "scaling_ok": true,
    "N3_gl3_reversed": {
