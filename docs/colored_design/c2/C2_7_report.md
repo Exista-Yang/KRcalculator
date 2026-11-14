@@ -102,6 +102,18 @@ composes it with the realized chain (Out: R∘S, In: S∘R), so every leaf lands
 between reduced words of q with top scalar 1, so the top-to-top block stays invertible (the diagnostic rank check of
 `build_leaves` and then `certify_pairs` re-verify it).
 
+### 3.3b Per-step detours at every level (`Leaves::step_words`, B5 §2.1 item 4)
+
+Added after the 6 blockers were certified (they did not need it), when the class-B job 1054 stopped on a
+1.05 M step that the pairwise joint search could not lower (a local minimum: the joint move that fixed a later
+step had moved W_t away from the prefix extension W_{t'}·ρ). `step_words` generalizes §3.3 to every level: for
+an over-budget step t'_i -ρ-> t at level k, a word W'_{t,i} for this step only (often W_{t'}·ρ itself: an Id step)
+plus degree-0 rex chains W'_{t,i} ⇄ W_t, so every leaf at t still lands in the plan word W_t. Same acceptance
+(rank check at rep(t) in `build_leaves`, then certify_pairs / certify_closure). On with `KRHOM_LEAVES_C27=1`
+(`KRHOM_LEAVES_C27_DETOURS=0` restricts it to the final level); `gp0 --steps ... --joint --detours` shows it
+(1054's call: max step 1 045 467 → 50 221). The chains are planned twice (dry in `step_words`, again in
+`build_leaves`); a cache would remove the second planning (job 949 spent most of its 31 min in the planner).
+
 ### 3.4 Leaves pairs for targets with e_q (`pairs_leaves_eq`)
 
 `leaf_pairs` no longer refuses e_q targets when `eq_pairs`: the Lemma A leaves and exit / entry chains are built as

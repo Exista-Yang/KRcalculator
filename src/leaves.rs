@@ -455,6 +455,8 @@ pub struct Leaves {
     /// C2-7: per-step target words with rex-chain detours at every level (`step_words`); with
     /// `joint` only; off = final level only
     pub detours: bool,
+    /// chains planned by `step_words` ((type, from word, to word) -> chain), reused by `build_leaves`
+    chain_memo: std::cell::RefCell<HashMap<(Tid, Vec<Rung>, Vec<Rung>), crate::rexplan::Chain>>,
     last_fail: Option<SearchStats>,
 }
 
@@ -463,7 +465,7 @@ pub const LEAVES_STAMP: &str = "leaves=Leaves(v1,closure,threeup,prefix-ext+cost
 
 impl Default for Leaves {
     fn default() -> Self {
-        Leaves { budget: 100_000, hard_cap: 400_000, one_sided_cap: 20_000, costs: None, use_window: true, use_elem: false, bfs_len: 6, bfs_cap: 20_000, alt_len: 5, alt_cap: 400_000, seed: 0x1ea7e5, last: LeafStats::default(), verbose: false, joint: false, joint_suffix: 4, joint_cap: 60_000, joint_keep: 40, joint_sweeps: 3, eq_pairs: false, detours: false, last_fail: None }
+        Leaves { budget: 100_000, hard_cap: 400_000, one_sided_cap: 20_000, costs: None, use_window: true, use_elem: false, bfs_len: 6, bfs_cap: 20_000, alt_len: 5, alt_cap: 400_000, seed: 0x1ea7e5, last: LeafStats::default(), verbose: false, joint: false, joint_suffix: 4, joint_cap: 60_000, joint_keep: 40, joint_sweeps: 3, eq_pairs: false, detours: false, chain_memo: Default::default(), last_fail: None }
     }
 }
 
@@ -1221,7 +1223,13 @@ impl Leaves {
                     }
                     let mut pl = crate::rexplan::Planner::new();
                     for (sc1, _, c) in cands.into_iter().take(8) {
-                        if pl.plan(s, q, &c, &wq, &opts).is_ok() && pl.plan(s, q, &wq, &c, &opts).is_ok() {
+                        let (Ok(c1), Ok(c2)) = (pl.plan(s, q, &c, &wq, &opts), pl.plan(s, q, &wq, &c, &opts)) else { continue };
+                        {
+                            let mut memo = self.chain_memo.borrow_mut();
+                            memo.insert((q, c.clone(), wq.clone()), c1);
+                            memo.insert((q, wq.clone(), c.clone()), c2);
+                        }
+                        {
                             if self.trace() {
                                 eprintln!("[leaves] level {} word for predecessor {} of {}: [{}] ({}) instead of [{}] ({})", k, s.table(*tp).fmt(), s.table(q).fmt(), wstr(&c), sc1, wstr(&wq), s0);
                             }
@@ -1281,7 +1289,11 @@ impl Leaves {
                                 LeafDir::Out => (wa.clone(), wt.clone()),
                                 LeafDir::In => (wt.clone(), wa.clone()),
                             };
-                            let ch = pl.plan(s, t, &from, &to, &opts).map_err(|e| lfail(MissKind::Refused, format!("final chain: {}", e)))?;
+                            let memo = self.chain_memo.borrow().get(&(t, from.clone(), to.clone())).cloned();
+                            let ch = match memo {
+                                Some(c) => c,
+                                None => pl.plan(s, t, &from, &to, &opts).map_err(|e| lfail(MissKind::Refused, format!("final chain: {}", e)))?,
+                            };
                             let (r, _) = crate::leafgen::realize_chain_opts(ar, &ch, &mut chain_cache, self.seed ^ 0xf1a1 ^ fi as u64, true).map_err(|e| lfail(MissKind::Refused, format!("final chain: {}", e)))?;
                             let mut out = vec![];
                             for sm in fam {
