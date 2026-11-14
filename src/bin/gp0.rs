@@ -468,6 +468,24 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
                 rec
             );
         }
+        // C2-7 per-predecessor final words (joint mode)
+        let finals = leaves.final_pred_words(&mut s, &mut sc, &x, &plan, id);
+        let mut wlc = std::collections::HashMap::new();
+        let mut keys: Vec<_> = finals.keys().cloned().collect();
+        keys.sort();
+        for (qq, i) in keys {
+            let wa = &finals[&(qq, i)];
+            let (tp, wp) = plan[x.len() - 1][i].clone();
+            let g = sc.step(&mut s, tp, &x[x.len() - 1]).into_iter().find(|e| e.0 == qq).map(|e| e.1).unwrap();
+            let sw = krhom::leaves::step_score_w(&mut wlc, lam, &wp, &x[x.len() - 1], wa, &g);
+            println!("  per-predecessor final: {} -> {}: [{}]·{} -> [{}] score_w {}", s.table(tp).fmt(), s.table(qq).fmt(), rungs_str(&wp), rungs_str(&[x[x.len() - 1]]), rungs_str(wa), sw);
+            for st in steps.iter().filter(|st| st.level == x.len() && st.from == tp && st.to == qq) {
+                if st.score_w > 100_000 {
+                    over -= 1;
+                }
+            }
+        }
+        let mx = steps.iter().map(|st| if st.level == x.len() && st.to == q && finals.keys().any(|(qq, i)| *qq == q && plan[x.len() - 1][*i].0 == st.from) { 0 } else { st.score_w }).max().unwrap_or(0).max(mx.min(0));
         // exit chain dry run
         let wq = plan[x.len()].iter().find(|e| e.0 == q).map(|e| e.1.clone()).unwrap_or_default();
         let lq = canonical_ladder(&mut s, q);

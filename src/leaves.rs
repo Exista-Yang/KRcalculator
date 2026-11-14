@@ -1158,6 +1158,64 @@ impl Leaves {
         }
     }
 
+    /// C2-7 per-predecessor final words (B5 §2.1 item 5, C_B5 F2; with `joint`): for every
+    /// predecessor t'_i (index i at level m−1) of a final non-identity type q, the word
+    /// W'_{q,i} reduced for q that minimizes the W-aware score of its own final step (candidates:
+    /// the plan word W_q and P·B, P over the prefixes of W_{t'_i}·ρ, |B| ≤ `joint_suffix`), kept
+    /// only when it is strictly better than W_q and a degree-0 rex chain W'_{q,i} ⇄ W_q is found
+    /// (B2 planner, `leaf_pair_plan_opts`). `build_leaves` composes predecessor i's final leaves
+    /// with that chain, so every leaf still lands in W_q (the chains are degree-0 maps between
+    /// reduced words of q with top scalar 1). Returns (q, i) -> W'_{q,i}.
+    pub fn final_pred_words(&self, s: &mut Schur, sc: &mut StepCache, w: &[Rung], plan: &[Vec<(Tid, Vec<Rung>)>], id: Tid) -> HashMap<(Tid, usize), Vec<Rung>> {
+        let mut out = HashMap::new();
+        let m = w.len();
+        if !self.joint || m == 0 {
+            return out;
+        }
+        let lam = s.lam.clone();
+        let mut wl: HashMap<Vec<u8>, Schur> = HashMap::new();
+        let opts = leaf_pair_plan_opts();
+        for (q, wq) in plan[m].clone() {
+            if q == id {
+                continue;
+            }
+            for (i, (tp, wp)) in plan[m - 1].iter().enumerate() {
+                let Some(g) = sc.step(s, *tp, &w[m - 1]).into_iter().find(|x| x.0 == q).map(|x| x.1) else { continue };
+                let s0 = step_score_w(&mut wl, &lam, wp, &w[m - 1], &wq, &g);
+                if s0 <= self.budget {
+                    continue;
+                }
+                let mut a = wp.clone();
+                a.push(w[m - 1]);
+                let mut cands: Vec<(u128, u128, Vec<Rung>)> = vec![];
+                for l in 0..=a.len() {
+                    for c in suffix_words(s, &a[..l], q, self.joint_suffix, self.joint_cap) {
+                        let sc1 = step_score_w(&mut wl, &lam, wp, &w[m - 1], &c, &g);
+                        if sc1 < s0 {
+                            cands.push((sc1, crate::schur::flows(&lam, &c), c));
+                        }
+                    }
+                }
+                cands.sort_by(|x, y| (x.0, x.1).cmp(&(y.0, y.1)));
+                cands.dedup_by(|x, y| x.2 == y.2);
+                if self.trace() {
+                    eprintln!("[leaves] final step {} -> {} ({}): {} better candidate words{}", s.table(*tp).fmt(), s.table(q).fmt(), s0, cands.len(), cands.first().map(|c| format!(", best [{}] {}", wstr(&c.2), c.0)).unwrap_or_default());
+                }
+                let mut pl = crate::rexplan::Planner::new();
+                for (sc1, _, c) in cands.into_iter().take(8) {
+                    if pl.plan(s, q, &c, &wq, &opts).is_ok() && pl.plan(s, q, &wq, &c, &opts).is_ok() {
+                        if self.trace() {
+                            eprintln!("[leaves] final word for predecessor {} of {}: [{}] ({}) instead of [{}] ({})", s.table(*tp).fmt(), s.table(q).fmt(), wstr(&c), sc1, wstr(&wq), s0);
+                        }
+                        out.insert((q, i), c);
+                        break;
+                    }
+                }
+            }
+        }
+        out
+    }
+
     /// Lemma A, level by level (D1 §1.3/§2.3): the leaf families of X for the junction types at
     /// its top level that lie on paths to `targets`. Final words: ∅ for the identity type,
     /// otherwise `junction_word` (prefix extension, canonical ladder, BFS). Intermediate
@@ -1172,6 +1230,8 @@ impl Leaves {
             return Err(lfail(MissKind::Exhausted, "build_leaves: no target type is reached".into()));
         }
         let plan = self.plan_words(s, &mut sc, &w, &js, id);
+        let finals = self.final_pred_words(s, &mut sc, &w, &plan, id);
+        let mut chain_cache = HashMap::new();
         let e0 = ar.expr(Expr::new(&lam, &[]).map_err(|e| lfail(MissKind::Exhausted, e))?);
         let id0 = ar.add(MapNode::Id(e0), "leaves base").map_err(|e| lfail(MissKind::Exhausted, e))?;
         let mut cur: Vec<LeafFamily> = vec![LeafFamily { t: id, word: vec![], wid: e0, maps: vec![id0] }];
@@ -1188,9 +1248,33 @@ impl Leaves {
                 st.max_word_flows = st.max_word_flows.max(crate::schur::flows(&lam, &wt));
                 let wid = ar.expr(Expr::new(&lam, &wt).map_err(|e| lfail(MissKind::Exhausted, e))?);
                 let mut maps = vec![];
-                for f in &cur {
+                for (fi, f) in cur.iter().enumerate() {
                     let Some(g) = sc.step(s, f.t, &rho).into_iter().find(|x| x.0 == t).map(|x| x.1) else { continue };
-                    let fam = self.step_family(ar, s, &f.word, &rho, &wt, f.t, t, &g, dir, k, st)?;
+                    // C2-7: per-predecessor final word W'_{q,i}, then the rex chain to / from W_q
+                    let alt = if k == w.len() { finals.get(&(t, fi)).cloned() } else { None };
+                    let fam = match &alt {
+                        None => self.step_family(ar, s, &f.word, &rho, &wt, f.t, t, &g, dir, k, st)?,
+                        Some(wa) => {
+                            let fam = self.step_family(ar, s, &f.word, &rho, wa, f.t, t, &g, dir, k, st)?;
+                            let mut pl = crate::rexplan::Planner::new();
+                            let opts = leaf_pair_plan_opts();
+                            let (from, to) = match dir {
+                                LeafDir::Out => (wa.clone(), wt.clone()),
+                                LeafDir::In => (wt.clone(), wa.clone()),
+                            };
+                            let ch = pl.plan(s, t, &from, &to, &opts).map_err(|e| lfail(MissKind::Refused, format!("final chain: {}", e)))?;
+                            let (r, _) = crate::leafgen::realize_chain_opts(ar, &ch, &mut chain_cache, self.seed ^ 0xf1a1 ^ fi as u64, true).map_err(|e| lfail(MissKind::Refused, format!("final chain: {}", e)))?;
+                            let mut out = vec![];
+                            for sm in fam {
+                                let n = match dir {
+                                    LeafDir::Out => MapNode::Comp(r, sm),
+                                    LeafDir::In => MapNode::Comp(sm, r),
+                                };
+                                out.push(ar.add(n, "leaves final chain").map_err(|e| lfail(MissKind::Exhausted, e))?);
+                            }
+                            out
+                        }
+                    };
                     for &l in &f.maps {
                         let kr = ar.add(MapNode::Kron(l, vec![rho]), "leaves kron").map_err(|e| lfail(MissKind::Exhausted, e))?;
                         for &sm in &fam {
