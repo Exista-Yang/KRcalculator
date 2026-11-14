@@ -231,6 +231,9 @@ fn parse_args(args: &[String]) -> Result<(Opts, Vec<Item>, Option<String>, Optio
 }
 
 fn sigstr(w: &[i64]) -> String {
+    if w.is_empty() {
+        return "(empty)".into();
+    }
     w.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(" ")
 }
 
