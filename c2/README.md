@@ -29,3 +29,12 @@ Restore: see each MANIFEST.txt (KRHOM_COSTS_ANY_HOST=1, --costs tests/data/hompr
   l2222_n4_c25 (restore c25 first, then the delta; same M4c-lf stamp, `--provider m4c-lf --stamp-route`,
   costs_2222_c25.txt). 31 / 43 jobs certified for each prime (run = replay); new key kinds `kind=idem` and
   `eq=`/`ep=m5i-peel1`. See colored-2c4-m5i docs/colored_design/c2/C2_4_report.md.
+
+## C2-7: unblock delta of the (2,2,2,2) library (session C2-7, branch colored-2c4-unblock)
+
+- l2222_n4_c27/{f31,f32b}: layer-A + template files written by C2-7 on top of l2222_n4 + l2222_n4_c25 + l2222_n4_c24
+  (restore those three first, in that order, then the delta). The 6 class-A blockers (pairs 1235, 1444, 1470, 1894,
+  1769, 1812) certified for both primes (run = replay with the refusing provider) through the Leaves pair route with
+  joint junction words, per-predecessor final words and Leaves pairs for e_q targets (KRHOM_LEAVES_C27=1; route token
+  `c27=...` in the header, dropped by `sindec::route_header`, so read with `--stamp-route --provider m4c-lf`,
+  costs_2222_c25.txt). See colored-2c4-unblock docs/colored_design/c2/C2_7_report.md.
