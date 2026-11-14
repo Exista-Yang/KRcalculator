@@ -13,7 +13,23 @@ were not touched; src/sindec.rs, src/sengine.rs, src/swire.rs were not edited.
 
 ## Summary
 
-@@SUMMARY@@
+- **15 of the 27 non-M5i failures fixed, identically for F31 and F32b** [M]: all **8 Refused closure types** (Leaves
+  closure route, 7-13 s each), **7 pairs**: 140, 367, 369, 617 by calibrating their refused Search windows / leaf
+  isomorphisms (production chain), 626 (Leaves Lemma A), 59 and 958 (Leaves rex class). **12 pairs remain**:
+  214, 1235, 1471 (Refused in C2-2) and 942, 1054, 1444, 1470, 1540, 1830, 1894, 1906, 2392 (Exhausted).
+- **Library** (level set, prune 4, N = 4): **1 102 / 1 157 (95.2 %) for both primes** (C2-2: 1 087); failures
+  = 43 NeedsIdempotent (M5i, untouched) + the 12 pairs. Corner (Markov ext) 144 / 144.
+- **Replay** (provider refusing every call, every map loaded from layer A and re-certified, M4c-lf stamp): level
+  1 102 / 1 157 and corner 144 / 144 for **both primes** = the run. Persisted: data-gl6 c2/l2222_n4_c25/{f31,f32b}
+  (f4b3727; the packed files are byte-identical to the replayed cache), c2/costs_2222_c25.txt, c2/runs2222_c25/.
+- **Cover** (knots4_cloud, labels 2,2,2,2; same for both primes): still 0 of 22 knots (M5i). **Non-M5i blockers left:
+  class A 4** (pairs 1235, 1444, 1470, 1894; C2-2: 8 Refused + 3 Exhausted), **class B 7** (+1054, 1471, 1540;
+  C2-2: 9 + 5), **Conway 11** (+942, 1830, 1906, 2392; C2-2: 14 + 10). Pair 214 is not used by any of the 22 knots.
+  Every remaining blocker fails on a Lemma A step above the Leaves hard cap (0.44-185 M unknowns); the four class-A
+  ones need 38-185 M-unknown steps (1235 additionally: Search exhausted).
+- **Code**: src/bin/sbox.rs gets `--provider default|m4c|m4c-lf` so sbox can load layer A written under the M4c
+  stamp (C2-2 open problem 2). Merged origin/m4c-rexplan (B4w; **not reviewed**). No other source change; no check,
+  cap or admission ceiling changed.
 
 ## 1. What was done
 
@@ -105,13 +121,52 @@ All 8 were refused because their remaining closure calls (degree 7-9 Hom(R, L_p)
 | 0,1,1,0/1,0,0,1/1,0,0,1/0,1,1,0 | **ok** (12.6 s) | **ok** |
 | 0,1,1,0/1,0,1,0/0,0,0,2/1,1,0,0 | **ok** (9.2 s) | **ok** |
 
-**Tally: 16 of 27 fixed for both primes** (8 closure types; pairs 59, 140, 367, 369, 617, 626, 958 and … see
-below). **11 remain** (pairs 214, 1235, 1471; 942, 1054, 1444, 1470, 1540, 1830, 1894, 1906, 2392 minus the ones
-counted above).
+**Tally: 15 of 27 fixed for both primes** (8 closure types; pairs 59, 140, 367, 369, 617, 626, 958). **12
+remain**: pairs 214, 1235, 1471 (C2-2 Refused) and 942, 1054, 1444, 1470, 1540, 1830, 1894, 1906, 2392 (C2-2
+Exhausted).
 
-@@REPLAY@@
+## 3. Replay [M]
 
-@@COVER@@
+`libbuild replay --provider m4c-lf --stamp-route --costs costs_2222_c25.txt` (runs_c2/k4/fix/replay.sh, 4 workers,
+rss 3 GB) on the merged layer A (C2-2's files carried over with b4wstamp + the new maps; 2 612 layer-A files per
+prime):
+
+| set | prime | jobs | replay certified | failures | wall |
+|---|---|---|---|---|---|
+| level-n4 | F31 | 1 157 | **1 102** | 43 NeedsIdempotent + 12 pairs | 4 291 s |
+| level-n4 | F32b | 1 157 | **1 102** | same 55 | 3 366 s |
+| corner-markov-ext-n4 | F31 | 144 | **144** | 0 | 253 s |
+| corner-markov-ext-n4 | F32b | 144 | **144** | 0 | 261 s |
+
+The replay certifies exactly the jobs certified by the runs (C2-2's 1 087 + the 15 of section 2), with no
+provider call; the 12 unfixed pairs show up as Refused (the replay provider refuses). This also checks the
+b4wstamp carry-over of C2-2's 2 575 files (all loaded and re-certified under the M4c-lf stamp). The `sbox
+--provider m4c-lf --replay` path builds the same stamp (same constructor as libbuild's); it was not exercised on a
+4-strand word this session because no class-A knot is covered yet (M5i).
+
+## 4. Persistence
+
+data-gl6 (commits ee9dfe3, f4b3727): c2/l2222_n4_c25/{f31,f32b}/layerA_tmpl.tar.gz.part-000 (7.4 / 8.2 MB, one
+chunk each) with MANIFEST.txt (stamps, file counts 2 612 layer A + 2 777 / 2 737 templates, sha256, restore line,
+sets), c2/costs_2222_c25.txt, c2/runs2222_c25/ (replay JSON lines and logs), README section. The packed archive was
+compared with the cache after the replay: identical (`diff -r` empty).
+
+## 5. Cover (`libbuild cover`, runs_c2/k4/fix/cover/) [M]
+
+`libbuild cover --lam 2,2,2,2 --n 4 --knots runs_c2/census/knots4_2222.txt` (knots4_cloud.txt with labels 2,2,2,2)
+on each replay file; per-class unions by runs_c2/k4/fix/cover_classes.py. Identical for F31 and F32b. **0 of 22
+knots covered** (every one visits M5i types).
+
+| class | knots | blocking jobs (C2-2 after fix) | of which M5i | **non-M5i left (C2-5)** | C2-2 non-M5i |
+|---|---|---|---|---|---|
+| A | 18 (6_1 … 9_23) | **22** (29) | 18 | **4: pairs 1235, 1444, 1470, 1894** (the same 4 for every class-A knot) | 8 Refused + 3 Exhausted |
+| B | 3 (8_15, 9_22, 11n_42) | **37** (44) | 30 | **7: 1054, 1235, 1444, 1470, 1471, 1540, 1894** | 9 + 5 |
+| C | Conway | **48** (61) | 37 | **11: 942, 1054, 1235, 1444, 1470, 1471, 1540, 1830, 1894, 1906, 2392** | 14 + 10 |
+
+All closure types needed by the 22 knots apart from the 3 M5i ones are now certified. What the class-A blockers
+need (section 2): 1444 a Lemma A step of 38 M unknowns (target s = −1), 1470 60 M, 1235 84 M (Search exhausted on
+its (1,4,2) windows), 1894 185 M. These are far above anything the exact solver does here (≈ 0.5 M in 2 min / 2 GB),
+so class A stays blocked by them even after M5i, unless a finer Lemma A plan (or another route) splits those steps.
 
 ## 6. Checks
 
