@@ -469,7 +469,20 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
             );
         }
         // C2-7 per-predecessor final words (joint mode)
-        let finals = leaves.final_pred_words(&mut s, &mut sc, &x, &plan, id);
+        leaves.detours = args.iter().any(|a| a == "--detours");
+        let allw = leaves.step_words(&mut s, &mut sc, &x, &plan, id, leaves.detours);
+        let mut kk: Vec<_> = allw.keys().cloned().collect();
+        kk.sort();
+        let mut wld = std::collections::HashMap::new();
+        for (lv, tt, i) in kk.iter().cloned().filter(|k| k.0 < x.len()) {
+            let wa = &allw[&(lv, tt, i)];
+            let (tp, wp) = plan[lv - 1][i].clone();
+            let g = sc.step(&mut s, tp, &x[lv - 1]).into_iter().find(|e| e.0 == tt).map(|e| e.1).unwrap();
+            let sw = krhom::leaves::step_score_w(&mut wld, lam, &wp, &x[lv - 1], wa, &g);
+            println!("  detour L{}: {} -> {}: [{}]·{} -> [{}] score_w {}", lv, s.table(tp).fmt(), s.table(tt).fmt(), rungs_str(&wp), rungs_str(&[x[lv - 1]]), rungs_str(wa), sw);
+        }
+        let detoured = |lvl: usize, from: krhom::schur::Tid, to: krhom::schur::Tid| kk.iter().any(|(l, t, i)| *l == lvl && *t == to && plan[lvl - 1][*i].0 == from);
+        let finals: std::collections::HashMap<(krhom::schur::Tid, usize), Vec<Rung>> = allw.iter().filter(|(k, _)| k.0 == x.len()).map(|(k, v)| ((k.1, k.2), v.clone())).collect();
         let mut wlc = std::collections::HashMap::new();
         let mut keys: Vec<_> = finals.keys().cloned().collect();
         keys.sort();
@@ -485,7 +498,7 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
                 }
             }
         }
-        let mx = steps.iter().map(|st| if st.level == x.len() && st.to == q && finals.keys().any(|(qq, i)| *qq == q && plan[x.len() - 1][*i].0 == st.from) { 0 } else { st.score_w }).max().unwrap_or(0).max(mx.min(0));
+        let mx = steps.iter().map(|st| if detoured(st.level, st.from, st.to) { 0 } else { st.score_w }).max().unwrap_or(0).max(mx.min(0));
         // exit chain dry run
         let wq = plan[x.len()].iter().find(|e| e.0 == q).map(|e| e.1.clone()).unwrap_or_default();
         let lq = canonical_ladder(&mut s, q);
@@ -498,6 +511,8 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
                 Err(e) => format!("exit chain: {}", e),
             }
         };
-        println!("  max step {} ; steps > 1e5: {} ; W_q [{}] {}", mx, over, rungs_str(&wq), ex);
+        let over2 = steps.iter().filter(|st| st.score_w > 100_000 && !detoured(st.level, st.from, st.to)).count();
+        let _ = over;
+        println!("  max step {} ; steps > 1e5: {} ; W_q [{}] {}", mx, over2, rungs_str(&wq), ex);
     }
 }
