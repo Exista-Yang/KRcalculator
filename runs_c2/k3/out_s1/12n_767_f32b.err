@@ -9,3 +9,9 @@ box exit 0
 library: 16 types, 16 closable, build 7.1s (0 provider calls, 233 layer-A loads), hash 921e10abdd60c0f, commit 8fe55b54ca36401577893edd5ece587c0264bd45
 FATAL: box finish: staged rank stage for [2, 2, 2] at N = 4 needs about 98986 MB, above the memory cap of 40000 MB (set KRHOM_MEM_CAP_MB to raise it)
 finish exit 2
+library: 16 types, 16 closable, build 5.5s (0 provider calls, 233 layer-A loads), hash 921e10abdd60c0f, commit 8fe55b54ca36401577893edd5ece587c0264bd45
+word [1, -2, 1, 1, 1, -2, -2, -1, -1, -1, -1, -2]: chi = decat_chi for 6 closures; scaling: 9822406 entries checked, 1227552 zero at both points, 0 declared 0
+  accumulator stage 12 mode None: 216 points, digest 4df911dbfaabb2e6
+  accumulator stage 12 mode Some(0): 36 points, digest 5ad38eabbbe47583
+finish: shards [(0, 1)], determinant pass 6912 checks at 216 points, close 1604.7s, total 1724.5s
+rc 0
