@@ -1,0 +1,165 @@
+library: 16 types, 16 closable, build 5.8s (0 provider calls, 233 layer-A loads), hash f2989c6d1cd1954f, commit 8fe55b54ca36401577893edd5ece587c0264bd45
+memory allocation of 536870912 bytes failed
+stack backtrace:
+   0: std::alloc::rust_oom
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/alloc.rs:424:5
+   1: __rustc::__rust_alloc_error_handler
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/std/src/alloc.rs:423:1
+   2: alloc::alloc::handle_alloc_error::rt_error
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/alloc.rs:551:13
+   3: alloc::alloc::handle_alloc_error
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/alloc.rs:557:9
+   4: alloc::raw_vec::handle_error
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/raw_vec/mod.rs:890:38
+   5: <alloc::raw_vec::RawVecInner<_>>::reserve::do_reserve_and_handle::<alloc::alloc::Global>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/raw_vec/mod.rs:669:17
+   6: <alloc::raw_vec::RawVecInner>::reserve
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/raw_vec/mod.rs:675:17
+   7: <alloc::raw_vec::RawVec<u8>>::reserve
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/raw_vec/mod.rs:341:29
+   8: <alloc::vec::Vec<u8>>::reserve
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/mod.rs:1471:18
+   9: <alloc::vec::Vec<u8>>::append_elements
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/mod.rs:2932:14
+  10: <alloc::vec::Vec<u8> as alloc::vec::spec_extend::SpecExtend<&u8, core::slice::iter::Iter<u8>>>::spec_extend
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/spec_extend.rs:56:23
+  11: <alloc::vec::Vec<u8>>::extend_from_slice
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/mod.rs:3557:14
+  12: <alloc::string::String>::push_str
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/string.rs:1111:18
+  13: <alloc::string::String as core::fmt::Write>::write_str
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/string.rs:3358:14
+  14: <core::fmt::Formatter>::write_str
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/mod.rs:2100:18
+  15: <core::fmt::builders::DebugStruct>::field_with::<<core::fmt::builders::DebugStruct>::field::{closure#0}>::{closure#0}
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/builders.rs:161:26
+  16: <core::result::Result<(), core::fmt::Error>>::and_then::<(), <core::fmt::builders::DebugStruct>::field_with<<core::fmt::builders::DebugStruct>::field::{closure#0}>::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/result.rs:1493:22
+  17: <core::fmt::builders::DebugStruct>::field_with::<<core::fmt::builders::DebugStruct>::field::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/builders.rs:145:35
+  18: <core::fmt::builders::DebugStruct>::field
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/builders.rs:133:14
+  19: <core::fmt::Formatter>::debug_struct_field3_finish
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/mod.rs:2505:17
+  20: <krhom::boxclose::EntryKind as core::fmt::Debug>::fmt
+             at ./src/boxclose.rs:1071:23
+  21: <&krhom::boxclose::EntryKind as core::fmt::Debug>::fmt
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/mod.rs:2872:62
+  22: <core::fmt::builders::DebugSet>::entry::{closure#0}
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/builders.rs:549:41
+  23: <core::fmt::builders::DebugInner>::entry_with::<<core::fmt::builders::DebugSet>::entry::{closure#0}>::{closure#0}
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/builders.rs:474:17
+  24: <core::result::Result<(), core::fmt::Error>>::and_then::<(), <core::fmt::builders::DebugInner>::entry_with<<core::fmt::builders::DebugSet>::entry::{closure#0}>::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/result.rs:1493:22
+  25: <core::fmt::builders::DebugInner>::entry_with::<<core::fmt::builders::DebugSet>::entry::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/builders.rs:460:35
+  26: <core::fmt::builders::DebugSet>::entry
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/builders.rs:549:20
+  27: <core::fmt::builders::DebugList>::entries::<&krhom::boxclose::EntryKind, core::slice::iter::Iter<krhom::boxclose::EntryKind>>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/builders.rs:788:18
+  28: <[krhom::boxclose::EntryKind] as core::fmt::Debug>::fmt
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/mod.rs:3123:24
+  29: <alloc::vec::Vec<krhom::boxclose::EntryKind> as core::fmt::Debug>::fmt
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/mod.rs:4305:9
+  30: <core::fmt::rt::Argument>::fmt
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/rt.rs:152:76
+  31: core::fmt::write
+  32: <&mut alloc::string::String as core::fmt::Write::write_fmt::SpecWriteFmt>::spec_write_fmt
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/mod.rs:236:21
+  33: <alloc::string::String as core::fmt::Write>::write_fmt
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/fmt/mod.rs:241:14
+  34: alloc::fmt::format::format_inner
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/fmt.rs:654:14
+  35: alloc::fmt::format::{closure#0}
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/fmt.rs:659:34
+  36: <core::option::Option<&str>>::map_or_else::<alloc::string::String, alloc::fmt::format::{closure#0}, <str as alloc::borrow::ToOwned>::to_owned>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/option.rs:1275:21
+  37: alloc::fmt::format
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/fmt.rs:659:19
+  38: krhom::swire::skeleton_hash::<krhom::field::Fp<2147483647>>
+             at ./src/swire.rs:1030:49
+  39: krhom::swire::stage_binding::<krhom::field::Fp<2147483647>>
+             at ./src/swire.rs:1065:50
+  40: krhom::boxrun::want_header::<krhom::field::Fp<2147483647>>
+             at ./src/boxrun.rs:200:129
+  41: krhom::boxrun::fresh_accs::<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}
+             at ./src/boxrun.rs:209:111
+  42: core::iter::adapters::map::map_fold::<&(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>), krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>, (), krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}, core::iter::traits::iterator::Iterator::for_each::call<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>, <alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}>>::{closure#0}>::{closure#0}>::{closure#0}
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/adapters/map.rs:88:28
+  43: <core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)> as core::iter::traits::iterator::Iterator>::fold::<(), core::iter::adapters::map::map_fold<&(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>), krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>, (), krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}, core::iter::traits::iterator::Iterator::for_each::call<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>, <alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}>>::{closure#0}>::{closure#0}>::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/slice/iter/macros.rs:279:27
+  44: <core::iter::adapters::map::Map<core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}> as core::iter::traits::iterator::Iterator>::fold::<(), core::iter::traits::iterator::Iterator::for_each::call<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>, <alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}>>::{closure#0}>::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/adapters/map.rs:128:19
+  45: <core::iter::adapters::map::Map<core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}> as core::iter::traits::iterator::Iterator>::for_each::<<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}>>::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/traits/iterator.rs:887:14
+  46: <alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>::extend_trusted::<core::iter::adapters::map::Map<core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}>>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/mod.rs:4062:26
+  47: <alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>> as alloc::vec::spec_extend::SpecExtend<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>, core::iter::adapters::map::Map<core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}>>>::spec_extend
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/spec_extend.rs:27:14
+  48: <alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>, core::iter::adapters::map::Map<core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}>>>::from_iter
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/spec_from_iter_nested.rs:60:16
+  49: <alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>> as alloc::vec::spec_from_iter::SpecFromIter<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>, core::iter::adapters::map::Map<core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}>>>::from_iter
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/spec_from_iter.rs:33:9
+  50: <alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>> as core::iter::traits::collect::FromIterator<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>::from_iter::<core::iter::adapters::map::Map<core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}>>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/mod.rs:3926:9
+  51: <core::iter::adapters::map::Map<core::slice::iter::Iter<(core::option::Option<usize>, alloc::sync::Arc<krhom::boxclose::BoxGrid<krhom::field::Fp<2147483647>>>)>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}::{closure#0}> as core::iter::traits::iterator::Iterator>::collect::<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/traits/iterator.rs:2090:9
+  52: krhom::boxrun::fresh_accs::<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}
+             at ./src/boxrun.rs:209:154
+  53: core::iter::adapters::map::map_fold::<&krhom::swire::StageOut<krhom::field::Fp<2147483647>>, alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>, (), krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}, core::iter::traits::iterator::Iterator::for_each::call<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>, <alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}>>::{closure#0}>::{closure#0}>::{closure#0}
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/adapters/map.rs:88:28
+  54: <core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>> as core::iter::traits::iterator::Iterator>::fold::<(), core::iter::adapters::map::map_fold<&krhom::swire::StageOut<krhom::field::Fp<2147483647>>, alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>, (), krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}, core::iter::traits::iterator::Iterator::for_each::call<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>, <alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}>>::{closure#0}>::{closure#0}>::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/slice/iter/macros.rs:279:27
+  55: <core::iter::adapters::map::Map<core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}> as core::iter::traits::iterator::Iterator>::fold::<(), core::iter::traits::iterator::Iterator::for_each::call<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>, <alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}>>::{closure#0}>::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/adapters/map.rs:128:19
+  56: <core::iter::adapters::map::Map<core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}> as core::iter::traits::iterator::Iterator>::for_each::<<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>::extend_trusted<core::iter::adapters::map::Map<core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}>>::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/traits/iterator.rs:887:14
+  57: <alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>::extend_trusted::<core::iter::adapters::map::Map<core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}>>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/mod.rs:4062:26
+  58: <alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>> as alloc::vec::spec_extend::SpecExtend<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>, core::iter::adapters::map::Map<core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}>>>::spec_extend
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/spec_extend.rs:27:14
+  59: <alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>, core::iter::adapters::map::Map<core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}>>>::from_iter
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/spec_from_iter_nested.rs:60:16
+  60: <alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>> as alloc::vec::spec_from_iter::SpecFromIter<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>, core::iter::adapters::map::Map<core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}>>>::from_iter
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/spec_from_iter.rs:33:9
+  61: <alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>> as core::iter::traits::collect::FromIterator<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>::from_iter::<core::iter::adapters::map::Map<core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}>>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/mod.rs:3926:9
+  62: <core::iter::adapters::map::Map<core::slice::iter::Iter<krhom::swire::StageOut<krhom::field::Fp<2147483647>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}::{closure#0}> as core::iter::traits::iterator::Iterator>::collect::<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/traits/iterator.rs:2090:9
+  63: krhom::boxrun::fresh_accs::<krhom::field::Fp<2147483647>>::{closure#0}
+             at ./src/boxrun.rs:209:165
+  64: core::iter::adapters::map::map_fold::<(&alloc::vec::Vec<i32>, &krhom::swire::ScanOut<krhom::field::Fp<2147483647>>), alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>, (), krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}, core::iter::traits::iterator::Iterator::for_each::call<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>, <alloc::vec::Vec<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>>::extend_trusted<core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}>>::{closure#0}>::{closure#0}>::{closure#0}
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/adapters/map.rs:88:28
+  65: <core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>> as core::iter::adapters::zip::ZipImpl<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>>::fold::<(), core::iter::adapters::map::map_fold<(&alloc::vec::Vec<i32>, &krhom::swire::ScanOut<krhom::field::Fp<2147483647>>), alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>, (), krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}, core::iter::traits::iterator::Iterator::for_each::call<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>, <alloc::vec::Vec<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>>::extend_trusted<core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}>>::{closure#0}>::{closure#0}>::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/adapters/zip.rs:284:25
+  66: <core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>> as core::iter::traits::iterator::Iterator>::fold::<(), core::iter::adapters::map::map_fold<(&alloc::vec::Vec<i32>, &krhom::swire::ScanOut<krhom::field::Fp<2147483647>>), alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>, (), krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}, core::iter::traits::iterator::Iterator::for_each::call<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>, <alloc::vec::Vec<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>>::extend_trusted<core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}>>::{closure#0}>::{closure#0}>::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/adapters/zip.rs:101:9
+  67: <core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}> as core::iter::traits::iterator::Iterator>::fold::<(), core::iter::traits::iterator::Iterator::for_each::call<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>, <alloc::vec::Vec<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>>::extend_trusted<core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}>>::{closure#0}>::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/adapters/map.rs:128:19
+  68: <core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}> as core::iter::traits::iterator::Iterator>::for_each::<<alloc::vec::Vec<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>>::extend_trusted<core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}>>::{closure#0}>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/traits/iterator.rs:887:14
+  69: <alloc::vec::Vec<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>>::extend_trusted::<core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}>>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/mod.rs:4062:26
+  70: <alloc::vec::Vec<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>> as alloc::vec::spec_extend::SpecExtend<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>, core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}>>>::spec_extend
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/spec_extend.rs:27:14
+  71: <alloc::vec::Vec<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>> as alloc::vec::spec_from_iter_nested::SpecFromIterNested<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>, core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}>>>::from_iter
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/spec_from_iter_nested.rs:60:16
+  72: <alloc::vec::Vec<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>> as alloc::vec::spec_from_iter::SpecFromIter<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>, core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}>>>::from_iter
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/spec_from_iter.rs:33:9
+  73: <alloc::vec::Vec<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>> as core::iter::traits::collect::FromIterator<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>>::from_iter::<core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}>>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/alloc/src/vec/mod.rs:3926:9
+  74: <core::iter::adapters::map::Map<core::iter::adapters::zip::Zip<core::slice::iter::Iter<alloc::vec::Vec<i32>>, core::slice::iter::Iter<krhom::swire::ScanOut<krhom::field::Fp<2147483647>>>>, krhom::boxrun::fresh_accs<krhom::field::Fp<2147483647>>::{closure#0}> as core::iter::traits::iterator::Iterator>::collect::<alloc::vec::Vec<alloc::vec::Vec<alloc::vec::Vec<krhom::boxclose::BoxAcc<krhom::field::Fp<2147483647>>>>>>
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/iter/traits/iterator.rs:2090:9
+  75: krhom::boxrun::fresh_accs::<krhom::field::Fp<2147483647>>
+             at ./src/boxrun.rs:209:176
+  76: krhom::boxrun::box_run::<krhom::field::Fp<2147483647>>
+             at ./src/boxrun.rs:257:20
+  77: sbox::sub::<krhom::field::Fp<2147483647>>
+             at ./src/bin/sbox.rs:96:22
+  78: sbox::main
+             at ./src/bin/sbox.rs:201:25
+  79: <fn() as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/2d8144b7880597b6e6d3dfd63a9a9efae3f533d3/library/core/src/ops/function.rs:250:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+runs_c2/k3/one_s1.sh: line 17: 14121 Aborted                 timeout 172800 /tmp/claude-0/-home-user-KRcalculator/3a18306a-1d5f-50c6-9aa2-7362a60f64a8/scratchpad/bin/sbox box --lam 2,2,2 --word "-1 -2 -2 -2 -1 2 -1 -1 -1 2 -1 2" --n 4 --ns 2,3,4 --field 31 --seed 201 --prune 4 --mem-mb 12000 --replay --cache /tmp/claude-0/-home-user-KRcalculator/3a18306a-1d5f-50c6-9aa2-7362a60f64a8/scratchpad/lib222/f31 --costs tests/data/homprov/costs_cloud.txt --stages 12 --dir runs_c2/k3/out_s1/12n_684_f31.d --ckpt-secs 300
+box exit 134
