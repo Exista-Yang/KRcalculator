@@ -1,1 +1,5 @@
 library: 16 types, 16 closable, build 5.6s (0 provider calls, 233 layer-A loads), hash 3ed494fa39dfe74e, commit 8fe55b54ca36401577893edd5ece587c0264bd45
+scaling check: 810104 entries checked, 114786 zero at both points, 0 declared 0 (80.0s)
+chi = decat_chi: 6 of 6 closures; determinant pass 6912 checks at 216 points
+216 points: scan 3765.1s wall, per point mean 17.367s max 22.501s, engine peak 437.9 MB, eval memo 12.7 MB; closures 69.3s; record 15.6s; VmHWM 908 MB
+exit 0
