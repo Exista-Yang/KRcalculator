@@ -1,0 +1,10 @@
+lambda: 2,2,2,2
+field: F32b
+label: l2222_n4/f32b
+code commit: a52f654 (branch colored-2c4)
+layer-A stamps: krhom-sindec v2 ladfn=schur.ladder_minflow.v1 tmpl_alg=hs1.lcx1 prov=homprov[hs-kl1] maxl=2 costs=hs-kl1:512recs:2cb74d8a858bf0da slowdown=1 chain=Exact,S0-6
+files: layer_a 2575, tmpl 2604
+restore: cat layerA_tmpl.tar.gz.part-* | tar -C CACHE_DIR -xzf -   (then libbuild replay / sbox --replay --cache CACHE_DIR --costs costs_2222.txt [--stamp-route], KRHOM_COSTS_ANY_HOST=1)
+sets: level-n4 1087/1157 + corner-markov-ext-n4 144/144 (run with runs_c2/k4/calib/costs_2222.txt; replay 100 % of the certified jobs); 70 level failures (43 NeedsIdempotent = M5i), the same as F31
+sha256:
+180d90ea8bfbd5d2f7de6f38ebb7723462a420e5784fff90662b90e49fd81de1  layerA_tmpl.tar.gz.part-000
