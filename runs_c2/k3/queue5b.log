@@ -4,3 +4,4 @@ runs_c2/k3/one2.sh: line 14: 26087 Aborted                 KRHOM_MEM_CAP_MB=${ME
 10_116_f31 exit 134 
 runs_c2/k3/one2.sh: line 14: 26239 Aborted                 KRHOM_MEM_CAP_MB=${MEMCAP:-4500} KRHOM_COSTS_ANY_HOST=1 KRHOM_THREADS=${THREADS:-2} timeout ${TMO:-7200} $S/bin/sbox --lam 2,2,2 --word "$W" --n 4 --ns 2,3,4 --field $F --seed ${SEED:-201} --prune 4 --mem-mb ${MEMMB:-3200} --replay --cache ${LIB:-$S/lib222}/f$F --costs tests/data/homprov/costs_cloud.txt --stages $L --json $D/$TAG.json > $D/$TAG.out 2> $D/$TAG.err
 10_116_f32b exit 134 
+10_99_f31 exit 0 scan 4301.2s
