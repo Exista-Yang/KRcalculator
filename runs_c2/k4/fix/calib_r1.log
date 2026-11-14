@@ -1,0 +1,16 @@
+[costs] warning: runs_c2/k4/calib/costs_2222.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz" (KRHOM_COSTS_ANY_HOST)
+[calib] 13 distinct unmeasured windows
+[calib] [3, 0, 3] F0.1,E1.3,E0.1,F1.2,F0.1 -> F0.2,E1.2,E0.1,F1.1 d 0 (108x108, unknowns 48978): 4.158s 157 MB dim 1
+[calib] [1, 4, 2] E0.2,E1.2,F1.1,F0.1 -> E0.2,F1.2,F0.1,E1.3 d 0 (72x72, unknowns 45135): 6.557s 180 MB dim 2
+[calib] [2, 4, 1] E0.1,E1.1,F1.2,F0.1 -> E0.1,F1.2,F0.1,E1.1 d 0 (72x108, unknowns 63868): 8.232s 227 MB dim 1
+[calib] [2, 4, 1] E0.1,F1.2,F0.1,E1.1 -> E0.1,E1.1,F1.2,F0.1 d 0 (108x72, unknowns 63868): 10.460s 248 MB dim 1
+[calib] [4, 1, 3] F0.1,F1.1,E1.1 -> F0.2,F1.1,E1.1,E0.1 d 0 (32x216, unknowns 64617): 7.091s 244 MB dim 1
+[calib] [4, 1, 3] F0.2,F1.1,E1.1,E0.1 -> F0.1,F1.1,E1.1 d 0 (216x32, unknowns 64617): 8.684s 252 MB dim 1
+[calib] [4, 1, 3] E1.1,E0.1,F0.1,F1.1 -> F0.2,F1.1,E1.1,E0.2 d -1 (60x216, unknowns 93060): 15.411s 410 MB dim 2
+[calib] [3, 2, 3] E1.1,E0.2,F0.1,F1.1 -> F0.1,F1.1,E1.1,E0.2 d 0 (90x108, unknowns 107263): 19.437s 475 MB dim 1
+[calib] [4, 1, 3] F0.2,F1.1,E1.1,E0.2 -> E1.1,E0.1,F0.1,F1.1 d -1 (216x60, unknowns 93060): 22.106s 449 MB dim 2
+[calib] [3, 2, 3] F0.1,F1.1,E1.1,E0.2 -> E1.1,E0.2,F0.1,F1.1 d 0 (108x90, unknowns 107263): 21.300s 506 MB dim 1
+[calib] [3, 3, 2] E0.1,F0.1,E1.1,F1.1 -> F0.1,E0.1,F1.2,E1.2 d 0 (96x216, unknowns 273032): 59.874s 1147 MB dim 1
+[calib] [3, 3, 2] F0.1,E0.1,F1.2,E1.2 -> E0.1,F0.1,E1.1,F1.1 d 0 (216x96, unknowns 273032): 59.525s 1140 MB dim 1
+[calib] [4, 2, 0, 2] F1.1,F0.1,E2.2,E1.1,F2.2,F1.2,F0.1 -> F1.2,F0.2,E2.1,E1.1,F2.1,F1.1 d 0 (216x216, unknowns 508716): 77.786s 1684 MB dim 1
+calibration (windows): 525 records in runs_c2/k4/fix/costs_2222_c25.txt ({[0, 0, 6]: 6, [0, 1, 5]: 20, [0, 2, 2, 4]: 1, [0, 2, 4]: 20, [0, 3]: 10, [0, 3, 3]: 13, [0, 4]: 20, [0, 6]: 20, [1, 1, 4]: 8, [1, 2]: 4, [1, 2, 3]: 20, [1, 2, 4]: 3, [1, 3]: 20, [1, 3, 4]: 4, [1, 4]: 8, [1, 5]: 20, [2, 2]: 10, [2, 2, 2]: 126, [2, 2, 2, 2]: 88, [2, 3]: 20, [2, 3, 3]: 4, [2, 4]: 20, [3, 3]: 60}); 0 calls skipped by the time budget

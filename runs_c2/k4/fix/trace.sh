@@ -8,7 +8,7 @@ mkdir -p $O
 one() {
   J="$1"; F=$2; C=$3; O=$4; PV=$5; S=$6
   N=$(echo "$J" | tr ' ,/' '___')
-  (ulimit -v 6500000; KRHOM_TRACE=1 KRHOM_COSTS_ANY_HOST=1 KRHOM_THREADS=1 timeout ${TMO:-1800} $S/bin/libbuild one --lam 2,2,2,2 --n 4 --field $F --cache $S/lib2222/f$F --costs $C --stamp-route $PV -- $J > $O/$N.log 2>&1)
+  (ulimit -v 6500000; KRHOM_TRACE=1 KRHOM_COSTS_ANY_HOST=1 KRHOM_THREADS=1 timeout ${TMO:-1800} $S/bin/libbuild one --lam 2,2,2,2 --n 4 --field $F --cache $S/${LIB:-lib2222}/f$F --costs $C --stamp-route $PV -- $J > $O/$N.log 2>&1)
   echo "$J -> $(grep '^RESULT' $O/$N.log | grep -o '"ok":[a-z]*' | head -1) $(grep -c 'refused' $O/$N.log)"
 }
 export -f one
