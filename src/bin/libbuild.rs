@@ -337,6 +337,21 @@ fn provider_and_stamp<F: Field>(lam: &[u8], args: &[String]) -> (Box<dyn HomProv
     provider_for_stamped::<F>(lam, costs.as_deref(), 1.0)
 }
 
+/// (p, r) of pair k of `pruned_plan` (the enumeration order of `pruned_plan` without the
+/// per-pair term multiplicities and kill levels; C2-2)
+fn plan_pair_at(s: &mut Schur, k: usize) -> (Tid, Rung) {
+    let lam = s.lam.clone();
+    let mut i = 0usize;
+    for (mu, r) in krhom::homprov::g1_work(&lam) {
+        let order = s.canonical_basis(&mu).order.clone();
+        if k < i + order.len() {
+            return (order[k - i], r);
+        }
+        i += order.len();
+    }
+    panic!("pair index {} out of range ({} pairs)", k, i)
+}
+
 fn child<F: Field>(args: &[String], job: &[String]) {
     let lam = parse_lam(&opt(args, "--lam").expect("--lam"));
     let n: u8 = opt(args, "--n").expect("--n").parse().unwrap();
@@ -357,10 +372,17 @@ fn child<F: Field>(args: &[String], job: &[String]) {
     match job[0].as_str() {
         "pair" => {
             let k: usize = job[1].parse().unwrap();
-            let plan = pruned_plan(&mut sd.schur, Some(n));
-            let pp = plan.pairs[k].clone();
-            info = format!("\"p\":{},\"rung\":{},", jstr(&sd.schur.table(pp.p).fmt()), jstr(&rung_str(&pp.rung)));
-            if let Err(e) = sd.dec_rung(pp.p, pp.rung) {
+            // C2-2: locate plan pair k without building the whole plan (same enumeration order as
+            // `pruned_plan`: one pair per (μ, r) of `g1_work` and type p of the canonical order of μ);
+            // KRHOM_LIBBUILD_FULLPLAN=1 restores the full-plan path (cross-check)
+            let (pp_p, pp_rung) = if std::env::var("KRHOM_LIBBUILD_FULLPLAN").is_ok() {
+                let plan = pruned_plan(&mut sd.schur, Some(n));
+                (plan.pairs[k].p, plan.pairs[k].rung)
+            } else {
+                plan_pair_at(&mut sd.schur, k)
+            };
+            info = format!("\"p\":{},\"rung\":{},", jstr(&sd.schur.table(pp_p).fmt()), jstr(&rung_str(&pp_rung)));
+            if let Err(e) = sd.dec_rung(pp_p, pp_rung) {
                 errs.push((format!("dec {}", job.join(" ")), err_kind(&e), e.to_string()));
             }
         }

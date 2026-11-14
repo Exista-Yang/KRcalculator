@@ -1,0 +1,557 @@
+[
+ {
+  "word_name": "m1",
+  "word": [
+   1,
+   2,
+   3
+  ],
+  "primes": [
+   "31",
+   "32b"
+  ],
+  "secs": {
+   "31": 61.57,
+   "32b": 147.34
+  },
+  "points": 1277,
+  "point_secs_mean": 0.0507,
+  "vmhwm_mb": 100,
+  "primes_identical": true,
+  "chi_ok": true,
+  "scaling_ok": true,
+  "N3_gl3_reversed": {
+   "u": "eq",
+   "r": "eq"
+  },
+  "N2_rank1": true,
+  "ranks": {
+   "u2": 1,
+   "r2": 1,
+   "u3": 3,
+   "r3": 1,
+   "u4": 6,
+   "r4": 1
+  },
+  "N4": {
+   "u": "t^0q^-4 + t^0q^-2 + 2t^0q^0 + t^0q^2 + t^0q^4",
+   "r": "t^0q^0"
+  },
+  "vs": "colored unknot",
+  "markov": [
+   "u4:eq",
+   "r4:eq",
+   "u3:eq"
+  ],
+  "status": "PASS"
+ },
+ {
+  "word_name": "m2",
+  "word": [
+   1,
+   1,
+   2,
+   3
+  ],
+  "primes": [
+   "31",
+   "32b"
+  ],
+  "secs": {
+   "31": 62.49,
+   "32b": 146.28
+  },
+  "points": 1295,
+  "point_secs_mean": 0.0538,
+  "vmhwm_mb": 104,
+  "primes_identical": true,
+  "chi_ok": true,
+  "scaling_ok": true,
+  "N3_gl3_reversed": {
+   "u": "eq",
+   "r": "eq"
+  },
+  "N2_rank1": true,
+  "ranks": {
+   "u2": 1,
+   "r2": 1,
+   "u3": 9,
+   "r3": 3,
+   "u4": 36,
+   "r4": 6
+  },
+  "N4": {
+   "u": "t^0q^-8 + t^0q^-6 + 2t^0q^-4 + t^0q^-2 + t^0q^0 + t^2q^-16 + 3t^2q^-14 + 5t^2q^-12 + 6t^2q^-10 + 5t^2q^-8 + 3t^2q^-6 + t^2q^-4 + t^4q^-20 + t^4q^-18 + 2t^4q^-16 + t^4q^-14 + t^4q^-12",
+   "r": "t^0q^-4 + t^2q^-12 + 2t^2q^-10 + t^2q^-8 + t^4q^-16"
+  },
+  "vs": "2-strand sigma^2 (xscan)",
+  "markov": [
+   "u2:eq",
+   "r2:eq",
+   "u3:eq",
+   "r3:eq",
+   "u4:eq",
+   "r4:eq"
+  ],
+  "status": "PASS"
+ },
+ {
+  "word_name": "m3",
+  "word": [
+   1,
+   1,
+   1,
+   2,
+   3
+  ],
+  "primes": [
+   "31",
+   "32b"
+  ],
+  "secs": {
+   "31": 67.56,
+   "32b": 156.25
+  },
+  "points": 1296,
+  "point_secs_mean": 0.0638,
+  "vmhwm_mb": 109,
+  "primes_identical": true,
+  "chi_ok": true,
+  "scaling_ok": true,
+  "N3_gl3_reversed": {
+   "u": "eq",
+   "r": "eq"
+  },
+  "N2_rank1": true,
+  "ranks": {
+   "u2": 1,
+   "r2": 1,
+   "u3": 7,
+   "r3": 3,
+   "u4": 22,
+   "r4": 9
+  },
+  "N4": {
+   "u": "t^0q^-12 + t^0q^-10 + 2t^0q^-8 + t^0q^-6 + t^0q^-4 + t^2q^-14 + 2t^2q^-12 + 2t^2q^-10 + t^2q^-8 + t^3q^-22 + 2t^3q^-20 + 2t^3q^-18 + t^3q^-16 + t^4q^-16 + t^5q^-24 + t^5q^-22 + t^6q^-30",
+   "r": "t^0q^-8 + t^2q^-14 + t^2q^-12 + t^3q^-18 + t^3q^-16 + t^4q^-20 + t^5q^-24 + t^5q^-22 + t^6q^-26"
+  },
+  "vs": "2-strand sigma^3 (xscan)",
+  "markov": [
+   "u2:eq",
+   "r2:eq",
+   "u3:eq",
+   "r3:eq",
+   "u4:eq",
+   "r4:eq"
+  ],
+  "status": "PASS"
+ },
+ {
+  "word_name": "m4",
+  "word": [
+   1,
+   1,
+   1,
+   1,
+   2,
+   3
+  ],
+  "primes": [
+   "31",
+   "32b"
+  ],
+  "secs": {
+   "31": 72.04,
+   "32b": 164.33
+  },
+  "points": 1296,
+  "point_secs_mean": 0.0775,
+  "vmhwm_mb": 114,
+  "primes_identical": true,
+  "chi_ok": true,
+  "scaling_ok": true,
+  "N3_gl3_reversed": {
+   "u": "eq",
+   "r": "eq"
+  },
+  "N2_rank1": true,
+  "ranks": {
+   "u2": 1,
+   "r2": 1,
+   "u3": 13,
+   "r3": 5,
+   "u4": 64,
+   "r4": 18
+  },
+  "N4": {
+   "u": "t^0q^-16 + t^0q^-14 + 2t^0q^-12 + t^0q^-10 + t^0q^-8 + t^2q^-18 + 2t^2q^-16 + 2t^2q^-14 + t^2q^-12 + t^3q^-26 + 2t^3q^-24 + 2t^3q^-22 + t^3q^-20 + t^4q^-28 + 3t^4q^-26 + 5t^4q^-24 + 6t^4q^-22 + 6t^4q^-20 + 3t^4q^-18 + t^4q^-16 + t^5q^-28 + t^5q^-26 + t^6q^-34 + t^6q^-30 + 2t^6q^-28 + 2t^6q^-26 + t^6q^-24 + t^7q^-38 + 2t^7q^-36 + 2t^7q^-34 + t^7q^-32 + t^8q^-40 + t^8q^-38 + 2t^8q^-36 + t^8q^-34 + t^8q^-32",
+   "r": "t^0q^-12 + t^2q^-18 + t^2q^-16 + t^3q^-22 + t^3q^-20 + 2t^4q^-24 + 2t^4q^-22 + t^4q^-20 + t^5q^-28 + t^5q^-26 + 2t^6q^-30 + t^6q^-28 + t^7q^-34 + t^7q^-32 + t^8q^-36"
+  },
+  "vs": "2-strand sigma^4 (xscan)",
+  "markov": [
+   "u2:eq",
+   "r2:eq",
+   "u3:eq",
+   "r3:eq",
+   "u4:eq",
+   "r4:eq"
+  ],
+  "status": "PASS"
+ },
+ {
+  "word_name": "m5",
+  "word": [
+   1,
+   1,
+   1,
+   1,
+   1,
+   2,
+   3
+  ],
+  "primes": [
+   "31",
+   "32b"
+  ],
+  "secs": {
+   "31": 128.94,
+   "32b": 172.61
+  },
+  "points": 1296,
+  "point_secs_mean": 0.1705,
+  "vmhwm_mb": 122,
+  "primes_identical": true,
+  "chi_ok": true,
+  "scaling_ok": true,
+  "N3_gl3_reversed": {
+   "u": "eq",
+   "r": "eq"
+  },
+  "N2_rank1": true,
+  "ranks": {
+   "u2": 1,
+   "r2": 1,
+   "u3": 11,
+   "r3": 5,
+   "u4": 46,
+   "r4": 25
+  },
+  "N4": {
+   "u": "t^0q^-20 + t^0q^-18 + 2t^0q^-16 + t^0q^-14 + t^0q^-12 + t^2q^-22 + 2t^2q^-20 + 2t^2q^-18 + t^2q^-16 + t^3q^-30 + 2t^3q^-28 + 2t^3q^-26 + t^3q^-24 + t^4q^-26 + 3t^4q^-24 + 2t^4q^-22 + t^4q^-20 + t^5q^-34 + 3t^5q^-32 + 3t^5q^-30 + t^5q^-28 + t^6q^-38 + t^6q^-30 + t^6q^-28 + t^7q^-38 + 2t^7q^-36 + t^7q^-34 + t^8q^-44 + t^8q^-42 + t^8q^-36 + t^9q^-44 + t^9q^-42 + t^10q^-50",
+   "r": "t^0q^-16 + t^2q^-22 + t^2q^-20 + t^3q^-26 + t^3q^-24 + t^4q^-28 + t^4q^-26 + t^4q^-24 + t^5q^-32 + 2t^5q^-30 + t^5q^-28 + 2t^6q^-34 + t^6q^-32 + t^7q^-38 + 2t^7q^-36 + t^7q^-34 + 2t^8q^-40 + t^8q^-38 + t^9q^-44 + t^9q^-42 + t^10q^-46"
+  },
+  "vs": "2-strand sigma^5 (xscan)",
+  "markov": [
+   "u2:eq",
+   "r2:eq",
+   "u3:eq",
+   "r3:eq",
+   "u4:eq",
+   "r4:eq"
+  ],
+  "status": "PASS"
+ },
+ {
+  "word_name": "m3n",
+  "word": [
+   1,
+   1,
+   1,
+   -2,
+   3
+  ],
+  "primes": [
+   "31",
+   "32b"
+  ],
+  "secs": {
+   "31": 67.14,
+   "32b": 152.03
+  },
+  "points": 1296,
+  "point_secs_mean": 0.0647,
+  "vmhwm_mb": 109,
+  "primes_identical": true,
+  "chi_ok": true,
+  "scaling_ok": true,
+  "N3_gl3_reversed": {
+   "u": "eq",
+   "r": "eq"
+  },
+  "N2_rank1": true,
+  "ranks": {
+   "u2": 1,
+   "r2": 1,
+   "u3": 7,
+   "r3": 3,
+   "u4": 22,
+   "r4": 9
+  },
+  "N4": {
+   "u": "t^0q^-12 + t^0q^-10 + 2t^0q^-8 + t^0q^-6 + t^0q^-4 + t^2q^-14 + 2t^2q^-12 + 2t^2q^-10 + t^2q^-8 + t^3q^-22 + 2t^3q^-20 + 2t^3q^-18 + t^3q^-16 + t^4q^-16 + t^5q^-24 + t^5q^-22 + t^6q^-30",
+   "r": "t^0q^-8 + t^2q^-14 + t^2q^-12 + t^3q^-18 + t^3q^-16 + t^4q^-20 + t^5q^-24 + t^5q^-22 + t^6q^-26"
+  },
+  "vs": "2-strand sigma^3 (xscan)",
+  "markov": [
+   "u2:eq",
+   "r2:eq",
+   "u3:eq",
+   "r3:eq",
+   "u4:eq",
+   "r4:eq"
+  ],
+  "status": "PASS"
+ },
+ {
+  "word_name": "m3nn",
+  "word": [
+   1,
+   1,
+   1,
+   2,
+   -3
+  ],
+  "primes": [
+   "31",
+   "32b"
+  ],
+  "secs": {
+   "31": 69.26,
+   "32b": 154.44
+  },
+  "points": 1296,
+  "point_secs_mean": 0.0637,
+  "vmhwm_mb": 108,
+  "primes_identical": true,
+  "chi_ok": true,
+  "scaling_ok": true,
+  "N3_gl3_reversed": {
+   "u": "eq",
+   "r": "eq"
+  },
+  "N2_rank1": true,
+  "ranks": {
+   "u2": 1,
+   "r2": 1,
+   "u3": 7,
+   "r3": 3,
+   "u4": 22,
+   "r4": 9
+  },
+  "N4": {
+   "u": "t^0q^-12 + t^0q^-10 + 2t^0q^-8 + t^0q^-6 + t^0q^-4 + t^2q^-14 + 2t^2q^-12 + 2t^2q^-10 + t^2q^-8 + t^3q^-22 + 2t^3q^-20 + 2t^3q^-18 + t^3q^-16 + t^4q^-16 + t^5q^-24 + t^5q^-22 + t^6q^-30",
+   "r": "t^0q^-8 + t^2q^-14 + t^2q^-12 + t^3q^-18 + t^3q^-16 + t^4q^-20 + t^5q^-24 + t^5q^-22 + t^6q^-26"
+  },
+  "vs": "2-strand sigma^3 (xscan)",
+  "markov": [
+   "u2:eq",
+   "r2:eq",
+   "u3:eq",
+   "r3:eq",
+   "u4:eq",
+   "r4:eq"
+  ],
+  "status": "PASS"
+ },
+ {
+  "word_name": "m3x",
+  "word": [
+   1,
+   1,
+   1,
+   -2,
+   -3
+  ],
+  "primes": [
+   "31",
+   "32b"
+  ],
+  "secs": {
+   "31": 68.23,
+   "32b": 151.39
+  },
+  "points": 1296,
+  "point_secs_mean": 0.0639,
+  "vmhwm_mb": 108,
+  "primes_identical": true,
+  "chi_ok": true,
+  "scaling_ok": true,
+  "N3_gl3_reversed": {
+   "u": "eq",
+   "r": "eq"
+  },
+  "N2_rank1": true,
+  "ranks": {
+   "u2": 1,
+   "r2": 1,
+   "u3": 7,
+   "r3": 3,
+   "u4": 22,
+   "r4": 9
+  },
+  "N4": {
+   "u": "t^0q^-12 + t^0q^-10 + 2t^0q^-8 + t^0q^-6 + t^0q^-4 + t^2q^-14 + 2t^2q^-12 + 2t^2q^-10 + t^2q^-8 + t^3q^-22 + 2t^3q^-20 + 2t^3q^-18 + t^3q^-16 + t^4q^-16 + t^5q^-24 + t^5q^-22 + t^6q^-30",
+   "r": "t^0q^-8 + t^2q^-14 + t^2q^-12 + t^3q^-18 + t^3q^-16 + t^4q^-20 + t^5q^-24 + t^5q^-22 + t^6q^-26"
+  },
+  "vs": "2-strand sigma^3 (xscan)",
+  "markov": [
+   "u2:eq",
+   "r2:eq",
+   "u3:eq",
+   "r3:eq",
+   "u4:eq",
+   "r4:eq"
+  ],
+  "status": "PASS"
+ },
+ {
+  "word_name": "u_s3",
+  "word": [
+   1,
+   2,
+   1,
+   3
+  ],
+  "primes": [
+   "31",
+   "32b"
+  ],
+  "secs": {
+   "31": 261.77,
+   "32b": 1572.53
+  },
+  "points": 1295,
+  "point_secs_mean": 0.3645,
+  "vmhwm_mb": 226,
+  "primes_identical": true,
+  "chi_ok": true,
+  "scaling_ok": true,
+  "N3_gl3_reversed": {
+   "u": "eq",
+   "r": "eq"
+  },
+  "N2_rank1": true,
+  "ranks": {
+   "u2": 1,
+   "r2": 1,
+   "u3": 9,
+   "r3": 3,
+   "u4": 36,
+   "r4": 6
+  },
+  "N4": {
+   "u": "t^0q^-8 + t^0q^-6 + 2t^0q^-4 + t^0q^-2 + t^0q^0 + t^2q^-16 + 3t^2q^-14 + 5t^2q^-12 + 6t^2q^-10 + 5t^2q^-8 + 3t^2q^-6 + t^2q^-4 + t^4q^-20 + t^4q^-18 + 2t^4q^-16 + t^4q^-14 + t^4q^-12",
+   "r": "t^0q^-4 + t^2q^-12 + 2t^2q^-10 + t^2q^-8 + t^4q^-16"
+  },
+  "vs": "2-strand sigma^2 (xscan)",
+  "markov": [
+   "u2:eq",
+   "r2:eq",
+   "u3:eq",
+   "r3:eq",
+   "u4:eq",
+   "r4:eq"
+  ],
+  "status": "PASS"
+ },
+ {
+  "word_name": "w41s",
+  "word": [
+   1,
+   -2,
+   1,
+   -2,
+   3
+  ],
+  "primes": [
+   "31",
+   "32b"
+  ],
+  "secs": {
+   "31": 584.91,
+   "32b": 1596.67
+  },
+  "points": 1296,
+  "point_secs_mean": 0.499,
+  "vmhwm_mb": 294,
+  "primes_identical": true,
+  "chi_ok": true,
+  "scaling_ok": true,
+  "N3_gl3_reversed": {
+   "u": "eq",
+   "r": "eq"
+  },
+  "N2_rank1": true,
+  "ranks": {
+   "u2": 1,
+   "r2": 1,
+   "u3": 11,
+   "r3": 5,
+   "u4": 46,
+   "r4": 25
+  },
+  "N4": {
+   "u": "t^-4q^16 + t^-3q^8 + t^-3q^10 + t^-2q^2 + t^-2q^6 + 2t^-2q^8 + 2t^-2q^10 + t^-2q^12 + t^-1q^-2 + 2t^-1q^0 + 2t^-1q^2 + t^-1q^4 + t^-1q^6 + t^-1q^8 + t^0q^-4 + 2t^0q^-2 + 4t^0q^0 + 2t^0q^2 + t^0q^4 + t^1q^-8 + t^1q^-6 + t^1q^-4 + 2t^1q^-2 + 2t^1q^0 + t^1q^2 + t^2q^-12 + 2t^2q^-10 + 2t^2q^-8 + t^2q^-6 + t^2q^-2 + t^3q^-10 + t^3q^-8 + t^4q^-16",
+   "r": "t^-4q^12 + t^-3q^8 + t^-3q^10 + 2t^-2q^6 + t^-2q^8 + 2t^-1q^2 + 2t^-1q^4 + t^0q^-2 + 3t^0q^0 + t^0q^2 + 2t^1q^-4 + 2t^1q^-2 + t^2q^-8 + 2t^2q^-6 + t^3q^-10 + t^3q^-8 + t^4q^-12"
+  },
+  "vs": "3-strand 4_1 (C2-1)",
+  "markov": [
+   "u3:eq",
+   "u4:eq",
+   "r3:eq",
+   "r4:eq"
+  ],
+  "status": "PASS"
+ },
+ {
+  "word_name": "w52s",
+  "word": [
+   1,
+   1,
+   1,
+   2,
+   -1,
+   2,
+   3
+  ],
+  "primes": [
+   "31",
+   "32b"
+  ],
+  "secs": {
+   "31": 713.03,
+   "32b": 2693.23
+  },
+  "points": 1296,
+  "point_secs_mean": 0.6528,
+  "vmhwm_mb": 408,
+  "primes_identical": true,
+  "chi_ok": true,
+  "scaling_ok": true,
+  "N3_gl3_reversed": {
+   "u": "eq",
+   "r": "eq"
+  },
+  "N2_rank1": true,
+  "ranks": {
+   "u2": 1,
+   "r2": 1,
+   "u3": 15,
+   "r3": 7,
+   "u4": 78,
+   "r4": 49
+  },
+  "N4": {
+   "u": "t^0q^-12 + t^0q^-10 + 2t^0q^-8 + t^0q^-6 + t^0q^-4 + t^1q^-12 + 2t^1q^-10 + 2t^1q^-8 + t^1q^-6 + t^2q^-20 + 2t^2q^-18 + 2t^2q^-16 + 2t^2q^-14 + 2t^2q^-12 + 3t^2q^-10 + t^2q^-8 + t^3q^-22 + 2t^3q^-20 + 3t^3q^-18 + 2t^3q^-16 + t^3q^-14 + t^3q^-12 + t^4q^-24 + 2t^4q^-22 + 4t^4q^-20 + 3t^4q^-18 + 2t^4q^-16 + t^5q^-30 + 3t^5q^-28 + 3t^5q^-26 + 2t^5q^-24 + t^5q^-22 + t^5q^-20 + t^5q^-18 + t^6q^-30 + t^6q^-28 + 2t^6q^-26 + 2t^6q^-24 + t^6q^-22 + t^7q^-34 + 2t^7q^-32 + 2t^7q^-30 + t^7q^-28 + t^8q^-38 + t^8q^-36 + t^8q^-28 + t^9q^-36 + t^9q^-34 + t^10q^-42",
+   "r": "t^0q^-8 + t^1q^-12 + t^1q^-10 + t^2q^-16 + 3t^2q^-14 + t^2q^-12 + 3t^3q^-18 + 3t^3q^-16 + 2t^4q^-22 + 5t^4q^-20 + t^4q^-18 + t^5q^-26 + 4t^5q^-24 + 3t^5q^-22 + 2t^6q^-28 + 4t^6q^-26 + t^6q^-24 + t^7q^-32 + 3t^7q^-30 + 2t^7q^-28 + t^8q^-34 + 2t^8q^-32 + t^9q^-36 + t^9q^-34 + t^10q^-38"
+  },
+  "vs": "3-strand 5_2 (C2-1)",
+  "markov": [
+   "u3:eq",
+   "u4:eq",
+   "r3:eq",
+   "r4:eq"
+  ],
+  "status": "PASS"
+ }
+]
