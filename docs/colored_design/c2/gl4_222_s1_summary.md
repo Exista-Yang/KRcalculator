@@ -6,5 +6,8 @@
 | 12n_113 | -1 -2 -2 -2 -2 -2 1 -2 -1 2 -1 2 | 3022 | 2809 | 107 | 53 | eq / eq | yes | yes | yes | PASS |
 | 12n_850 | -1 2 2 2 2 1 1 2 2 1 1 2 | 762 | 541 | 59 | 33 | eq / eq | yes | yes | yes | PASS |
 | 12n_821 | 1 2 2 -1 -1 2 1 1 -2 -2 -2 -2 | 1380 | 1229 | 73 | 37 | eq / eq | yes | yes | yes | PASS |
+| 12n_750 | 1 -2 -2 1 1 2 2 1 1 2 2 2 | 1098 | 845 | 67 | 35 | eq / eq | yes | yes | yes | PASS |
+| 11a_240 | 1 1 1 1 1 1 2 2 -1 2 2 2 | 3966 | 3721 | 123 | 61 | eq / eq | yes | yes | yes | PASS |
+| 12a_576 | 1 -2 -2 -2 -2 -2 -2 1 1 -2 -2 -2 | 4222 | 3969 | 127 | 63 | eq / eq | yes | yes | yes | PASS |
 
-6 knots computed, 6 PASS, failures: []
+9 knots computed, 9 PASS, failures: []
