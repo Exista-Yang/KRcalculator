@@ -71,5 +71,17 @@ os.makedirs('docs/colored_design/c2', exist_ok=True)
 json.dump(doc, open('docs/colored_design/c2/gl4_222_s1.json', 'w'), indent=1)
 hdr = ["| knot | word | N=4 unred | N=4 red | N=3 unred | N=3 red | N=3 vs gl_3 reversed (u / r) | χ | scaling | primes | status |", "|---|---|---|---|---|---|---|---|---|---|---|"]
 open('docs/colored_design/c2/gl4_222_s1_summary.md', 'w').write('\n'.join(hdr + rows) + '\n\n%d knots computed, %d PASS, failures: %s\n' % (ncomp, ncomp - len(fails), fails))
+import glob
+nc = []
+for name, _, w, c in knots:
+    if not all(os.path.exists('%s/%s_f%s.json' % (K, name, F)) for F in ('31', '32b')):
+        why = []
+        for F in ('31', '32b'):
+            if os.path.exists('%s/%s_f%s.json' % (K, name, F)): why.append('F%s done' % F); continue
+            ff = '%s/%s_f%s.fail' % (K, name, F)
+            why.append('F%s: %s' % (F, open(ff).read().strip().replace(chr(10), ' ')[:140] if os.path.exists(ff) else 'not finished / not started in this session'))
+        nc.append('| %s | %s | %s |' % (name, w, '; '.join(why)))
+with open('docs/colored_design/c2/gl4_222_s1_summary.md', 'a') as fh:
+    fh.write('\nNot computed (%d of %d slice knots; NOT check failures - resource limits or session time):\n\n| knot | word | status |\n|---|---|---|\n' % (len(nc), len(knots)) + '\n'.join(nc) + '\n')
 print('%d knots computed, %d PASS (both primes), failures: %s, one prime only: %s' % (ncomp, ncomp - len(partial), fails, [x for x in partial if x not in fails]))
 print('reduced rank4 == (reduced rank3)^2 for', sum(r['red_rank4_eq_red_rank3_sq'] for r in out), 'of', ncomp, '; not for', [r['knot'] for r in out if not r['red_rank4_eq_red_rank3_sq']])
