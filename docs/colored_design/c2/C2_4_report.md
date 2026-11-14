@@ -156,7 +156,8 @@ Not certified (identical for both primes):
 | 926, 949, 986, 997 (E1.1), 1435, 1472, 1483 (E1.2) | various ⊗ E1.x | target T4 (decomposable, via Kron(e_T5, F1.1)) not reachable: Search stuck, Exact 7.7-31 M; no reroute (E1.x does not commute past the last rung) |
 | 1769 | 1,0,1,0/1,0,0,1/0,1,1,0/0,1,0,1 ⊗ E2.1 | reroute → dec_one(1,1,0,0/1,0,0,1/0,2,0,0/0,1,1,0, F1.2): target T6 in X = E0.1,E1.2,E2.2,E1.1,F1.1,F0.1,F2.1,F1.2 (576 flows = the flows of L_T6, X = B_T6 ⊕ B_{1,0,1,0/1,0,1,0/0,1,1,0/0,1,0,1}, not commutation-equivalent to L_T6); Exact 10.8 M |
 | 1812 | T2 ⊗ E2.1 | reroute → dec_word(T5, E2.1·F1.2) → target T7 in X = E1.2,E0.1,E2.2,E1.1,F1.1,F0.1,F2.1,F1.2 (1 152 flows = L_T7's); Exact 63 M |
-| 132, 1412 | T2 ⊗ E0.1, ... | Exact fallback killed at 7 GB (1.4-1.7 M unknowns; cap now 1.3 M) |
+| 132 | T2 ⊗ E0.1 | reroute → dec_word(1,1,0,0/0,1,1,0/1,1,0,0/0,1,0,1, E0.1·F2.1·F1.2) → a 1.72 M-unknown call (Exact fallback killed at 7 GB in the first run; now above the 1.3 M cap; Leaves step 1.72 M > 4·10⁵) |
+| 1412 | 1,0,1,0/0,1,0,1/1,1,0,0/0,0,1,1 ⊗ E1.2 | target T5 at v^−2: Exact 1.4 M (killed at 7 GB; now above the cap), Search refused, no reroute (runs_c2/k4m/lib/mem_f31_run.jsonl) |
 | closure T3 | | Search closure through e_T3 exhausted (degree 4) |
 
 ## 4. 4-strand knots: cover after M5i [M]
@@ -194,12 +195,12 @@ All runs: χ = decat_chi (6/6), D14 scaling, the frozen-trace replay at every bo
 
 (b) **The 11 C2-2 4-strand words** (Markov words σ1^m σ2^{±1} σ3^{±1}, σ1σ2σ1σ3, 4_1·σ3, 5_2·σ3) recomputed with
 the C2-4 binary, library = C2-5 cache + M5i additions, `--replay --provider m4c-lf` (runs_c2/k4m/markov): F31
-**11 / 11 identical** to C2-2 closure by closure; F32b @@VB32@@. (These words visit no idempotent type: this checks
+**11 / 11 identical** to C2-2 closure by closure; F32b **11 / 11 identical** (22 / 22 runs, runs_c2/k4m/markov/compare.txt; χ and D14 scaling in every run). (These words visit no idempotent type: this checks
 that the engine changes leave the e = None path unchanged.)
 
-(c) tests/m5i.rs (default: (3,1,3) e_p vs End^0, dec_rung with the source idempotent, closure through e_p, reduced
-coordinates QP = id and PQ = e_p on every coset from the frozen data; (2,2,2,2) T5 by prefix propagation; ignored:
-T5 vs End^0, 75 s).
+(c) tests/m5i.rs (passed; default: (3,1,3) e_p vs End^0, dec_rung with the source idempotent, closure through e_p, reduced
+coordinates QP = id and PQ = e_p on every coset from the frozen data; (2,2,2,2) T5 by prefix propagation; ignored, run once and passed:
+T5 vs End^0, 122 s).
 
 ## 6. Open problems
 
