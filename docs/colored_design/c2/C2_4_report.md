@@ -32,7 +32,7 @@ data-gl6 under c2/l2222_n4_c24/.
   non-local splitting). Every 4-strand word that visits an idempotent type also needs 1235, 1444, 1470 (checked on
   268 stabilized 3-strand knots), so no 4-strand run through e_p at (2,2,2,2) was possible this session; the engine
   path through e_p is validated at (2,2,2) instead (a).
-- Full suite `KRHOM_THREADS=4 cargo test --release`: @@SUITE@@
+- Full suite `KRHOM_THREADS=4 cargo test --release`: **287 passed, 0 failed, 37 ignored** (runs_c2/k4m/full_suite.log, `--no-fail-fast`; one M5a assertion in tests/sindec.rs updated: `ty` of the (3,1,3) decomposable type now returns e_q instead of NeedsIdempotent). Commits on colored-2c4-m5i; library delta on data-gl6 c2/l2222_n4_c24 (249 layer-A + 233 template files per prime, 1.2 MB).
 
 ## 1. Design as built
 
@@ -140,8 +140,8 @@ every call, templates must be cached).
 
 | prime | run | replay | job wall mean / median / max (run) |
 |---|---|---|---|
-| F31 | **31 / 43** | @@R31@@ | 61 / 43 / 539 s |
-| F32b | **31 / 43** | @@R32@@ | 48 / 45 / 389 s |
+| F31 | **31 / 43** | **31 / 43** (same jobs) | 61 / 43 / 539 s |
+| F32b | **31 / 43** | **31 / 43** (same jobs) | 48 / 45 / 389 s |
 
 Certified (both primes): pairs 109, 202, 403, 595, 618, 688, 972, 1042, 1175, 1190, 1209, 1371, 1390, 1404, 1417,
 1418, 1458, 1528, 1629, 1789, 1791, 1837, 1882, 2052, 2082, 2086, 2275, 2298, 2368, closure T1, closure T2.
@@ -207,7 +207,9 @@ T5 vs End^0, 75 s).
    targets, closure T3). Concrete next steps: (i) for 1769 / 1812 the failing X has exactly the flows of L_T6 / L_T7
    and contains B_T6 / B_T7 plus small summands that Search may reach: choosing that word as the ladder of T6 / T7
    (a different minimal-flow tie-break, e.g. via `KRHOM_FORCE_LADDER` first) turns both into the X = L_q shortcut,
-   with e from peeling the small summands; (ii) a Leaves pair route for decomposable targets (the m4c-lf provider
+   with e from peeling the small summands — tried for T6 (pair 1769, `KRHOM_FORCE_LADDER`, runs_c2/k4m/lib/alt_t6_1769.*):
+   the peeling call of the alternative word needs 2.1 M Exact unknowns (> the 1.3 M fallback cap) or a 1.1 M Leaves
+   step (> 4·10⁵), so it needs a larger machine or a smaller Leaves plan; (ii) a Leaves pair route for decomposable targets (the m4c-lf provider
    did not try LeafPairs with e_q) and for the 36-flow targets of 1235 / 1444 / 1470 (Lemma A steps 38-84 M: a
    smaller-window plan); (iii) a reroute that also moves R past non-commuting rungs (sl2 commutation E_iF_i ≅ F_iE_i
    ⊕ [k] id) would cover the T4-target jobs.
