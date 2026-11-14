@@ -46,6 +46,7 @@
 | 10_149 | 1 1 1 1 2 -1 2 -1 2 2 | 1846 | 1681 | 83 | 41 | eq / eq | yes | yes | yes | PASS |
 | 10_152 | 1 1 1 2 2 1 1 2 2 2 | 562 | 373 | 51 | 29 | eq / eq | yes | yes | yes | PASS |
 | 10_155 | -1 -1 -1 -2 1 1 -2 1 1 -2 | 726 | 625 | 51 | 25 | eq / eq | yes | yes | yes | PASS |
+| 10_157 | -1 -1 -1 -2 -2 1 -2 1 -2 -2 | 2598 | 2401 | 99 | 49 | eq / eq | yes | yes | yes | PASS |
 | 10_159 | 1 1 1 2 -1 2 -1 -1 2 2 | 1678 | 1521 | 79 | 39 | eq / eq | yes | yes | yes | PASS |
 | 10_161 | 1 1 1 2 -1 2 1 1 2 2 | 298 | 173 | 35 | 19 | eq / eq | yes | yes | yes | PASS |
 | 11a_234 | 1 1 1 1 1 1 1 1 2 -1 2 2 | 1518 | 1369 | 75 | 37 | eq / eq | yes | yes | yes | PASS |
@@ -58,4 +59,4 @@
 | 12n_235 | 1 2 2 1 1 -2 -2 -2 -2 -2 -2 -2 | 258 | 181 | 33 | 19 | eq / eq | yes | yes | yes | PASS |
 | 12n_242 | 1 2 2 1 1 2 2 2 2 2 2 2 | 226 | 101 | 35 | 23 | eq / eq | yes | yes | yes | PASS |
 
-57 knots computed, 57 PASS, failures: []
+58 knots computed, 58 PASS, failures: []
