@@ -166,3 +166,4 @@ box exit 134
 library: 16 types, 16 closable, build 5.4s (0 provider calls, 233 layer-A loads), hash f2989c6d1cd1954f, commit 8fe55b54ca36401577893edd5ece587c0264bd45
 runs_c2/k3/one_s1_heavy.sh: line 17: 28279 Killed                  timeout 172800 /tmp/claude-0/-home-user-KRcalculator/3a18306a-1d5f-50c6-9aa2-7362a60f64a8/scratchpad/bin/sbox box --lam 2,2,2 --word "-1 -2 -2 -2 -1 2 -1 -1 -1 2 -1 2" --n 4 --ns 2,3,4 --field 31 --seed 201 --prune 4 --mem-mb 12000 --replay --cache /tmp/claude-0/-home-user-KRcalculator/3a18306a-1d5f-50c6-9aa2-7362a60f64a8/scratchpad/lib222/f31 --costs tests/data/homprov/costs_cloud.txt --stages 12 --dir runs_c2/k3/out_s1/12n_684_f31.d --ckpt-secs 300
 box exit 137
+library: 16 types, 16 closable, build 6.0s (0 provider calls, 233 layer-A loads), hash f2989c6d1cd1954f, commit 8fe55b54ca36401577893edd5ece587c0264bd45
