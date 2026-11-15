@@ -16,9 +16,7 @@
  "checks": "chi = decat_chi on every closure; D14 scaling (2 points); F31 = F32b; N'=3 = uncolored gl_3 of the reversed braid (engine2); N'=2 rank 1",
  "computed": 63,
  "failed": [],
- "one_prime_only": [
-  "10_112"
- ],
+ "one_prime_only": [],
  "knots": [
   {
    "knot": "4_1",
@@ -1747,9 +1745,10 @@
    ],
    "length": 10,
    "primes": [
-    "31"
+    "31",
+    "32b"
    ],
-   "primes_identical": false,
+   "primes_identical": true,
    "chi_ok": true,
    "scaling_ok": true,
    "secs_f31": 3764.47,
@@ -1773,7 +1772,7 @@
     "N4_mirror_symmetric": false
    },
    "red_rank4_eq_red_rank3_sq": true,
-   "status": "PARTIAL (one prime)"
+   "status": "PASS"
   },
   {
    "knot": "10_124",
