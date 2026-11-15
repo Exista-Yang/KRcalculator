@@ -22,7 +22,8 @@ under c2/l2222_n4_c27/.
   Reduced N' = 4 ranks 81, 361, 441 (= det²). Unreduced runs (1 296 box points, ≈ 4 h per knot and prime here)
   were not done.
 - Engine: column-restricted template localization for large windows (identical values; generator pass −23 %).
-- Class B: 7 of its 11 missing jobs certified for F31 (one with a measured cost record); 4 stop on one 2.77 M step.
+- Class B: 7 of its 11 missing jobs certified for both primes, run = replay (one with a measured cost record); the
+  4 left (1412, 1435, 1472, 1483) stop on one 2.77 M step into the decomposable type T5.
 - Layer-A delta on data-gl6 c2/l2222_n4_c27 (both primes); full suite: 290 passed, 0 failed, 37 ignored.
 
 ## 1. Setup
@@ -181,8 +182,8 @@ runs_c2/c27/cover/status_f{31,32b}.txt, 1 236 / 1 254 jobs ok for each prime; co
 | knots | jobs | missing |
 |---|---|---|
 | **class A (18): 6_1, 7_2, 7_4, 7_6, 7_7, 8_4, 8_6, 8_8, 8_11, 8_13, 8_14, 9_10, 9_11, 9_13, 9_17, 9_18, 9_20, 9_23** | 450 + 93 each | **0** (both primes) |
-| class B: 8_15, 9_22, 11n_42 | 555 + 93 | 11: pairs 926, 949, 986, 997, 1054, 1412, 1435, 1471, 1472, 1483, 1540 |
-| Conway | 846 + 125 | 16 |
+| class B: 8_15, 9_22, 11n_42 | 555 + 93 | 11 → **4** after §8 (1412, 1435, 1472, 1483) |
+| Conway | 846 + 125 | 16 → 9 after §8 (942, 1412, 1435, 1472, 1483, 1830, 1906, 2392, closure T3) |
 
 So every class-A knot of knots4_cloud.txt is computable from layer A alone (`--replay`).
 
@@ -234,14 +235,27 @@ are the next runs (`MODES=u,r runs_c2/c27/k4/box.sh 6_1 31 "1 1 2 -1 -3 2 -3" 4`
   N' = 3 ranks equal det(K).
 - Full suite `KRHOM_THREADS=4 cargo test --release --no-fail-fast` (runs_c2/c27/full_suite.log): **290 passed, 0 failed, 37 ignored** (C2-4: 287 + the 3 new tests).
 
-## 8. Open problems
+## 8. Class B (side work while the knot runs used the cores) [M]
+
+The 11 jobs missing for 8_15, 9_22, 11n_42 were run with the C2-7 provider (one job at a time beside the box
+shards; runs_c2/c27/lib/runjobs_classb*.log, classb_f32b.sh):
+
+| job | result | route / blocker |
+|---|---|---|
+| 1471, 926, 949, 997, 1054, 1540 | **certified F31 + F32b, replay ok (both primes)** | Leaves Lemma A (joint words; 1054 / 1540 with a per-step detour at level 7, §3.3b); 926, 949, 997 (C2-4's T4-target jobs) through the e_q Leaves pairs; 949 / 997 spend 15-40 min in the rex planner |
+| 986 | **certified F31 + F32b, replay ok** | one Lemma A step of 271 848 unknowns (2,2,2,2) [E1.2,E0.1,F1.2,F0.1,E2.1,E1.1] ⇄ [E1.2,F1.1,F0.1,E0.1,E2.1], d = 0, admitted by two measured records (`libbuild calib --windows`, 85.0 s / 1 271 MB and 48.5 s / 1 008 MB, limit 125 s, uncensored; runs_c2/c27/calib, table costs_2222_c27.txt = c25 + 2 records) — the B4w admission rule unchanged |
+| 1412, 1435, 1472, 1483 | fail (both runs) | a Lemma A step into T5 = 1,1,0,0/0,1,0,1/1,1,0,0/0,1,0,1 of 2.77 M unknowns (whole words; no joint pair, no target-side detour lowers it; runs_c2/c27/steps_1412.txt) |
+
+Cover after this (both primes, identical): class B misses 4 jobs (1412, 1435, 1472, 1483), Conway 9.
+
+## 9. Open problems
 
 1. **Unreduced 4-strand runs** (all 1 296 box points) cost ≈ 4 h per (knot, prime) here [E]; 6_1 unreduced is
    the first to run (box.sh is resumable). The engine time is template localization (≈ 1.5 M localizations per
    scan point, mostly mid-size windows of 36-108 fixed points); a cache of localizations keyed by the window's
    variable values, or a cheaper evaluation of the e_p-wrapped closure maps, would be the next speed-up.
-2. **Class B** (8_15, 9_22, 11n_42): 7 / 11 missing jobs now certified for F31 (1471, 926, 949, 997, 1054, 1540,
-   986; not yet run for F32b / replay); 1412, 1435, 1472, 1483 stop on the same Lemma A step into the decomposable
+2. **Class B** (8_15, 9_22, 11n_42): 7 / 11 missing jobs now certified for both primes, run = replay (1471, 926,
+   949, 997, 1054, 1540, 986; §8); 1412, 1435, 1472, 1483 stop on the same Lemma A step into the decomposable
    target T5 = 1,1,0,0/0,1,0,1/1,1,0,0/0,1,0,1 ([E1.2,F1.1,F0.1,E0.1,E2.2,F2.2]·F1.1 → [E1.1,E0.1,F1.1,F0.1,E2.1,
    F2.1], 2.77 M unknowns; neither a joint pair nor a target-side detour lowers it: runs_c2/c27/steps_1412.txt).
    A source-side detour (W_{t'} → W'_{t'} by a rex chain, Kron with ρ) is the missing move.
