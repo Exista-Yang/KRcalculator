@@ -33,6 +33,7 @@
 | 10_79 | 1 1 1 -2 -2 1 1 -2 -2 -2 | 3966 | 3721 | 123 | 61 | eq / eq | yes | yes | yes | PASS |
 | 10_82 | 1 1 1 1 -2 1 -2 1 -2 -2 | 4222 | 3969 | 127 | 63 | eq / eq | yes | yes | yes | PASS |
 | 10_85 | -1 -1 -1 -1 2 -1 -1 2 -1 2 | 3478 | 3249 | 115 | 57 | eq / eq | yes | yes | yes | PASS |
+| 10_91 | -1 -1 -1 2 -1 2 2 -1 2 2 | 5622 | 5329 | 147 | 73 | eq / eq | yes | yes | only 31 | PARTIAL (one prime) |
 | 10_94 | 1 1 1 -2 1 -2 -2 1 1 -2 | 5326 | 5041 | 143 | 71 | eq / eq | yes | yes | yes | PASS |
 | 10_99 | 1 1 -2 1 1 -2 -2 1 -2 -2 | 6886 | 6561 | 163 | 81 | eq / eq | yes | yes | yes | PASS |
 | 10_100 | -1 -1 -1 2 -1 -1 2 -1 -1 2 | 4486 | 4225 | 131 | 65 | eq / eq | yes | yes | yes | PASS |
@@ -62,4 +63,4 @@
 | 12n_235 | 1 2 2 1 1 -2 -2 -2 -2 -2 -2 -2 | 258 | 181 | 33 | 19 | eq / eq | yes | yes | yes | PASS |
 | 12n_242 | 1 2 2 1 1 2 2 2 2 2 2 2 | 226 | 101 | 35 | 23 | eq / eq | yes | yes | yes | PASS |
 
-61 knots computed, 61 PASS, failures: []
+62 knots computed, 62 PASS, failures: []
