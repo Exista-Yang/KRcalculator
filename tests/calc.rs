@@ -333,7 +333,7 @@ fn table_and_no_convention_option() {
     let r = krhom(&["2", "--braid", "aaa", "--table"]);
     ok(&r, "table");
     assert!(!r.out.contains("convention"), "{}", r.out);
-    assert!(r.out.contains("Poincare polynomial: t^0q^-9"), "{}", r.out);
+    assert!(r.out.contains("Poincare polynomial: t^0q^-3 + t^0q^-1 + t^2q^-5 + t^3q^-9"), "{}", r.out);
     assert!(r.out.contains("  table (rows t, columns q):\n  t\\q  -9  -7  -5  -3  -1\n    0               1   1\n    1\n    2           1\n    3   1\n"), "{}", r.out);
     // JSON has no convention field; default output has no table
     let d = empty_lib();
