@@ -55,7 +55,7 @@ bound; runs_c2/census/cover3_222.md).
 Persistence: data-gl6/c2/l222_n4/{f31,f32b} (prune 4) and l222_n6_unpruned/{f31,f32b}, one chunk each (≤ 18 MB),
 MANIFEST.txt with stamps, commit, sha256 and the restore command; runs/ holds all run/replay JSONL and logs.
 
-## 3. 3-strand (2,2,2) at N = 4 (runs_c2/k3/, docs/colored_design/c2/gl4_222.json) [M]
+## 3. 3-strand (2,2,2) at N = 4 (runs_c2/k3/, results/colored_gl4/gl4_222.json) [M]
 
 Command per (knot, prime) (runs_c2/k3/one.sh): `sbox --lam 2,2,2 --word W --n 4 --ns 2,3,4 --field F --seed 201
 --prune 4 --mem-mb 3200 --replay --cache LIB --costs costs_cloud.txt --stages len(W)` (box N = 4: 216 points
@@ -73,7 +73,7 @@ the determinant (1-dimensional), so the colored invariant is that of the unknot 
 unreduced and reduced.
 
 **N' = 4 is the new value.** wedge^2 C^4 is self-dual, so there is no duality shortcut; these N' = 4 polynomials
-(docs/colored_design/c2/gl4_222.json) are the genuinely new 2-colored gl_4 invariants. Unreduced ranks 46 … 2 206,
+(results/colored_gl4/gl4_222.json) are the genuinely new 2-colored gl_4 invariants. Unreduced ranks 46 … 2 206,
 reduced 25 … 2 025; the first 15 knots (by length) below, the full table in gl4_222_summary.md:
 
 | knot | word | N=4 unred | N=4 red | N=3 unred | N=3 red | N=3 vs gl_3 reversed (u / r) | χ | scaling | primes | status |

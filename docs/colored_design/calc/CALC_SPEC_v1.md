@@ -527,7 +527,7 @@ Run on the cloud machine, release build, `KRHOM_THREADS=4` unless stated.
 
 **H3. 4_1 on 3 strands.** `krhom 2,3,4 --braid "1 -2 1 -2" --strands 3 --colors 2 --colored-method singular`: exit 0, "results agree", ranks 1, 11, 46.
 - N=3: `t^-2q^6 + t^-2q^8 + t^-1q^0 + t^-1q^2 + t^0q^-2 + t^0q^0 + t^0q^2 + t^1q^-2 + t^1q^0 + t^2q^-8 + t^2q^-6`
-- N=4: identical to the unreduced N=4 string in runs_c2/k3/out/4_1_f31.json (rank 46).
+- N=4: identical to the unreduced N=4 string in results/colored_gl4/gl4_222_4_1_f31.json (rank 46).
 - With `--reduced`: ranks 1, 5, 25. N=3 is `t^-2q^6 + t^-1q^2 + t^0q^0 + t^1q^-2 + t^2q^-6`; N=4 must equal the JSON's reduced string.
 - N=2 is `t^0q^0` in both modes.
 - Per-prime time is about 1 min (62 s measured with u,r).
@@ -580,7 +580,7 @@ Run on the cloud machine, release build, `KRHOM_THREADS=4` unless stated.
 - **Q5.** N' below the color on the box route: refuse (default) or print 0 (cclose.rs:2721-2722 returns 0 for label > N)? Untested end to end in the box route.
 - **Q6.** An `auto` default that picks singular when a library is installed. Default: no; the session only prints a hint. Today's default for (2,2,2) is the full cube, which ran more than 90 min on 4_1 (C2_1_report.md:106-109).
 - **Q7.** (3,3,3), and l222_n6_unpruned for N'=5,6, are excluded. m5b n4 is 47/47, but n5/n6 are partial (m4c_b4w MANIFEST), and N'=5,6 at box N 6 was never run.
-- **Q8. Resumable `--ckpt`** (`box_run` + `box_finish`, boxrun.rs; sharded precedent origin/colored-2c4-unblock runs_c2/c27/k4/box.sh) for multi-hour 4-strand words. Deferred to a follow-up.
+- **Q8. Resumable `--ckpt`** (`box_run` + `box_finish`, boxrun.rs; sharded precedent origin/colored-2c4-unblock tools/dev/box.sh) for multi-hour 4-strand words. Deferred to a follow-up.
 - **Q9. Memory guard.** At 4 strands, `--mem-cap-mb 200000` effectively disables the estimate check. Should krhom set `RLIMIT_AS` itself? That needs libc or `extern "C"`, and no new dependencies are allowed. Default: document `ulimit -v`.
 - **Q10.** Different seeds per prime by default. Default: no (201/201, as in production). The checker uses different seeds.
 - **Q11.** Split braids on ≥3 strands are refused. A product formula could be added later.

@@ -192,7 +192,7 @@ So every class-A knot of knots4_cloud.txt is computable from layer A alone (`--r
 Driver: `sbox box` (4 shards, `--ckpt-secs 600`, KRHOM_THREADS=1 each) + `sbox finish` (4 threads), prune 4, box
 N = 4, closures N' = 2, 3, 4, seed 201, `--replay --provider m4c-lf --stamp-route`, library = the restored layer A
 plus the C2-7 delta, `KRHOM_MEM_CAP_MB=200000` (raised), `ulimit -v 14 GB` as the real guard
-(runs_c2/c27/k4/box.sh, finish.sh, queue.sh; outputs runs_c2/c27/k4/out/; comparison runs_c2/c27/k4/compare.py →
+(tools/dev/box.sh, finish.sh, queue.sh; outputs runs_c2/c27/k4/out/; comparison runs_c2/c27/k4/compare.py →
 compare.json). Library per run: 94 types (all closable), 2 idempotent types visited (T1, m = 1 290; T2, m = 516),
 1 119 layer-A loads, 0 provider answers (replay), hash c40342369384a331 for 6_1.
 
@@ -215,7 +215,7 @@ Reduced N' = 4 Poincaré polynomials (t = homological, q = quantum; full records
 **Unreduced runs were not done**: they need all 1 296 box points, i.e. ≈ 1 296 × 27 s / 4 shards ≈ 2.4 h of
 scanning plus ≈ 46 min of determinant passes per shard and another ≈ 46 min in finish — about 4 h per
 (knot, prime) on this machine [E from the measured per-point costs]. The 4-strand unreduced values (6_1 first)
-are the next runs (`MODES=u,r runs_c2/c27/k4/box.sh 6_1 31 "1 1 2 -1 -3 2 -3" 4`, resumable).
+are the next runs (`MODES=u,r tools/dev/box.sh 6_1 31 "1 1 2 -1 -3 2 -3" 4`, resumable).
 
 ## 7. Checks
 

@@ -1,7 +1,7 @@
 # C2-2 report: (2,2,2,2) library and the first 4-strand 2-colored gl_4 values (branch colored-2c4)
 
 Date 2026-11-13. Machine: 4 cores, 15 GB. Base: colored-2c4 + origin/dev 202b371 (merge 572255b). Tags: [M]
-measured, [E] estimate. Outputs: runs_c2/k4/, docs/colored_design/c2/C2_2_*, docs/colored_design/c2/gl4_2222.json;
+measured, [E] estimate. Outputs: runs_c2/k4/, docs/colored_design/c2/C2_2_*, results/colored_gl4/gl4_2222.json;
 library data on data-gl6 under c2/l2222_n4/.
 
 ## Summary
@@ -155,7 +155,7 @@ see section 4). References: 2-strand (2,2) σ^m xscan of C2-1 (runs_c2/xscan/s{m
 **11 words, 11 PASS, both primes.** (u_s3 = σ_1σ_2σ_1σ_3 is the Hopf link, = 2-strand σ^2.) F32b runs are
 3-10x slower per point than F31 here (field arithmetic plus contention with the replays).
 
-Unreduced N' = 4 Poincaré polynomials (full set in docs/colored_design/c2/gl4_2222.json):
+Unreduced N' = 4 Poincaré polynomials (full set in results/colored_gl4/gl4_2222.json):
 - σ_1σ_2σ_3 (unknot): q^-4 + q^-2 + 2 + q^2 + q^4 = [4 choose 2]_q; reduced 1.
 - σ_1^3 σ_2 σ_3 (trefoil): rank 22, reduced t^0q^-8 + t^2q^-14 + t^2q^-12 + t^3q^-18 + t^3q^-16 + t^4q^-20 + t^5q^-24 +
   t^5q^-22 + t^6q^-26 (rank 9) — equal to the 2-strand value, for every sign choice of σ_2, σ_3.

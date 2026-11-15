@@ -216,7 +216,7 @@ Measured on the 4-core cloud machine (`KRHOM_THREADS=4`, both primes, this branc
 - From earlier production runs (2 threads, per prime, both modes): 8-letter 3-strand knots
   100–1151 s, 10-letter 247–2564 s. F32b is about 1× F31 at 3 strands and 1–3× at 4 strands.
 - 4-strand class-A knots, measured reduced runs (C2-7, docs/colored_design/c2/C2_7_report.md §6;
-  runs_c2/c27/k4/compare.json, per-shard logs in runs_c2/c27/k4/out/): `sbox box` with 4 shards of
+  results/colored_gl4/gl4_2222_c27_compare.json, per-shard logs in runs_c2/c27/k4/out/ on branch archive-pre-restructure): `sbox box` with 4 shards of
   1 thread over the 216 reduced box points (54 per shard) + `sbox finish` (4 threads), per prime:
 
   | knot | prime | s per point | shard wall (s) | finish (s) | wall | shard core-hours | VmHWM per shard |
@@ -256,7 +256,7 @@ tools/randcheck.py --seed 20261115 --quick --inject-fault --only T3-01   # must 
 ```
 
 Options: `--tiers 2,3,4`, `--only ID`, `--krhom PATH`, `--jobs 2` (each krhom then gets
-`KRHOM_THREADS=2` and an 8 GB address-space limit), `--out runs_random`, `--no-anchor`.
+`KRHOM_THREADS=2` and an 8 GB address-space limit), `--out DIR` (default `target/randcheck`), `--no-anchor`.
 
 Self-tests first (exit 2 if one fails): the 2-strand exact path equals `tools/wang.py` for the
 (2,2) trefoil at N = 2,3,4 and the Hopf closed form of O11 at N = 2..5; the libraries of the requested tiers verify; the 4_1 anchor (both
@@ -289,7 +289,7 @@ counted as confirmation; E = expected, not proven: a mismatch is WARN):
 | O12 | unknot words: [N 2]_q unreduced, t^0q^0 reduced | C |
 | O13a | `--box-live` (in-memory unpruned library, 2 strands) = exact path, N ≤ 4 | C |
 
-Report: `runs_random/<seed>/examples.jsonl` (one JSON line per example: id, subseed, tier, word,
+Report: `<out>/<seed>/examples.jsonl` (one JSON line per example: id, subseed, tier, word,
 components, mode, core, partner, runs with arguments, exit codes, times and results, checks with
 label and detail, status), `summary.md` (one row per example, details and repro commands for every
 non-PASS example), and the final line

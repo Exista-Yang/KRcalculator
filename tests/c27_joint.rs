@@ -35,7 +35,7 @@ fn plan_max(lam: &[u8], p: &str, rung: &str, q: &str, joint: bool) -> (u128, usi
 }
 
 /// pair 1235 of the (2,2,2,2) prune-4 library (C2-5/C2-4 blocker): Lemma A step 83.7 M unknowns
-/// with the default plan, ≤ 1e5 with joint words (C2-7 census, runs_c2/c27/steps_all*.txt)
+/// with the default plan, ≤ 1e5 with joint words (C2-7 census, runs_c2/c27/steps_all*.txt on branch archive-pre-restructure)
 #[test]
 fn joint_words_pair_1235() {
     let lam = [2u8, 2, 2, 2];

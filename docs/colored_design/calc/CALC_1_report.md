@@ -73,7 +73,7 @@ cargo) were also run with the libraries installed: see section 6.
 
 `krhom 2,3,4 --braid "1 -2 1 -2" --strands 3 --colors 2` (runs_calc/h3_u.out): exit 0, ranks 1, 11,
 46; N=3 = `t^-2q^6 + t^-2q^8 + t^-1q^0 + t^-1q^2 + t^0q^-2 + t^0q^0 + t^0q^2 + t^1q^-2 + t^1q^0 +
-t^2q^-8 + t^2q^-6`; N=4 byte-identical to the unreduced N=4 string of runs_c2/k3/out/4_1_f31.json.
+t^2q^-8 + t^2q^-6`; N=4 byte-identical to the unreduced N=4 string of results/colored_gl4/gl4_222_4_1_f31.json.
 `--reduced` (h3_r.out): ranks 1, 5, 25; N=3 = `t^-2q^6 + t^-1q^2 + t^0q^0 + t^1q^-2 + t^2q^-6`;
 N=4 identical to the JSON's reduced string. N=2 = `t^0q^0` in both modes.
 
@@ -196,7 +196,7 @@ VmHWM is process-wide (the F32b number includes the F31 run in the same process)
 - **Q4**: see H8. Nothing is written into the library by replays.
 - **Q13** (single-mode box grids): validated. Unreduced-only grids (216 / 1277 / 1296 points) and
   reduced-only grids (36 / 216 points) reproduce the production u,r values: H3 N=4 strings equal
-  runs_c2/k3/out/4_1_f31.json in both modes; H4 and H5 equal the 2-strand exact path in both modes.
+  results/colored_gl4/gl4_222_4_1_f31.json in both modes; H4 and H5 equal the 2-strand exact path in both modes.
   Note (review K1): an unreduced-only run also closes the reduced closures from the unreduced
   extraction (χ is checked for them: `chi = decat_chi for 6 closures`); krhom does not print or
   export them.

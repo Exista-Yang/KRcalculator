@@ -31,7 +31,7 @@ The crate depends only on `num-bigint`, `num-integer`, `num-rational`, `num-trai
 - A library built for N = 4 serves every N ≤ 4. The summands it drops vanish at every N′ ≤ 4 (see [Pruning](#how-it-works)).
 - `tools/fetch_library.sh --verify-only l222_n4 l2222_n4` re-checks every installed file against its sha256.
 
-**Examples.** The outputs below are verbatim from `runs_calc/`, recorded on a 4-core Linux cloud machine. The 3-strand example used `KRHOM_THREADS=4`. Here `krhom` means `target/release/krhom`.
+**Examples.** The outputs below are verbatim from the recorded runs (directory `runs_calc/` on branch `archive-pre-restructure`), made on a 4-core Linux cloud machine. The 3-strand example used `KRHOM_THREADS=4`. Here `krhom` means `target/release/krhom`.
 
 Uncolored figure-eight knot, gl_2 and gl_3:
 ```
@@ -108,7 +108,7 @@ N = 4
   total rank: 46
   Euler characteristic: q^16 + q^12 + q^10 + q^-10 + q^-12 + q^-16
 ```
-In the `method:` line, `prune 4` and `box N 4` mean the computation is done once at N = 4 and serves every N ≤ 4. `seed` is the seed of the random evaluation points. Per-prime check summaries go to stderr (`runs_calc/h3_u.err`) and end with:
+In the `method:` line, `prune 4` and `box N 4` mean the computation is done once at N = 4 and serves every N ≤ 4. `seed` is the seed of the random evaluation points. Per-prime check summaries go to stderr and end with:
 ```
 krhom: F_2147483647 and F_4294967291 agree: certified over both primes (equal over Q unless both are torsion primes)
 ```
@@ -262,7 +262,7 @@ Progress and the per-prime checks go to stderr.
 | ∧², 4 strands, unreduced | Not run. Estimate: 1296 box points instead of 216, so about 26.4 s × 1296 ≈ 9.5 core-hours per prime, if unreduced points cost the same as reduced ones. | |
 
 krhom runs a word in a single process and cannot resume an interrupted run. For multi-hour 4-strand words, use `--reduced`, or use the resumable, sharded `sbox box` / `sbox finish` driver.
-- The 6_1, 7_6 and 7_7 runs used `runs_c2/c27/k4/box.sh`. It hard-codes the cloud machine's paths for the library cache and cost file, so adapt those.
+- The 6_1, 7_6 and 7_7 runs used `tools/dev/box.sh` (with `tools/dev/finish.sh`). It takes the library directory and cost table from the environment (`CACHE`, `COSTS`); see its header.
 - [docs/CALCULATOR.md](docs/CALCULATOR.md) §8 describes `sbox`.
 
 Large 3-strand knots can exceed the default memory estimates and exit with code 5. The estimate is usually several times too high, so raise `--mem-cap-mb` and guard the real memory with `ulimit -v`. On macOS, the VmHWM figures on stderr read 0 because they come from `/proc`. More timings are in docs/CALCULATOR.md §6.
@@ -378,8 +378,8 @@ t^-4q^12 + t^-3q^8 + t^-3q^10 + t^-2q^4 + 3t^-2q^6 + t^-2q^8 + t^-1q^0 + 4t^-1q^
 For ∧³, the reduced ranks of the knots T(2,3), T(2,5), T(2,7) and T(2,9) stabilize at N ≥ 6 to 27, 125, 343 and 729.
 
 **Where the data are.**
-- **∧² gl_4 of the three-strand knots** (N′ = 2, 3, 4, unreduced and reduced): `docs/colored_design/c2/gl4_222.json` and `gl4_222_s{0,1,2}.json`.
-- **6_1, 7_6 and 7_7:** `runs_c2/c27/k4/compare.json`.
+- **∧² gl_4 of the three-strand knots** (N′ = 2, 3, 4, unreduced and reduced): `results/colored_gl4/gl4_222.json` and `gl4_222_s{0,1,2}.json`.
+- **6_1, 7_6 and 7_7:** `results/colored_gl4/gl4_2222_c27_compare.json`.
 - **∧³ σ^9 closures:** `docs/colored_design/gl6/m2s/sigma9_33_F31.json` and `sigma9_33_F32b.json`.
 - **Uncolored table runs:** `results/uncolored/`.
 

@@ -3,7 +3,7 @@
 as amended by CALC_DECISIONS.md and CALC_SPEC_review.md).
 
 usage: randcheck.py --seed S [--n 24 | --quick | --full] [--tiers 2,3,4] [--only ID]
-                    [--krhom target/release/krhom] [--jobs 2] [--out runs_random] [--inject-fault]
+                    [--krhom target/release/krhom] [--jobs 2] [--out target/randcheck] [--inject-fault]
                     [--no-anchor]
 
 Draws random colored braids (color 2 on every strand) on 2, 3 and 4 strands, runs `krhom --json`
@@ -596,7 +596,7 @@ def self_tests(ctx, tiers, anchor):
     if anchor and 3 in tiers and not errs:
         want = {False: [1, 11, 46], True: [1, 5, 25]}
         n3 = {False: "t^-2q^6 + t^-2q^8 + t^-1q^0 + t^-1q^2 + t^0q^-2 + t^0q^0 + t^0q^2 + t^1q^-2 + t^1q^0 + t^2q^-8 + t^2q^-6", True: "t^-2q^6 + t^-1q^2 + t^0q^0 + t^1q^-2 + t^2q^-6"}
-        ref = os.path.join(ROOT, "runs_c2/k3/out/4_1_f31.json")
+        ref = os.path.join(ROOT, "results/colored_gl4/gl4_222_4_1_f31.json")
         refj = json.load(open(ref)) if os.path.exists(ref) else None
         for red in (False, True):
             ex = {"id": "selftest-anchor-%s" % ("r" if red else "u"), "runs": [], "checks": {}, "subseed": 0}
@@ -610,7 +610,7 @@ def self_tests(ctx, tiers, anchor):
             if refj:
                 for x in refj["results"]:
                     if x["N"] == 4 and x["reduced"] == red and x["P"]["str"] != pstr(r[4]):
-                        errs.append("anchor 4_1 N=4 %s differs from runs_c2/k3/out/4_1_f31.json" % ("reduced" if red else "unreduced"))
+                        errs.append("anchor 4_1 N=4 %s differs from results/colored_gl4/gl4_222_4_1_f31.json" % ("reduced" if red else "unreduced"))
     return errs
 
 def t4_coverage(ctx, cand_words):
@@ -660,7 +660,7 @@ def main():
     ap.add_argument("--only")
     ap.add_argument("--krhom", default=os.path.join(ROOT, "target/release/krhom"))
     ap.add_argument("--jobs", type=int, default=2)
-    ap.add_argument("--out", default=os.path.join(ROOT, "runs_random"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "target", "randcheck"))
     ap.add_argument("--inject-fault", action="store_true")
     ap.add_argument("--no-anchor", action="store_true", help="skip the 4_1 anchor self-test (about 3 min)")
     a = ap.parse_args()

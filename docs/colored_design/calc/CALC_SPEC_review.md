@@ -88,7 +88,7 @@ The three defects that would break it:
 - Suite was 287/37 (C2_4_report.md:35; runs_c2/k4m/full_suite.log).
 
 **Acceptance values**
-- **H3:** runs_c2/k3/out/4_1_f31.json has the N=3 strings as given, ranks 1/11/46 and reduced 1/5/25, total 62.45 s.
+- **H3:** results/colored_gl4/gl4_222_4_1_f31.json has the N=3 strings as given, ranks 1/11/46 and reduced 1/5/25, total 62.45 s.
 - **H4:** s3p_f31.out matches; 36 layer-A loads, 1.7 s.
 - **H5:** m1 ranks are [1,1,3,1,6,1]; m3 matches H4.
 - No README.md at root, in origin/dev or in unblock (but data/README.md exists).
