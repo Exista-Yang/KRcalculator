@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # the test suite and krhom use this many worker threads (GitHub's Linux runners have 2-4 cores)
+  KRHOM_THREADS: "4"
+  # no debug info in CI release builds (Cargo.toml has debug = true): faster compile and a smaller cache
+  CARGO_PROFILE_RELEASE_DEBUG: "false"
+
+jobs:
+  build-test:
+    name: build, test, smoke (stable Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust version (edition 2024 needs >= 1.85)
+        run: |
+          rustc --version
+          cargo --version
+          v="$(rustc --version | awk '{print $2}')"
+          [ "$(printf '%s\n1.85.0\n' "$v" | sort -V | head -1)" = "1.85.0" ] || { echo "rustc $v < 1.85"; exit 1; }
+
+      - name: Cache cargo registry and target
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo build --release
+        run: cargo build --release
+
+      - name: cargo test --release
+        # Default features; the tests that need the libraries are #[ignore]d by default.
+        # The six slowest tests (35-95 s each on a 4-core machine; the whole suite takes about
+        # 8.5 min there) are skipped to keep the job within about 15 minutes on GitHub's runners.
+        # They run with a plain `cargo test --release`:
+        #   c27_joint per_predecessor_final_pair_1444 (95 s), rexplan rex_class_pairs_small (69 s),
+        #   homprov b2_type_pairs_22_212_through_chain (39 s), calc exact2_memory_cap_and_shape_refusals (35 s),
+        #   b4w leaf_pairs_through_sindec_212 (35 s), m5i m5i_2402_prefix_propagation (34 s)
+        run: >-
+          cargo test --release --
+          --skip per_predecessor_final_pair_1444
+          --skip rex_class_pairs_small
+          --skip b2_type_pairs_22_212_through_chain
+          --skip exact2_memory_cap_and_shape_refusals
+          --skip leaf_pairs_through_sindec_212
+          --skip m5i_2402_prefix_propagation
+
+      - name: cargo build --release --features dev
+        run: cargo build --release --features dev
+
+      - name: Smoke test (no libraries)
+        run: tools/smoke.sh --no-libs

@@ -2,25 +2,20 @@
 # fetch_library.sh: install (or verify) the prebuilt layer-A libraries the krhom calculator needs
 # for colored braids on 3 and 4 strands (uniform color 2, N <= 4).
 #
-# usage: tools/fetch_library.sh [--root DIR] [--git-dir DIR | --repo URL] [--force] [--verify-only] ID[/field] ...
+# usage: tools/fetch_library.sh [--root DIR] [--git-dir DIR | --repo URL | --url BASE] [--full-fetch]
+#                               [--force] [--verify-only] ID[/field] ...
 #   ID      l222_n4 (3 strands) or l2222_n4 (4 strands); /f31 or /f32b selects one prime (default both)
 #   --root  install root (default $KRHOM_LIB_DIR, else ${XDG_CACHE_HOME:-$HOME/.cache}/krhom/lib)
-#   --git-dir DIR  git clone that has (or can fetch) the data commit (default: this checkout)
-#   --repo URL     fetch the data commit from URL into a temporary bare repository instead
+#   --git-dir DIR  git clone that has (or can fetch from its origin) the data commit (default: this checkout)
+#   --repo URL     fetch the data commit from URL (default: the origin of --git-dir)
+#   --url BASE     download release assets BASE/<asset> (https://, http:// or file://; curl or wget)
+#                  listed in data/release_assets.tsv instead of using git
+#   --full-fetch   git: fetch the full history of the data commit (the pre-0.2 method) instead of a
+#                  partial fetch (only the needed blobs)
 #   --force        reinstall even if an installed copy verifies (the old copy is moved aside, then removed)
 #   --verify-only  only check the installed copy: LIBRARY.txt against the registry, every listed
 #                  file present with its sha256 (extra files, e.g. templates written later, are fine)
 #
-# The registry is data/libraries.tsv (shared with src/calc.rs). Every chunk is checked against the
-# registry sha256 and the MANIFEST sha256 of the data commit, its tar listing is checked (regular
-# files under layer_a/ and tmpl/ only, counts = MANIFEST), layers are extracted in registry
-# (restore) order, and LIBRARY.txt records a per-file sha256 list plus the sources of costs.txt
-# (data-commit path) and status.txt (checkout path and sha256), which "already installed" and
-# --verify-only re-check against the registry and the checkout. Exit 0 on success, 1 on usage
-# errors, 2 on a failed download, install step or verification.
-#
-# Every install step is guarded explicitly with `|| die`: install_row runs on the left of `||`,
-# where bash ignores errexit.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,16 +25,20 @@ registry="$repo_root/data/libraries.tsv"
 root="${KRHOM_LIB_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/krhom/lib}"
 git_dir="$repo_root"
 repo_url=""
+url_base=""
+full_fetch=0
 force=0
 verify_only=0
 ids=()
 die() { echo "fetch_library: $*" >&2; exit 2; }
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 1; }
+usage() { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 1; }
 while [ $# -gt 0 ]; do
   case "$1" in
     --root) root="$2"; shift 2 ;;
     --git-dir) git_dir="$2"; shift 2 ;;
     --repo) repo_url="$2"; shift 2 ;;
+    --url) url_base="${2%/}"; shift 2 ;;
+    --full-fetch) full_fetch=1; shift ;;
     --force) force=1; shift ;;
     --verify-only) verify_only=1; shift ;;
     -h|--help) usage ;;
@@ -48,6 +47,10 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ ${#ids[@]} -gt 0 ] || usage
+if [ -n "$url_base" ] && { [ -n "$repo_url" ] || [ "$full_fetch" = 1 ]; }; then echo "fetch_library: --url excludes --repo and --full-fetch" >&2; exit 1; fi
+case "$url_base" in ""|https://*|http://*|file://*) ;; *) echo "fetch_library: --url needs an https://, http:// or file:// base" >&2; exit 1 ;; esac
+git_dir0="$git_dir"
+assets_tsv="$repo_root/data/release_assets.tsv"
 [ -f "$registry" ] || die "registry $registry not found"
 
 if command -v sha256sum >/dev/null 2>&1; then sha() { sha256sum "$@"; }
@@ -113,27 +116,115 @@ verify_installed() {
   return 0
 }
 
-# --- git transport ----------------------------------------------------------------------------
+# --- transport: git (partial or full fetch) or release assets ------------------------------
+# The bytes come from one of three sources, all checked identically afterwards (chunk sha256 =
+# registry = MANIFEST, tar listing, counts):
+#   * git, commit already present in --git-dir: read there, nothing is downloaded;
+#   * git, partial fetch (default): a temporary bare repository fetches the data commit with
+#     --filter=blob:none --depth 1 (trees only, a few KB) and `git show` then fetches exactly the
+#     blobs the registry row needs (chunks, MANIFESTs, costs), lazily from the promisor remote;
+#     the user's checkout is not touched. If the server refuses partial or SHA fetches, the old
+#     method below is used.
+#   * git, full fetch (--full-fetch or fallback): the data commit with its whole history, by SHA
+#     (review K11: a branch fetch loses the commit once the branch moves), into the checkout (or,
+#     with --repo, into a temporary bare repository); last resort: the data-gl6 branch.
+#   * --url BASE: one release asset per (library, prime), its sha256 checked against
+#     data/release_assets.tsv before extraction, extracted (regular files at the expected data
+#     commit paths only) into the staging directory.
 tmp_repo=""
+fetch_mode=""
 cleanup() { [ -n "$tmp_repo" ] && rm -rf "$tmp_repo"; [ -n "${staging:-}" ] && rm -rf "$staging"; true; }
 trap cleanup EXIT
+new_tmp_repo() {
+  [ -n "$tmp_repo" ] && rm -rf "$tmp_repo"
+  tmp_repo="$(mktemp -d)" || die "mktemp failed"
+  [ -n "$tmp_repo" ] && [ -d "$tmp_repo" ] || die "mktemp gave no directory"
+  git init -q --bare "$tmp_repo" || die "git init $tmp_repo failed"
+  # no background gc / maintenance in a throw-away repository
+  git -C "$tmp_repo" config gc.auto 0 && git -C "$tmp_repo" config maintenance.auto false || die "git config in $tmp_repo failed"
+}
+remote_url() {
+  if [ -n "$repo_url" ]; then echo "$repo_url"; return 0; fi
+  git -C "$git_dir" remote get-url origin 2>/dev/null || return 1
+}
 ensure_commit() {
   local commit="$1"
-  if [ -n "$repo_url" ] && [ -z "$tmp_repo" ]; then
-    tmp_repo="$(mktemp -d)" || die "mktemp failed"
-    [ -n "$tmp_repo" ] && [ -d "$tmp_repo" ] || die "mktemp gave no directory"
-    git init -q --bare "$tmp_repo" || die "git init $tmp_repo failed"
-    git_dir="$tmp_repo"
+  # with --repo the checkout is not used (as before): the bytes come from URL
+  if { [ -z "$repo_url" ] || [ "$git_dir" != "$git_dir0" ]; } && git -C "$git_dir" cat-file -e "$commit^{commit}" 2>/dev/null; then return 0; fi
+  if [ "$full_fetch" = 0 ]; then
+    local url err
+    url="$(remote_url)" || die "$git_dir has no origin remote: use --repo URL"
+    echo "fetching data commit ${commit:0:12} (trees only; blobs on demand) from $url ..." >&2
+    new_tmp_repo
+    git -C "$tmp_repo" remote add krhom "$url" || die "git remote add in $tmp_repo failed"
+    if err="$(git -C "$tmp_repo" fetch -q --no-tags --filter=blob:none --depth 1 krhom "$commit" 2>&1)" \
+       && git -C "$tmp_repo" cat-file -e "$commit^{commit}" 2>/dev/null; then
+      if grep -qi 'filtering not recognized' <<<"$err"; then
+        echo "fetch_library: note: the server ignored the blob filter; the whole data commit snapshot was fetched" >&2
+        fetch_mode="depth-1 snapshot; the server ignored the blob filter"
+      else
+        fetch_mode="partial fetch of the data commit"
+        [ -z "$err" ] || echo "$err" >&2
+      fi
+      git_dir="$tmp_repo"
+      return 0
+    fi
+    echo "fetch_library: partial fetch refused by $url ($(head -1 <<<"$err")); falling back to a full fetch" >&2
+    rm -rf "$tmp_repo"; tmp_repo=""
   fi
-  if git -C "$git_dir" cat-file -e "$commit^{commit}" 2>/dev/null; then return 0; fi
+  if [ -n "$repo_url" ]; then new_tmp_repo; git_dir="$tmp_repo"; fetch_mode="full history of the data commit"; fi
   local remote="${repo_url:-origin}"
-  echo "fetching data commit ${commit:0:12} from $remote ..." >&2
-  # by SHA (review K11: a branch fetch loses the commit once the branch moves); fall back to the
-  # data-gl6 branch with full history if the server refuses SHA fetches
+  echo "fetching data commit ${commit:0:12} with its history from $remote ..." >&2
   git -C "$git_dir" fetch -q --no-tags "$remote" "$commit" 2>/dev/null \
     || git -C "$git_dir" fetch -q --no-tags "$remote" "refs/heads/data-gl6:refs/remotes/krhom-fetch/data-gl6" \
     || die "cannot fetch data commit $commit from $remote"
   git -C "$git_dir" cat-file -e "$commit^{commit}" 2>/dev/null || die "data commit $commit not found in $remote (data-gl6 history)"
+}
+
+# release assets (--url): data/release_assets.tsv columns id field data_commit asset sha256 bytes
+asset_bytes_total=0
+fetch_url() { # fetch_url URL OUT
+  if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 3 --proto '=https,http,file' -o "$2" "$1"
+  elif command -v wget >/dev/null 2>&1; then case "$1" in file://*) cp "${1#file://}" "$2" ;; *) wget -q -t 3 -O "$2" "$1" ;; esac
+  else echo "fetch_library: need curl or wget for --url" >&2; return 1; fi
+}
+asset_prepare() { # asset_prepare ROW DIR: download, verify and extract the row's asset into DIR
+  local row="$1" dir="$2"
+  local id fld lam n prov commit costs status stl layers
+  IFS=$'\t' read -r id fld lam n prov commit costs status stl layers <<<"$row"
+  [ -f "$assets_tsv" ] || die "release asset list $assets_tsv not found"
+  local arow; arow="$(awk -F'\t' -v id="$id" -v f="$fld" -v c="$commit" '!/^#/ && NF>=6 && $1==id && $2==f && $3==c' "$assets_tsv")"
+  [ -n "$arow" ] || die "$id/$fld: no release asset for data ${commit:0:12} in $assets_tsv"
+  [ "$(wc -l <<<"$arow" | tr -d ' ')" = 1 ] || die "$id/$fld: several release assets in $assets_tsv"
+  local _i _f _c asset want bytes
+  IFS=$'\t' read -r _i _f _c asset want bytes <<<"$arow"
+  [[ "$asset" =~ ^[A-Za-z0-9._-]+$ ]] || die "$id/$fld: bad asset name '$asset' in $assets_tsv"
+  echo "downloading $url_base/$asset ($bytes bytes) ..." >&2
+  fetch_url "$url_base/$asset" "$dir.tar.gz" || die "cannot download $url_base/$asset"
+  local got; got="$(sha_of "$dir.tar.gz")"
+  [ "$got" = "$want" ] || die "$asset: sha256 $got, $assets_tsv says $want"
+  asset_bytes_total=$(( asset_bytes_total + $(wc -c <"$dir.tar.gz") ))
+  # listing: regular files (and their directories) at exactly the data-commit paths the row reads
+  local expected listing types names extra missing e p
+  expected="$( { echo "$costs"; IFS=';' read -r -a es <<<"$layers"; for e in "${es[@]}"; do p="${e%@*}"; echo "$p"; echo "$(dirname "$p")/MANIFEST.txt"; done; } | sort -u)"
+  listing="$(tar -tvzf "$dir.tar.gz")" || die "$asset: not a gzip tar"
+  names="$(tar -tzf "$dir.tar.gz" | sed 's#^\./##')" || die "$asset: cannot list the tar"
+  types="$(awk '{print substr($1,1,1)}' <<<"$listing")"
+  if grep -qv '^[-d]$' <<<"$types"; then die "$asset: tar has entries that are not regular files or directories"; fi
+  extra="$(grep -v '/$' <<<"$names" | grep -vxF -f <(echo "$expected") || true)"
+  [ -z "$extra" ] || die "$asset: unexpected tar entry: $(head -1 <<<"$extra")"
+  if grep -q '\.\.' <<<"$names"; then die "$asset: tar entry with '..'"; fi
+  missing="$(grep -vxF -f <(grep -v '/$' <<<"$names") <<<"$expected" || true)"
+  [ -z "$missing" ] || die "$asset: missing $(head -1 <<<"$missing")"
+  mkdir -p "$dir" || die "cannot create $dir"
+  tar -C "$dir" --no-same-owner -xzf "$dir.tar.gz" || die "$asset: extraction failed"
+  rm -f "$dir.tar.gz"
+  echo "  $id/$fld: release asset $asset ok (sha256 ${got:0:12})" >&2
+}
+
+# src_cat COMMIT PATH: the bytes of PATH in the data commit, from git or the extracted asset
+src_cat() {
+  if [ -n "$url_base" ]; then cat "$staging/src/$2"; else git -C "$git_dir" show "$1:$2"; fi
 }
 
 # --- install one registry row -----------------------------------------------------------------
@@ -149,19 +240,20 @@ install_row() {
     if verify_installed "$dest" "$row" 1; then echo "$id/$fld: already installed ($dest)"; return 0; fi
     echo "$id/$fld: an installed copy under $dest does not verify; reinstalling" >&2
   fi
-  ensure_commit "$commit" || die "cannot get data commit $commit"
+  [ -n "$url_base" ] || ensure_commit "$commit" || die "cannot get data commit $commit"
   mkdir -p "$root" || die "cannot create the install root $root"
   staging="$(mktemp -d "$root/.staging-$id-$fld-XXXXXX")" || { staging=""; die "cannot create a staging directory under $root (not writable?)"; }
   [ -n "$staging" ] && [ -d "$staging" ] || { staging=""; die "empty or missing staging path under $root"; }
   mkdir -p "$staging/chunks" "$staging/lib/layer_a" "$staging/lib/tmpl" "$staging/lib/MANIFESTS" || die "cannot create staging subdirectories in $staging"
+  [ -z "$url_base" ] || asset_prepare "$row" "$staging/src" || die "cannot prepare the release asset of $id/$fld"
   local i=0 entry path want dir manifest base got na nt man_la man_tm
   IFS=';' read -r -a entries <<<"$layers"
   for entry in "${entries[@]}"; do
     path="${entry%@*}"; want="${entry##*@}"; dir="$(dirname "$path")"
     manifest="$staging/MANIFEST.$i"
-    git -C "$git_dir" show "$commit:$dir/MANIFEST.txt" >"$manifest" || die "no MANIFEST for $dir in $commit"
+    src_cat "$commit" "$dir/MANIFEST.txt" >"$manifest" || die "no MANIFEST for $dir in $commit"
     base="$(basename "$path")"
-    git -C "$git_dir" show "$commit:$path" >"$staging/chunks/$i" || die "cannot read $path from $commit"
+    src_cat "$commit" "$path" >"$staging/chunks/$i" || die "cannot read $path from $commit"
     got="$(sha_of "$staging/chunks/$i")"
     [ "$got" = "$want" ] || die "$path: sha256 $got, registry says $want"
     grep -q "^$got  $base\$" "$manifest" || die "$path: sha256 $got is not the MANIFEST value"
@@ -188,7 +280,7 @@ install_row() {
     echo "  $id/$fld layer $i: $path ok (sha256 ${got:0:12}, $na layer_a + $nt tmpl)" >&2
     i=$((i + 1))
   done
-  git -C "$git_dir" show "$commit:$costs" >"$staging/lib/costs.txt" || die "cannot read $costs"
+  src_cat "$commit" "$costs" >"$staging/lib/costs.txt" || die "cannot read $costs"
   head -1 "$staging/lib/costs.txt" | grep -q '^krhom-costs v2 alg=hs-kl1' || die "$costs: wrong format"
   local status_line="complete" status_source="complete"
   if [ "$status" != "complete" ]; then
@@ -247,4 +339,9 @@ for want in "${ids[@]}"; do
     install_row "$row" || rc=$?
   done <<<"$rows"
 done
+if [ -n "$fetch_mode" ] && [ -n "$tmp_repo" ] && [ -d "$tmp_repo/objects" ]; then
+  echo "downloaded $(du -sk "$tmp_repo/objects" | awk '{print $1}') KiB of git objects ($fetch_mode)" >&2
+elif [ -n "$url_base" ] && [ "$asset_bytes_total" -gt 0 ]; then
+  echo "downloaded $(( asset_bytes_total / 1024 )) KiB of release assets" >&2
+fi
 exit $rc

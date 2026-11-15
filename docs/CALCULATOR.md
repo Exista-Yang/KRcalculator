@@ -120,7 +120,7 @@ Colored braids on 3 and 4 strands need prebuilt, certified layer-A libraries fro
 commit `ee548d2` (branch `data-gl6`). Install them once:
 
 ```
-tools/fetch_library.sh l222_n4 l2222_n4      # both primes each; about 2 min
+tools/fetch_library.sh l222_n4 l2222_n4      # both primes each; about 1 min, 40 MB download
 tools/fetch_library.sh --verify-only l222_n4 l2222_n4
 ```
 
@@ -132,9 +132,21 @@ tools/fetch_library.sh --verify-only l222_n4 l2222_n4
 - Root: `--lib-dir DIR` > `$KRHOM_LIB_DIR` > `${XDG_CACHE_HOME:-$HOME/.cache}/krhom/lib`. The tool
   takes `--root DIR` (same default).
 - Layout: `<root>/<id>/<f31|f32b>/{LIBRARY.txt, costs.txt, status.txt, MANIFESTS/, layer_a/, tmpl/}`.
-- Transport: the tool fetches the data commit by SHA into the current clone (`git fetch origin
-  <sha>`; the work tree is untouched) or, with `--repo URL`, into a temporary bare repository. It
-  falls back to fetching the `data-gl6` branch if the server refuses SHA fetches.
+- Transport (git, default): if the data commit is not already in the clone, the tool makes a
+  partial fetch into a temporary bare repository (`git fetch --filter=blob:none --depth 1 <origin>
+  <sha>`: the trees only, a few KB) and `git show` then fetches exactly the blobs the libraries
+  need. Both libraries, both primes: about 40 MB downloaded (the full `data-gl6` history is about
+  185 MB). The clone itself is not modified. `--repo URL` fetches from URL instead of the clone's
+  origin. If the server refuses partial or SHA fetches, the tool falls back to the old method:
+  the data commit with its history, by SHA, into the clone (with `--repo`, into a temporary bare
+  repository), and as a last resort the `data-gl6` branch. `--full-fetch` selects the old method.
+- Transport (release assets): `--url BASE` downloads one asset per (library, prime),
+  `BASE/krhom-lib-<id>-<field>-<data7>.tar.gz`, with curl or wget (`https://`, `http://` or
+  `file://`). Each asset is checked against `data/release_assets.tsv` (sha256) before extraction;
+  it must hold exactly the chunks, their `MANIFEST.txt` files and the costs file at their paths in
+  the data commit (regular files only), and is then installed with the same checks as a git
+  install. The assets are written by `tools/dev/make_release_assets.sh OUTDIR` (reproducible
+  tarballs plus `SHA256SUMS`; it uploads nothing).
 - Every install step is checked explicitly (`|| die`; errexit is inactive inside the install
   function), an empty or missing staging path is refused, and the old copy is kept if the new one
   cannot be moved into place.

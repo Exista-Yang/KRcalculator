@@ -1,0 +1,8 @@
+# krhom library release assets (tools/fetch_library.sh --url BASE; written by tools/dev/make_release_assets.sh)
+# columns (tab-separated): id field data_commit asset sha256 bytes
+#   one asset per registry row of data/libraries.tsv: the layer chunks, their MANIFEST.txt and the costs
+#   file at their paths in the data commit (a reproducible GNU tar + gzip -n archive)
+l222_n4	f31	ee548d2bea8724f88660897996678c76eab1a43d	krhom-lib-l222_n4-f31-ee548d2.tar.gz	6bab8a0a03499f6821bd2b5ef92d78f958782de8cb837652dd462f37ea2601e8	3502935
+l222_n4	f32b	ee548d2bea8724f88660897996678c76eab1a43d	krhom-lib-l222_n4-f32b-ee548d2.tar.gz	fc80f8c4ef8fd66f52ef04f3b58843c5dff6cb9e9876511e0569defe30deb46d	3511424
+l2222_n4	f31	ee548d2bea8724f88660897996678c76eab1a43d	krhom-lib-l2222_n4-f31-ee548d2.tar.gz	e0bf97da3de3e339533dfd2f1349be71837bece424e16182f807f95bf88ac32e	16058461
+l2222_n4	f32b	ee548d2bea8724f88660897996678c76eab1a43d	krhom-lib-l2222_n4-f32b-ee548d2.tar.gz	b4bb68509434e0439714e1e3f2647d9e23839bccf77f5e56bdc49a657be86206	18051277
