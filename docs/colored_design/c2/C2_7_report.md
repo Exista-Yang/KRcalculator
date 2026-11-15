@@ -198,8 +198,37 @@ are the next runs (`MODES=u,r runs_c2/c27/k4/box.sh 6_1 31 "1 1 2 -1 -3 2 -3" 4`
 
 ## 7. Checks
 
-@@CHECKS@@
+- Library acceptance unchanged: every new map passed sindec's checks (`dechom_postcheck`, D14 scaling, Π∘Ι = id or
+  δ with e_q on the diagonal, Σιπ = E, kept multiset; Leaves pairs additionally `certify_pairs` and the
+  `build_leaves` rank check at rep(t) of every level) and was re-certified on load in the replays (provider
+  refusing every call). No cap, budget, admission ceiling or check was changed; one cost record pair was added by
+  measurement (§8, job 986; not used by any class-A job).
+- Knots: χ = decat_chi on every closure (fatal), D14 scaling at 2 box points (fatal), the generator determinant pass
+  at every box point (in every shard and again in finish), F31 = F32b closure by closure, N' = 3 = engine2
+  uncolored gl_3 of the reversed braid (**equal as polynomials**, no shift, for every knot), N' = 2 rank 1.
+- Engine change (§3.5) checked by identical point-value hashes with `KRHOM_LOC_FULL=1` (old path) on 6_1.
+- Unit tests: tests/c27_joint.rs (3 tests: 1235's plan ≤ 10⁵ only with joint words, 1444 needs a per-predecessor
+  final word, W1/W2 rejects the suffix window of 1444's rerouted call); full suite below.
+- Observation (not used as a check): the reduced N' = 4 ranks are det(K)² (6_1: 9², 7_6: 19², 7_7: 21²), as for
+  every earlier (2,2,2) / Markov-stabilized value (trefoil 9 = 3², 4_1 25 = 5², 5_2 49 = 7²); the reduced
+  N' = 3 ranks equal det(K).
+@@SUITE@@
 
 ## 8. Open problems
 
-@@OPEN@@
+1. **Unreduced 4-strand runs** (all 1 296 box points) cost ≈ 4 h per (knot, prime) here [E]; 6_1 unreduced is
+   the first to run (box.sh is resumable). The engine time is template localization (≈ 1.5 M localizations per
+   scan point, mostly mid-size windows of 36-108 fixed points); a cache of localizations keyed by the window's
+   variable values, or a cheaper evaluation of the e_p-wrapped closure maps, would be the next speed-up.
+2. **Class B** (8_15, 9_22, 11n_42): 7 / 11 missing jobs now certified for F31 (1471, 926, 949, 997, 1054, 1540,
+   986; not yet run for F32b / replay); 1412, 1435, 1472, 1483 stop on the same Lemma A step into the decomposable
+   target T5 = 1,1,0,0/0,1,0,1/1,1,0,0/0,1,0,1 ([E1.2,F1.1,F0.1,E0.1,E2.2,F2.2]·F1.1 → [E1.1,E0.1,F1.1,F0.1,E2.1,
+   F2.1], 2.77 M unknowns; neither a joint pair nor a target-side detour lowers it: runs_c2/c27/steps_1412.txt).
+   A source-side detour (W_{t'} → W'_{t'} by a rex chain, Kron with ρ) is the missing move.
+3. The joint search is a local search (prefixes of the current words, suffixes ≤ 4 rungs, pairwise moves); a
+   bottleneck-path search over the levels (candidate words per type, minimize the max step) would find plans the
+   pairwise moves miss (1054 needed a detour instead).
+4. W3/W4 of Prop W are not checked a priori (the runtime rank test decides; no incomplete W1/W2-certified window
+   was met in these runs).
+5. Conway (16 missing) and the other C2-4 M5i failures (closure T3, the T4-target jobs) were not attempted; the
+   closure T3 needs a Leaves closure route through e_p.

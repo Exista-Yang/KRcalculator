@@ -120,21 +120,28 @@
    -3
   ],
   "primes": [
-   "31"
+   "31",
+   "32b"
   ],
   "library_hash": {
-   "31": "d3d6c13945732476"
+   "31": "d3d6c13945732476",
+   "32b": "e5d1f5a4deda2b42"
   },
   "det_pass": {
    "31": {
     "points": 216,
     "checks": 40608
+   },
+   "32b": {
+    "points": 216,
+    "checks": 40608
    }
   },
   "commit": {
-   "31": "fb2ba84cea876aeaff325d3c6376f9699e160d59-dirty"
+   "31": "fb2ba84cea876aeaff325d3c6376f9699e160d59-dirty",
+   "32b": "fb2ba84cea876aeaff325d3c6376f9699e160d59-dirty"
   },
-  "primes_identical": false,
+  "primes_identical": true,
   "chi_ok": true,
   "scaling_ok": true,
   "N3_gl3_reversed": {
@@ -152,6 +159,6 @@
   "N3": {
    "r": "t^-4q^12 + 2t^-3q^8 + t^-2q^4 + 2t^-2q^6 + 2t^-1q^2 + 2t^-1q^4 + 4t^0q^0 + t^1q^-4 + 2t^1q^-2 + 2t^2q^-6 + t^2q^-4 + t^3q^-8"
   },
-  "status": "PENDING (one prime)"
+  "status": "PASS"
  }
 ]
