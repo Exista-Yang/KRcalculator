@@ -172,7 +172,29 @@ So every class-A knot of knots4_cloud.txt is computable from layer A alone (`--r
 
 ## 6. 4-strand knots (work item 6) [M]
 
-@@KNOTS@@
+Driver: `sbox box` (4 shards, `--ckpt-secs 600`, KRHOM_THREADS=1 each) + `sbox finish` (4 threads), prune 4, box
+N = 4, closures N' = 2, 3, 4, seed 201, `--replay --provider m4c-lf --stamp-route`, library = the restored layer A
+plus the C2-7 delta, `KRHOM_MEM_CAP_MB=200000` (raised), `ulimit -v 14 GB` as the real guard
+(runs_c2/c27/k4/box.sh, finish.sh, queue.sh; outputs runs_c2/c27/k4/out/; comparison runs_c2/c27/k4/compare.py →
+compare.json). Library per run: 94 types (all closable), 2 idempotent types visited (T1, m = 1 290; T2, m = 516),
+1 119 layer-A loads, 0 provider answers (replay), hash c40342369384a331 for 6_1.
+
+**Reduced-only runs** (`--modes r`): a reduced closure needs only the box points with μ⁰ = ∅ (216 of 1 296). Cost
+per run [M]: library 140-220 s per process, generator determinant pass 54 points × 8.5 s per shard, scan
+26-40 s per point (F31 ≈ F32b; 30-40 % slower while class-B library jobs ran beside), finish 12-14 min
+(determinant pass over all 216 points again, 4 threads, close ≈ 2 min): **≈ 45-60 min wall per (knot, prime)**.
+
+| knot | braid (knots4_cloud) | N'=4 reduced | N'=3 reduced = gl_3 reversed | N'=2 | χ | scaling | F31 = F32b | status |
+|---|---|---|---|---|---|---|---|---|
+@@KNOTROWS@@
+
+Reduced N' = 4 Poincaré polynomials (t = homological, q = quantum; full records in gl4_2222.json, key `c2_7`):
+@@KNOTPOLYS@@
+
+**Unreduced runs were not done**: they need all 1 296 box points, i.e. ≈ 1 296 × 27 s / 4 shards ≈ 2.4 h of
+scanning plus ≈ 46 min of determinant passes per shard and another ≈ 46 min in finish — about 4 h per
+(knot, prime) on this machine [E from the measured per-point costs]. The 4-strand unreduced values (6_1 first)
+are the next runs (`MODES=u,r runs_c2/c27/k4/box.sh 6_1 31 "1 1 2 -1 -3 2 -3" 4`, resumable).
 
 ## 7. Checks
 
