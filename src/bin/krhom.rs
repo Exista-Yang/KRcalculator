@@ -40,7 +40,7 @@ use cli_ext::TableBraid;
 
 const USAGE: &str = "usage: krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS) [--colors c | c1,c2,...] [--reduced]
              [--table] [--json OUT] [--csv OUT] [--no-simplify] [--check-library] [--lib-dir DIR]
-             [--seed S] [--seed-retries K] [--mem-mb M] [--mem-cap-mb M]
+             [--seed S] [--seed-retries K] [--mem-mb M] [--mem-cap-mb M] [--checkpoint DIR]
              [--colored-method cable|cube|singular] [--cube] [--closure tower|exact] [--end right|left|alt]
   N        gl_N ranks, a comma-separated list (e.g. 2,3,4)
   --braid  signed integers \"1 -2 1 -2\" or KnotJob letters \"aBaB\" (a..i = sigma_1..sigma_9, A..I inverses)
@@ -55,9 +55,10 @@ const USAGE: &str = "usage: krhom N[,N...] (--braid WORD [--strands n] | --pd PD
   --mark K  with --reduced: mark link component K (0-based, the order of --colors)
   --latex OUT  LaTeX tables (one tabular per N; standalone document)
   --estimate  3-4 strand box route: time one box point per prime and extrapolate; computes nothing
+  --checkpoint DIR  (3-4 strand box route) resumable run: rerun the same command after an interruption
   results are over Q (two large primes must agree; the full cube is exact over Q); docs/CALCULATOR.md";
 
-const VALUE_OPTS: [&str; 18] = ["--pd", "--braid", "--strands", "--colors", "--colored-method", "--field", "--closure", "--end", "--json", "--csv", "--file", "--lib-dir", "--seed", "--seed-f32b", "--seed-retries", "--mem-mb", "--mem-cap-mb", "--name"];
+const VALUE_OPTS: [&str; 19] = ["--checkpoint", "--pd", "--braid", "--strands", "--colors", "--colored-method", "--field", "--closure", "--end", "--json", "--csv", "--file", "--lib-dir", "--seed", "--seed-f32b", "--seed-retries", "--mem-mb", "--mem-cap-mb", "--name"];
 const FLAG_OPTS: [&str; 9] = ["--table", "--cube", "--reduced", "--single-prime", "--no-simplify", "--check-library", "--box-live", "--help", "-h"];
 /// F-CLI options (kept apart from the arrays above to ease merging): see `cli_ext`.
 const CLI_VALUE_OPTS: [&str; 4] = ["--knot", "--link", "--mark", "--latex"];
@@ -261,6 +262,7 @@ fn parse_args(args: &[String]) -> Result<(Opts, Vec<Item>, Option<String>, Optio
     if opts.check_library && opts.method.as_deref().is_some_and(|m| m != "singular") {
         return Err(un("--check-library implies the singular route; drop --colored-method".into()));
     }
+    krhom::calc_ckpt::configure(get("--checkpoint").as_deref(), items.len(), opts.check_library)?;
     Ok((opts, items, get("--json"), get("--csv")))
 }
 

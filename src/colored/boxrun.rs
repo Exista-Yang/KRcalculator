@@ -227,12 +227,21 @@ fn shard_points<F: PrimeField>(accs: &[Vec<Vec<BoxAcc<F>>>], gs: &Grids<F>, mode
 /// header and every checkpoint header. The generator-only determinant pass runs over the shard's
 /// points before any scan.
 pub fn box_run<F: PrimeField>(lib: &WLib<F>, job: &BoxJob, dir: &Path, ro: &RunOpts) -> Result<RunStatus, String> {
-    let t0 = Instant::now();
     if ro.shard.1 == 0 || ro.shard.0 >= ro.shard.1 {
         return Err(format!("bad shard {}/{}", ro.shard.0, ro.shard.1));
     }
     let recs = records(lib, job)?;
-    let gov = governing_header(lib, job, &recs);
+    box_run_with(lib, job, &recs, dir, ro)
+}
+
+/// [`box_run`] with the record scans already done (`recs = records(lib, job)`; krhom
+/// --checkpoint runs them once for `box_run_with` and [`box_finish_with`]).
+pub fn box_run_with<F: PrimeField>(lib: &WLib<F>, job: &BoxJob, recs: &Records<F>, dir: &Path, ro: &RunOpts) -> Result<RunStatus, String> {
+    let t0 = Instant::now();
+    if ro.shard.1 == 0 || ro.shard.0 >= ro.shard.1 {
+        return Err(format!("bad shard {}/{}", ro.shard.0, ro.shard.1));
+    }
+    let gov = governing_header(lib, job, recs);
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {}", dir.display(), e))?;
     let hp = dir.join("run.hdr");
     let mut st = RunStatus::default();
@@ -254,7 +263,7 @@ pub fn box_run<F: PrimeField>(lib: &WLib<F>, job: &BoxJob, dir: &Path, ro: &RunO
         let _ = writeln!(f, "run start: commit={} engine={} shard={}/{}", build_commit(), engine_stamp(&job.o.eng), ro.shard.0, ro.shard.1);
     }
     let gs = grids::<F>(&lib.lam, &job.o);
-    let mut accs = fresh_accs(lib, job, &recs, &gs);
+    let mut accs = fresh_accs(lib, job, recs, &gs);
     // load existing checkpoints (each against its full expected header)
     for (wi, wa) in accs.iter_mut().enumerate() {
         for (si, sa) in wa.iter_mut().enumerate() {
@@ -378,7 +387,15 @@ pub fn box_finish<F: PrimeField>(lib: &WLib<F>, job: &BoxJob, dirs: &[PathBuf]) 
         return Err("box_finish: no shard directory".into());
     }
     let recs = records(lib, job)?;
-    let gov = governing_header(lib, job, &recs);
+    box_finish_with(lib, job, &recs, dirs)
+}
+
+/// [`box_finish`] with the record scans already done (`recs = records(lib, job)`).
+pub fn box_finish_with<F: PrimeField>(lib: &WLib<F>, job: &BoxJob, recs: &Records<F>, dirs: &[PathBuf]) -> Result<FinishOut, String> {
+    if dirs.is_empty() {
+        return Err("box_finish: no shard directory".into());
+    }
+    let gov = governing_header(lib, job, recs);
     let mut shards = vec![];
     for d in dirs {
         let hp = d.join("run.hdr");
@@ -393,7 +410,7 @@ pub fn box_finish<F: PrimeField>(lib: &WLib<F>, job: &BoxJob, dirs: &[PathBuf]) 
         shards.push(sh);
     }
     let gs = grids::<F>(&lib.lam, &job.o);
-    let mut accs = fresh_accs(lib, job, &recs, &gs);
+    let mut accs = fresh_accs(lib, job, recs, &gs);
     for (wi, wa) in accs.iter_mut().enumerate() {
         for (si, sa) in wa.iter_mut().enumerate() {
             for (gi, a) in sa.iter_mut().enumerate() {
