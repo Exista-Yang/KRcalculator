@@ -504,3 +504,41 @@ fn certify_switchbacks_and_cups() {
         println!("CERT {} deg {} flows {:?} interp {:.2}s cert {:.2}s (pts {}, monos {}) total {:.2}s", cf.name, b.deg, b.flows, b.interp_secs, b.cert.secs, b.cert.points, b.cert.max_monos, t1.elapsed().as_secs_f64());
     }
 }
+
+/// Review wave 4, finding 1: the interpolation / certificate memory gate is on monomials and
+/// stored entries, computed from the words before any SBim is built. braid_dag at cells (3,2,3),
+/// (3,3,2), (2,3,3) (middle step 560 flows, 39 148 monomials at the top entry degree, about 98 GB
+/// of localization matrices) must return Err immediately instead of allocating.
+#[test]
+fn interp_gate_refuses_braid_fallback_323() {
+    for &(x, y, z) in &[(3u8, 2u8, 3u8), (3, 3, 2), (2, 3, 3)] {
+        let bw = braid_words(x, y, z).unwrap();
+        let lam = vec![x, y, z];
+        let (wm, wmp) = (Window::new(&lam, &bw.m), Window::new(&lam, &bw.mp));
+        let fl = Expr::new(&lam, &bw.m).unwrap().nflows();
+        let e = interp_gate(&wm, &wmp, 0).unwrap_err();
+        eprintln!("gate {:?}: {} flows: {}", (x, y, z), fl, e);
+        assert!(e.contains("monomials") || e.contains("entries"), "{}", e);
+        let t0 = Instant::now();
+        let mut ar: Arena<F> = Arena::new(&lam, TmplLib::new(None));
+        let r = braid_dag(&mut ar, &bw, 500);
+        assert!(r.is_err(), "braid_dag {:?} must refuse", (x, y, z));
+        assert!(t0.elapsed().as_secs_f64() < 30.0, "braid_dag {:?} refusal took {:.1} s", (x, y, z), t0.elapsed().as_secs_f64());
+        // interpolate and validate_assoc refuse through the same gate, before any SBim build
+        let me = Expr::new(&lam, &bw.m).unwrap();
+        let mpe = Expr::new(&lam, &bw.mp).unwrap();
+        let mut f = |_: &[F]| -> WinLoc<F> { panic!("closed form must not be evaluated") };
+        assert!(interpolate::<F>(&wm, &wmp, 0, &mut f, 1).is_err());
+        assert!(validate_assoc(&mut ar, &me, &mpe, 1).is_err());
+    }
+    // the (3,2,3) count matches the review's generating-function count (39 148 at degree 42)
+    assert_eq!(krhom::rexplan::monos_of_deg(&[3, 2, 3], 42), 39_148);
+    // small windows pass the gate and still build (r1 shapes)
+    let (a, b) = sideways_abc(1, 2, 1).unwrap();
+    for cf in [&a, &b] {
+        let c = interp_gate(&cf.src, &cf.tgt, cf.deg).unwrap();
+        assert!(c.max_monos <= MAX_INTERP_MONOS && c.cells <= MAX_INTERP_CELLS);
+        let mut lib: TmplLib<F> = TmplLib::new(None);
+        build(&mut lib, cf, 9).unwrap();
+    }
+}

@@ -4,7 +4,7 @@
 //!
 //! usage: sbox [box|finish|point] --lam 3,3 --word "1 1 1" | --words "1 1 1;1 1 1 1 1" --n 6
 //!             [--ns 3,4,5,6] [--field 31|32b] [--seed S] [--stages 2,3] [--prune N] [--cache DIR]
-//!             [--costs FILE] [--replay] [--modes u,r] [--d2-all] [--no-d2] [--mem-mb M]
+//!             [--costs FILE] [--provider default|m4c|m4c-lf] [--replay] [--modes u,r] [--d2-all] [--no-d2] [--mem-mb M]
 //!             [--batch B] [--json OUT]
 //!   (no subcommand): the one-word in-memory loop (box_word)
 //!   box    --dir D [--shard k/K] [--ckpt-secs S] [--stop-after M]: scan the shard's points,
@@ -19,7 +19,7 @@
 use krhom::boxclose::*;
 use krhom::boxrun::*;
 use krhom::field::{F31, F32b};
-use krhom::laurent::Poincare;
+use krhom::calc::poly_json;
 use krhom::sengine::EngOpts;
 use krhom::sindec::*;
 use krhom::swire::*;
@@ -34,10 +34,6 @@ fn flag(a: &[String], k: &str) -> bool {
 }
 fn list<T: std::str::FromStr>(s: &str) -> Vec<T> {
     s.split([',', ' ']).filter(|x| !x.is_empty()).map(|x| x.parse().ok().expect("bad list")).collect()
-}
-fn poly_json(p: &Poincare) -> String {
-    let terms: Vec<String> = p.c.iter().map(|(&(t, q), &k)| format!("[{},{},{}]", t, q, k)).collect();
-    format!("{{\"str\":\"{}\",\"rank\":{},\"terms\":[{}]}}", p, p.total_rank(), terms.join(","))
 }
 fn hwm_kb() -> usize {
     krhom::xengine::rss_kb().1
@@ -61,7 +57,14 @@ fn setup<F: PrimeField>(a: &[String]) -> (WLib<F>, BoxJob) {
     let cache = opt(a, "--cache").map(PathBuf::from);
     let costs = opt(a, "--costs").map(PathBuf::from).unwrap_or(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/homprov/costs_cloud.txt"));
     let modes: Vec<Option<usize>> = opt(a, "--modes").unwrap_or("u,r".into()).split(',').map(|m| if m == "u" { None } else { Some(0) }).collect();
-    let (prov, stamp) = provider_for_stamped::<F>(&lam, Some(&costs), 1.0);
+    // C2-5: `--provider m4c | m4c-lf` builds the M4c chain (production chain + Stage 0 + Leaves
+    // closure + Leaves pairs) and, above all, its layer-A stamp, so that sbox can load maps written
+    // by `libbuild --provider m4c|m4c-lf` (with --replay the provider itself is never called)
+    let (prov, stamp) = match opt(a, "--provider").as_deref() {
+        None | Some("default") => provider_for_stamped::<F>(&lam, Some(&costs), 1.0),
+        Some(pv @ ("m4c" | "m4c-lf")) => krhom::leaves::provider_for_stamped_m4c::<F>(&lam, Some(&costs), 1.0, pv == "m4c-lf"),
+        Some(pv) => die(&format!("--provider {}: expected default, m4c or m4c-lf", pv)),
+    };
     let prov: Box<dyn krhom::homprov::HomProvider<F>> = if flag(a, "--replay") { Box::new(NoProvider) } else { prov };
     let sd = SIndec::with_stamp(&lam, prov, stamp, SIndecOpts { cache_dir: cache, prune_n: prune, layer_a_route_stamp: flag(a, "--stamp-route"), ..Default::default() });
     let lib = build_wlib(sd, &words, true).unwrap_or_else(|e| die(&format!("library: {}", e)));

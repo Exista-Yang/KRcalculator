@@ -1,0 +1,15 @@
+00:02:05 F31 pair 109 "ok":true 26s
+00:02:28 F31 pair 1789 "ok":true 23s
+00:03:01 F31 pair 1812 "ok":true 33s
+00:03:28 F31 pair 2052 "ok":true 27s
+00:03:53 F31 pair 2086 "ok":true 25s
+00:04:18 F31 pair 2275 "ok":true 25s
+00:04:50 F31 pair 2298 "ok":true 32s
+00:05:15 F32b pair 109 "ok":true 24s
+00:05:38 F32b pair 1789 "ok":true 23s
+00:06:10 F32b pair 1812 "ok":true 32s
+00:06:35 F32b pair 2052 "ok":true 25s
+00:07:01 F32b pair 2086 "ok":true 26s
+00:07:27 F32b pair 2275 "ok":true 26s
+00:07:57 F32b pair 2298 "ok":true 30s
+ALLDONE

@@ -1,0 +1,6 @@
+[swire] M5i: 2 idempotent types in the library: 1,1,0/1,0,1/0,1,1 (m = 18), 1,0,1/0,2,0/1,0,1 (m = 48)
+library: 16 types, 16 closable, build 4.4s (0 provider calls, 182 layer-A loads), hash 78a462a333d253a, commit 3cfd15008cf4c8c0dcd296f9464bf45cccb30d94-dirty
+scaling check: 9138 entries checked, 3508 zero at both points, 0 declared 0 (1.1s)
+chi = decat_chi: 6 of 6 closures; determinant pass 6912 checks at 216 points
+216 points: scan 29.7s wall, per point mean 0.270s max 0.358s, engine peak 10.5 MB, eval memo 8.0 MB; closures 0.6s; record 0.4s; VmHWM 151 MB
+exit 0

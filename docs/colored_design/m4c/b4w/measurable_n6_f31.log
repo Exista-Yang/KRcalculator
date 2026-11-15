@@ -1,0 +1,37 @@
+[leaves] plan level 3 1,2,0/2,1,0/0,3,0: [E0.2,F0.2,E1.3] (877890 unknowns) -> [E0.2,E1.3,F0.2] (392995 unknowns)
+[leaves] exact [3, 3, 3] [E0.2,F0.2] -> [-] d=4 (749 unknowns)
+[leaves] exact [3, 3, 3] [E0.2,F0.2] -> [-] d=6 (1503 unknowns)
+[leaves] exact [3, 3, 3] [E0.2,F0.2] -> [-] d=8 (2852 unknowns)
+[leaves] level 2 step 3,0,0/2,1,0/0,0,3 -> 3,0,0/0,3,0/0,0,3 (Out, Whole): "E0.2,F0.2" degs [4, 6, 8] max unknowns 2852 (0.09s)
+[leaves] exact [3, 3, 3] [E0.2,F0.2] -> [E0.1,F0.1] d=1 (4625 unknowns)
+[leaves] exact [3, 3, 3] [E0.2,F0.2] -> [E0.1,F0.1] d=3 (9504 unknowns)
+[leaves] level 2 step 3,0,0/2,1,0/0,0,3 -> 2,1,0/1,2,0/0,0,3 (Out, Whole): "E0.2,F0.2" degs [1, 3] max unknowns 9504 (0.64s)
+[leaves] exact [5, 1, 3] [F0.2,E1.3] -> [E1.3,F0.2] d=0 (749 unknowns)
+[leaves] level 3 step 1,2,0/2,1,0/0,0,3 -> 1,2,0/2,1,0/0,3,0 (Out, Window): "E0.2,F0.2,E1.3" degs [0] max unknowns 749 (0.02s)
+[leaves] exact [3, 3, 3] [E1.3,F1.3] -> [E1.1,F1.1] d=4 (11563 unknowns)
+[leaves] level 4 step 3,0,0/0,3,0/0,3,0 -> 3,0,0/0,2,1/0,1,2 (Out, Whole): "E1.3,F1.3" degs [4] max unknowns 11563 (0.51s)
+B4 F_2147483647 pair 212 q 3,0,0/2,0,1/1,0,2 s 0: FAILED: step call [3, 3, 3] [E0.1,F0.1,E1.3,F1.3] -> [E0.1,F1.1,F0.1,E1.1] d=5: 2468710 unknowns > hard cap 400000
+[leaves] exact [4, 2, 3] [F0.1,E1.3,F1.2] -> [E1.3,F1.2,F0.1] d=2 (94131 unknowns)
+[leaves] level 4 step 2,1,0/1,2,0/0,3,0 -> 2,1,0/1,0,2/0,3,0 (Out, Window): "E0.1,F0.1,E1.3,F1.2" degs [2] max unknowns 94131 (13.28s)
+[leaves] exact [4, 3] [F0.1,F0.1] -> [F0.2] d=-1 (120 unknowns)
+[leaves] exact [4, 3] [F0.1,F0.1] -> [F0.2] d=1 (256 unknowns)
+[leaves] level 5 step 2,1,0/1,0,2/0,3,0 -> 1,2,0/1,0,2/0,3,0 (Out, Window): "E0.1,E1.3,F1.2,F0.1,F0.1" degs [-1, 1] max unknowns 256 (0.01s)
+B4 F_2147483647 pair 335 q 1,1,1/1,0,2/1,2,0 s -1: FAILED: step call [3, 3, 3] [E0.1,F0.1,E1.3,F1.2,F0.1,E0.1,F1.1] -> [E0.1,E1.3,F1.2,F0.2,E0.1,F1.1] d=-1: 2423909807 unknowns > hard cap 400000
+[leaves] level 4 step 2,1,0/1,2,0/0,3,0 -> 2,1,0/1,0,2/0,3,0 (Out, Window): "E0.1,F0.1,E1.3,F1.2" degs [2] max unknowns 94131 (0.00s)
+[leaves] level 5 step 2,1,0/1,0,2/0,3,0 -> 1,2,0/1,0,2/0,3,0 (Out, Window): "E0.1,E1.3,F1.2,F0.1,F0.1" degs [-1, 1] max unknowns 256 (0.00s)
+B4 F_2147483647 pair 335 q 1,1,1/1,0,2/1,2,0 s 1: FAILED: step call [3, 3, 3] [E0.1,F0.1,E1.3,F1.2,F0.1,E0.1,F1.1] -> [E0.1,E1.3,F1.2,F0.2,E0.1,F1.1] d=-1: 2423909807 unknowns > hard cap 400000
+[leaves] plan level 4 2,1,0/0,2,1/1,2,0: [E1.3,F1.1,F0.1,E0.1] (10527271 unknowns) -> [E1.3,E0.1,F1.1,F0.1] (200667 unknowns)
+[leaves] exact [3, 6, 0] [F1.1,F0.1,E0.1] -> [E0.1,F1.1,F0.1] d=0 (135902 unknowns)
+[leaves] level 4 step 2,1,0/0,2,1/0,3,0 -> 2,1,0/0,2,1/1,2,0 (Out, Window): "E1.3,F1.1,F0.1,E0.1" degs [0] max unknowns 135902 (27.02s)
+[leaves] exact [4, 5, 0] [F1.1,F0.1,F1.2] -> [F1.3,F0.1] d=0 (68857 unknowns)
+B4 F_2147483647 pair 411 q 2,1,0/0,0,3/1,2,0 s 0: FAILED: step call [3, 3, 3] [E1.3,E0.1,F1.1,F0.1,F1.2] -> [E1.3,E0.1,F1.3,F0.1] d=0: 16446366 unknowns > hard cap 400000
+[leaves] exact [1, 3] [E0.3,F0.2] -> [E0.1] d=2 (53 unknowns)
+[leaves] level 3 step 3,0,0/2,1,0/0,3,0 -> 3,0,0/2,1,0/0,1,2 (Out, Window): "E0.2,E1.3,F1.2" degs [2] max unknowns 53 (0.00s)
+B4 F_2147483647 pair 313 q 1,2,0/2,0,1/0,1,2 s 0: FAILED: step call [3, 3, 3] [E0.2,E1.1,F0.2,F1.1] -> [E0.2,E1.3,F1.3,F0.2] d=2: 1963540 unknowns > hard cap 400000
+B4 F_2147483647 pair 313 q 1,1,1/2,0,1/0,2,1 X 720 flows: CERTIFIED (form [[1]]), pi.iota = id at all cosets; templates 1, exact moves 4 (≤ 64161 unknowns), theorem-Assoc nodes [], 18.9 s
+    pi: Exact@3/u0 [5, 2, 2] [F0.2,F1.1] -> [F0.1,F1.1,F0.1] (40x60 flows, 32590 unknowns) exact (1 basis elements, 1.88 s)
+    pi: Exact@1/u0 [5, 1, 3] [E1.3,F1.2,F0.1,F1.1] -> [F0.1,E1.3,F1.3] (90x50 flows, 64161 unknowns) exact (1 basis elements, 5.80 s)
+    iota: FlagMatch@1/u0 [5, 1, 3] [F0.1,E1.3] -> [E1.3,F0.1] (5x5 flows, 37 monos) certified (0.00 s)
+    iota: Exact@2/u0 [5, 4, 0] [F0.1,F1.3] -> [F1.2,F0.1,F1.1] (50x90 flows, 32761 unknowns) exact (1 basis elements, 2.14 s)
+    iota: Exact@3/u0 [5, 2, 2] [F0.1,F1.1,F0.1] -> [F0.2,F1.1] (60x40 flows, 32590 unknowns) exact (1 basis elements, 1.59 s)
+EXIT 0

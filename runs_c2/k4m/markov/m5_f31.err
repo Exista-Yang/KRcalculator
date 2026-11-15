@@ -1,0 +1,7 @@
+[costs] warning: /home/user/lib2222c/costs_2222_c25.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
+[costs] warning: /home/user/lib2222c/costs_2222_c25.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
+library: 27 types, 27 closable, build 20.1s (0 provider calls, 72 layer-A loads), hash 3880e16de4cff4b0, commit 2f10a13296af9bf836f73f19dcccc4fbbd254950-dirty
+scaling check: 7278 entries checked, 4842 zero at both points, 0 declared 0 (0.8s)
+chi = decat_chi: 6 of 6 closures; determinant pass 69984 checks at 1296 points
+1296 points: scan 109.7s wall, per point mean 0.165s max 0.287s, engine peak 2.3 MB, eval memo 0.7 MB; closures 13.8s; record 3.5s; VmHWM 120 MB
+exit 0

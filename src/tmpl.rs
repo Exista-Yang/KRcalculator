@@ -128,6 +128,45 @@ impl<F: Field> WinLoc<F> {
     }
 }
 
+/// C2-7 localization profile (KRHOM_LPROF): (src fixed points, tgt fixed points, column-restricted)
+/// -> (calls, seconds)
+static LPROF: std::sync::Mutex<std::collections::BTreeMap<(usize, usize, bool), (u64, f64)>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+fn lprof_on() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("KRHOM_LPROF").is_some())
+}
+struct LprofGuard(Option<(usize, usize, bool, std::time::Instant)>);
+impl LprofGuard {
+    fn new(ns: usize, nt: usize, cols: bool) -> Self {
+        LprofGuard(if lprof_on() { Some((ns, nt, cols, std::time::Instant::now())) } else { None })
+    }
+}
+impl Drop for LprofGuard {
+    fn drop(&mut self) {
+        if let Some((ns, nt, c, t0)) = self.0 {
+            let mut m = LPROF.lock().unwrap();
+            let e = m.entry((ns, nt, c)).or_insert((0, 0.0));
+            e.0 += 1;
+            e.1 += t0.elapsed().as_secs_f64();
+        }
+    }
+}
+/// print and reset the localization profile (KRHOM_LPROF)
+pub fn lprof_dump(what: &str) {
+    if !lprof_on() {
+        return;
+    }
+    let mut m = LPROF.lock().unwrap();
+    let mut v: Vec<_> = m.iter().map(|(k, x)| (*k, *x)).collect();
+    v.sort_by(|a, b| b.1 .1.partial_cmp(&a.1 .1).unwrap());
+    let tot: f64 = v.iter().map(|x| x.1 .1).sum();
+    eprintln!("[lprof] {}: {:.2}s in {} localizations", what, tot, v.iter().map(|x| x.1 .0).sum::<u64>());
+    for ((ns, nt, c), (n, t)) in v.into_iter().take(15) {
+        eprintln!("[lprof]   ns {} nt {} cols {}: {} calls, {:.2}s", ns, nt, c, n, t);
+    }
+    m.clear();
+}
+
 /// localization data of one window (its SBim, fixed points, fixed point -> sorted flow id);
 /// shared by every template with this window as source or target (M5c: a hom space of
 /// dimension k used to store k clones of both whole-ladder SBims, several GB for the (3,3,3)
@@ -558,6 +597,7 @@ impl<F: Field> TmplLib<F> {
     /// localization at window roots y (upright by upright, ascending global root id inside an upright);
     /// not memoized here (the caller, `Eval`, memoizes per point)
     pub fn localize(&self, t: TmplId, y: &[F]) -> WinLoc<F> {
+        let _lp = LprofGuard::new(self.aux[t as usize].src.fp.len(), self.aux[t as usize].tgt.fp.len(), false);
         let tm = &self.tmpls[t as usize];
         let a = &self.aux[t as usize];
         let ls = loc_matrix(&a.src.b, &a.src.fp, y);
@@ -587,6 +627,55 @@ impl<F: Field> TmplLib<F> {
             for (i, v) in col.drain(..) {
                 rows.push(i);
                 vals.push(v);
+            }
+            col_start.push(rows.len() as u32);
+        }
+        WinLoc { nrows: a.tgt.fp.len() as u32, col_start, rows, vals }
+    }
+    /// number of source fixed points (= flows) of a template's window
+    pub fn src_fixed_points(&self, t: TmplId) -> usize {
+        self.aux[t as usize].src.fp.len()
+    }
+    /// C2-7: `localize` restricted to the sorted source columns `js` (the other columns are
+    /// empty): f[:, p] = L_t · Φ · (L_s⁻¹)[:, p] for the fixed points p of those columns, through
+    /// `local::inverse_cols`. Same values on those columns as `localize` (exact arithmetic).
+    pub fn localize_cols(&self, t: TmplId, y: &[F], js: &[u32]) -> WinLoc<F> {
+        let _lp = LprofGuard::new(self.aux[t as usize].src.fp.len(), self.aux[t as usize].tgt.fp.len(), true);
+        let tm = &self.tmpls[t as usize];
+        let a = &self.aux[t as usize];
+        let ns = a.src.fp.len();
+        let mut src_of_sorted = vec![0usize; ns];
+        for (p, &j) in a.src.pos.iter().enumerate() {
+            src_of_sorted[j as usize] = p;
+        }
+        let ps: Vec<usize> = js.iter().map(|&j| src_of_sorted[j as usize]).collect();
+        let ls = loc_matrix(&a.src.b, &a.src.fp, y);
+        let lt = loc_matrix(&a.tgt.b, &a.tgt.fp, y);
+        let xc = crate::local::inverse_cols(&ls, &ps).expect("localization matrix singular at this point (roots not distinct?)");
+        let ph = eval_pmat(&a.src.b, &tm.phi, y);
+        let f = matmul(&lt, &matmul(&ph, &xc)); // rows tgt fixed points, cols = js
+        let mut colv: Vec<Option<usize>> = vec![None; ns];
+        for (t, &j) in js.iter().enumerate() {
+            colv[j as usize] = Some(t);
+        }
+        let mut col_start = Vec::with_capacity(ns + 1);
+        col_start.push(0u32);
+        let mut rows = vec![];
+        let mut vals = vec![];
+        let mut col: Vec<(u32, F)> = vec![];
+        for j in 0..ns {
+            if let Some(t) = colv[j] {
+                col.clear();
+                for (q, r) in f.iter().enumerate() {
+                    if !r[t].is_zero() {
+                        col.push((a.tgt.pos[q], r[t].clone()));
+                    }
+                }
+                col.sort_unstable_by_key(|e| e.0);
+                for (i, v) in col.drain(..) {
+                    rows.push(i);
+                    vals.push(v);
+                }
             }
             col_start.push(rows.len() as u32);
         }

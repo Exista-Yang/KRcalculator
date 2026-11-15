@@ -443,6 +443,20 @@ pub struct Leaves {
     pub last: LeafStats,
     /// a log line per step when set (also with KRHOM_TRACE)
     pub verbose: bool,
+    /// C2-7 joint junction words (`joint_descent`; off by default; stamp suffix `+joint` only when on)
+    pub joint: bool,
+    /// suffix length, suffixes visited per prefix, candidate pairs fully evaluated, sweeps
+    pub joint_suffix: usize,
+    pub joint_cap: usize,
+    pub joint_keep: usize,
+    pub joint_sweeps: usize,
+    /// C2-7: Leaves pairs also for targets with an idempotent e_q (`pairs_leaves_eq`)
+    pub eq_pairs: bool,
+    /// C2-7: per-step target words with rex-chain detours at every level (`step_words`); with
+    /// `joint` only; off = final level only
+    pub detours: bool,
+    /// chains planned by `step_words` ((type, from word, to word) -> chain), reused by `build_leaves`
+    chain_memo: std::cell::RefCell<HashMap<(Tid, Vec<Rung>, Vec<Rung>), crate::rexplan::Chain>>,
     last_fail: Option<SearchStats>,
 }
 
@@ -451,8 +465,161 @@ pub const LEAVES_STAMP: &str = "leaves=Leaves(v1,closure,threeup,prefix-ext+cost
 
 impl Default for Leaves {
     fn default() -> Self {
-        Leaves { budget: 100_000, hard_cap: 400_000, one_sided_cap: 20_000, costs: None, use_window: true, use_elem: false, bfs_len: 6, bfs_cap: 20_000, alt_len: 5, alt_cap: 400_000, seed: 0x1ea7e5, last: LeafStats::default(), verbose: false, last_fail: None }
+        Leaves { budget: 100_000, hard_cap: 400_000, one_sided_cap: 20_000, costs: None, use_window: true, use_elem: false, bfs_len: 6, bfs_cap: 20_000, alt_len: 5, alt_cap: 400_000, seed: 0x1ea7e5, last: LeafStats::default(), verbose: false, joint: false, joint_suffix: 4, joint_cap: 60_000, joint_keep: 40, joint_sweeps: 3, eq_pairs: false, detours: false, chain_memo: Default::default(), last_fail: None }
     }
+}
+
+/// C2-7: the words P·A reduced for t with A of at most `max_len` rungs (breadth first from the
+/// top labels of P, at most `cap` suffixes visited), by ascending flows.
+pub fn suffix_words(s: &mut Schur, p: &[Rung], t: Tid, max_len: usize, cap: usize) -> Vec<Vec<Rung>> {
+    use crate::web::Dir;
+    let lam = s.lam.clone();
+    if !crate::dcoset::valid_word(&lam, p) {
+        return vec![];
+    }
+    let mu = s.table(t).cols();
+    let n = lam.len();
+    let mut q: VecDeque<Vec<Rung>> = VecDeque::new();
+    q.push_back(p.to_vec());
+    let mut seen = 0usize;
+    let mut out = vec![];
+    while let Some(w) = q.pop_front() {
+        seen += 1;
+        if seen > cap {
+            break;
+        }
+        let top = crate::dcoset::top_labels(&lam, &w);
+        if top == mu && crate::dcoset::reduced_for(s, &w, t).ok() {
+            out.push(w.clone());
+        }
+        if w.len() >= p.len() + max_len {
+            continue;
+        }
+        for i in 0..n.saturating_sub(1) {
+            for dir in [Dir::E, Dir::F] {
+                let giver = if dir == Dir::E { top[i + 1] } else { top[i] } as usize;
+                for r in 1..=giver {
+                    let mut w2 = w.clone();
+                    w2.push(Rung { i, dir, r });
+                    q.push_back(w2);
+                }
+            }
+        }
+    }
+    out.sort_by_key(|w| crate::schur::flows(&lam, w));
+    out
+}
+
+/// C2-7: the local type of a word (W1): the table t of char w with w reduced for t
+/// (`reduced_for`: coefficient 1, support ≤ t); ∅ gives the identity type.
+pub fn local_type(s: &mut Schur, w: &[Rung]) -> Option<Tid> {
+    if w.is_empty() {
+        let lam = s.lam.clone();
+        return Some(s.intern(Table::identity(&lam)));
+    }
+    let ch = s.ladder_char(w);
+    let cands: Vec<Tid> = ch.t.iter().filter(|(_, c)| *c == Lp::one()).map(|x| x.0).collect();
+    cands.into_iter().find(|&t| crate::dcoset::reduced_for(s, w, t).ok())
+}
+
+/// C2-7 Prop W checks W1 + W2 (D_grass §1.3) of the window of the step W_{t'}·ρ -> W_t: the
+/// window has no common suffix (it ends in ρ: A'·ρ_loc -> B'), A' and B' are reduced for local
+/// types a', b on the window labels ν (W1), and b occurs in step_gf(a', ρ_loc) with
+/// G_{a'->b} = G (W2). W3/W4 (flow-level) are not checked a priori: the runtime rank test of
+/// `step_family` decides (a failure is Exhausted, never a wrong basis). Planning only.
+pub fn window_w12(local: &mut HashMap<Vec<u8>, Schur>, lam: &[u8], wfrom: &[Rung], rho: &Rung, wto: &[Rung], g: &Lp) -> bool {
+    let mut a = wfrom.to_vec();
+    a.push(*rho);
+    let ws = win_split(lam, &a, wto);
+    if ws.suffix > 0 || ws.a.is_empty() || ws.labels.is_empty() {
+        return false;
+    }
+    let s = local.entry(ws.labels.clone()).or_insert_with(|| Schur::new(&ws.labels));
+    let ap = &ws.a[..ws.a.len() - 1];
+    let rl = ws.a[ws.a.len() - 1];
+    let (Some(ta), Some(tb)) = (local_type(s, ap), local_type(s, &ws.b)) else { return false };
+    let mut sc = StepCache::new();
+    sc.step(s, ta, &rl).into_iter().any(|(t, gl)| t == tb && gl == *g)
+}
+
+/// C2-7 W-aware step score (joint planning): the window score only when the window passes
+/// W1 + W2 (`window_w12`), else the whole-word score (what `step_family` falls back to when the
+/// window family has too small a rank).
+pub fn step_score_w(local: &mut HashMap<Vec<u8>, Schur>, lam: &[u8], wfrom: &[Rung], rho: &Rung, wto: &[Rung], g: &Lp) -> u128 {
+    let mut a = wfrom.to_vec();
+    a.push(*rho);
+    if a == wto {
+        return 0;
+    }
+    if crate::schur::flows(lam, wto) == 0 || crate::dcoset::top_labels(lam, &a) != crate::dcoset::top_labels(lam, wto) {
+        return u128::MAX;
+    }
+    let ws = win_split(lam, &a, wto);
+    let proper = ws.at > 0 || ws.suffix > 0;
+    let wok = proper && window_w12(local, lam, wfrom, rho, wto, g);
+    let mut mx = 0u128;
+    for (d, _) in degs_of(g) {
+        let u = if wok { hom_unknowns(&ws.labels, &ws.a, &ws.b, d).max(hom_unknowns(&ws.labels, &ws.b, &ws.a, d)) } else { hom_unknowns(lam, &a, wto, d).max(hom_unknowns(lam, wto, &a, d)) };
+        mx = mx.max(u);
+    }
+    mx
+}
+
+/// One step of a Lemma A plan (C2-7 census: every step of the executor's own plan).
+#[derive(Clone, Debug)]
+pub struct PlanStep {
+    pub level: usize,
+    pub from: Tid,
+    pub to: Tid,
+    pub wfrom: Vec<Rung>,
+    pub rho: Rung,
+    pub wto: Vec<Rung>,
+    pub g: Lp,
+    /// `step_score` (what the executor's budget sees, both directions, max over supp G)
+    pub score: u128,
+    /// window of W_{t'}·ρ vs W_t (common prefix length, common suffix length, labels)
+    pub win_at: usize,
+    pub win_suffix: usize,
+    pub win_labels: Vec<u8>,
+    /// per degree of supp G: (d, whole max of both directions, window max of both directions or
+    /// u128::MAX when there is no proper window)
+    pub degs: Vec<(i32, u128, u128)>,
+    /// W1 + W2 of the window (`window_w12`) and the W-aware score (`step_score_w`)
+    pub w12: bool,
+    pub score_w: u128,
+}
+
+/// Every step (level k, every junction type t' at k−1 with a step to every t at k) of a plan.
+pub fn plan_steps(s: &mut Schur, sc: &mut StepCache, w: &[Rung], plan: &[Vec<(Tid, Vec<Rung>)>]) -> Vec<PlanStep> {
+    let lam = s.lam.clone();
+    let mut out = vec![];
+    let mut wl: HashMap<Vec<u8>, Schur> = HashMap::new();
+    for k in 1..=w.len() {
+        for (t, wt) in &plan[k] {
+            for (tp, wp) in &plan[k - 1] {
+                let Some(g) = sc.step(s, *tp, &w[k - 1]).into_iter().find(|e| e.0 == *t).map(|e| e.1) else { continue };
+                let score = step_score(&lam, wp, &w[k - 1], wt, &g);
+                let mut a = wp.clone();
+                a.push(w[k - 1]);
+                let (mut at, mut suffix, mut labels, mut degs) = (0, 0, vec![], vec![]);
+                if a != *wt && crate::schur::flows(&lam, wt) > 0 && crate::dcoset::top_labels(&lam, &a) == crate::dcoset::top_labels(&lam, wt) {
+                    let ws = win_split(&lam, &a, wt);
+                    at = ws.at;
+                    suffix = ws.suffix;
+                    labels = ws.labels.clone();
+                    for (d, _) in degs_of(&g) {
+                        let whole = hom_unknowns(&lam, &a, wt, d).max(hom_unknowns(&lam, wt, &a, d));
+                        let win = if ws.at > 0 || ws.suffix > 0 { hom_unknowns(&ws.labels, &ws.a, &ws.b, d).max(hom_unknowns(&ws.labels, &ws.b, &ws.a, d)) } else { u128::MAX };
+                        degs.push((d, whole, win));
+                    }
+                }
+                let w12 = window_w12(&mut wl, &lam, wp, &w[k - 1], wt, &g);
+                let score_w = step_score_w(&mut wl, &lam, wp, &w[k - 1], wt, &g);
+                out.push(PlanStep { level: k, from: *tp, to: *t, wfrom: wp.clone(), rho: w[k - 1], wto: wt.clone(), g, score, win_at: at, win_suffix: suffix, win_labels: labels, degs, w12, score_w });
+            }
+        }
+    }
+    out
 }
 
 /// identity coset of the block (λ, λ) (as homprov's private helper `identity_coset`)
@@ -868,7 +1035,212 @@ impl Leaves {
                 break;
             }
         }
+        if self.joint {
+            self.joint_descent(s, sc, w, &mut plan, id);
+        }
         plan
+    }
+
+    /// C2-7 joint junction words (B5 §2.1 "adopt"; off by default, `Leaves::joint`). For every
+    /// step t' -ρ-> t of the plan whose `step_score` exceeds the budget, choose W_{t'} and W_t
+    /// **together** as P·A and P·B with a common prefix P (P over the prefixes of the current
+    /// words of t' and t, A and B suffix words of ≤ `joint_suffix` rungs with P·A reduced for t'
+    /// and P·B reduced for t), so that the step window shrinks to A·ρ -> B on the labels after P.
+    /// A candidate pair is adopted only when it lowers the plan objective (max step score over
+    /// every step into or out of t' and t, then flows): the plan structure (one word per junction
+    /// type per level) is unchanged, so no detour maps are needed. The identity type keeps ∅;
+    /// a final non-identity type q may change its word (pairs_leaves composes the exit chain
+    /// W_q -> L_q, which must then be found by the planner). Pure combinatorics; nothing is
+    /// certified here (acceptance is unchanged: step families must reach degree multiset G and
+    /// full top-to-top rank, then certify_pairs / certify_closure).
+    pub fn joint_descent(&self, s: &mut Schur, sc: &mut StepCache, w: &[Rung], plan: &mut Vec<Vec<(Tid, Vec<Rung>)>>, id: Tid) {
+        let lam = s.lam.clone();
+        let m = w.len();
+        let wl: std::cell::RefCell<HashMap<Vec<u8>, Schur>> = std::cell::RefCell::new(HashMap::new());
+        let step = |s: &mut Schur, sc: &mut StepCache, plan: &Vec<Vec<(Tid, Vec<Rung>)>>, k: usize, a: usize, b: usize| -> Option<u128> {
+            let (tp, wp) = &plan[k][a];
+            let (t, wt) = &plan[k + 1][b];
+            let g = sc.step(s, *tp, &w[k]).into_iter().find(|x| x.0 == *t).map(|x| x.1)?;
+            Some(step_score_w(&mut wl.borrow_mut(), &lam, wp, &w[k], wt, &g))
+        };
+        // max step score over every step touching (level k, index j)
+        let local = |s: &mut Schur, sc: &mut StepCache, plan: &Vec<Vec<(Tid, Vec<Rung>)>>, k: usize, j: usize| -> u128 {
+            let mut mx = 0u128;
+            if k > 0 {
+                for a in 0..plan[k - 1].len() {
+                    if let Some(x) = step(s, sc, plan, k - 1, a, j) {
+                        mx = mx.max(x);
+                    }
+                }
+            }
+            if k < m {
+                for b in 0..plan[k + 1].len() {
+                    if let Some(x) = step(s, sc, plan, k, j, b) {
+                        mx = mx.max(x);
+                    }
+                }
+            }
+            mx
+        };
+        let mut suff_cache: HashMap<(Vec<Rung>, Tid), Vec<Vec<Rung>>> = HashMap::new();
+        for _sweep in 0..self.joint_sweeps {
+            let mut changed = false;
+            for k in 0..m {
+                for a in 0..plan[k].len() {
+                    for b in 0..plan[k + 1].len() {
+                        let Some(s0) = step(s, sc, plan, k, a, b) else { continue };
+                        if s0 <= self.budget {
+                            continue;
+                        }
+                        let (tp, t) = (plan[k][a].0, plan[k + 1][b].0);
+                        let fix_a = k == 0 || tp == id;
+                        let fix_b = t == id;
+                        let (wa0, wb0) = (plan[k][a].1.clone(), plan[k + 1][b].1.clone());
+                        let obj0 = local(s, sc, plan, k, a).max(local(s, sc, plan, k + 1, b));
+                        let f0 = crate::schur::flows(&lam, &wa0) + crate::schur::flows(&lam, &wb0);
+                        // prefixes
+                        let mut prefs: Vec<Vec<Rung>> = vec![];
+                        for src in [&wa0, &wb0] {
+                            for l in 0..=src.len() {
+                                let p = src[..l].to_vec();
+                                if !prefs.contains(&p) {
+                                    prefs.push(p);
+                                }
+                            }
+                        }
+                        // candidate pairs ranked by the score of this step alone
+                        let mut cands: Vec<(u128, u128, Vec<Rung>, Vec<Rung>)> = vec![];
+                        let g = sc.step(s, tp, &w[k]).into_iter().find(|x| x.0 == t).map(|x| x.1).unwrap();
+                        for p in &prefs {
+                            let la: Vec<Vec<Rung>> = if fix_a {
+                                if wa0.starts_with(p) { vec![wa0.clone()] } else { vec![] }
+                            } else {
+                                suff_cache.entry((p.clone(), tp)).or_insert_with(|| suffix_words(s, p, tp, self.joint_suffix, self.joint_cap)).clone()
+                            };
+                            if la.is_empty() {
+                                continue;
+                            }
+                            let lb: Vec<Vec<Rung>> = if fix_b {
+                                if wb0.starts_with(p) { vec![wb0.clone()] } else { vec![] }
+                            } else {
+                                suff_cache.entry((p.clone(), t)).or_insert_with(|| suffix_words(s, p, t, self.joint_suffix, self.joint_cap)).clone()
+                            };
+                            for wa in &la {
+                                for wb in &lb {
+                                    let sc1 = step_score_w(&mut wl.borrow_mut(), &lam, wa, &w[k], wb, &g);
+                                    if sc1 < s0 {
+                                        cands.push((sc1, crate::schur::flows(&lam, wa) + crate::schur::flows(&lam, wb), wa.clone(), wb.clone()));
+                                    }
+                                }
+                            }
+                        }
+                        cands.sort_by(|x, y| (x.0, x.1).cmp(&(y.0, y.1)));
+                        cands.dedup_by(|x, y| x.2 == y.2 && x.3 == y.3);
+                        let mut best = (obj0, f0, wa0.clone(), wb0.clone());
+                        for (_, _, wa, wb) in cands.into_iter().take(self.joint_keep) {
+                            plan[k][a].1 = wa.clone();
+                            plan[k + 1][b].1 = wb.clone();
+                            let o = local(s, sc, plan, k, a).max(local(s, sc, plan, k + 1, b));
+                            let f = crate::schur::flows(&lam, &wa) + crate::schur::flows(&lam, &wb);
+                            if (o, f) < (best.0, best.1) {
+                                best = (o, f, wa, wb);
+                            }
+                        }
+                        plan[k][a].1 = best.2.clone();
+                        plan[k + 1][b].1 = best.3.clone();
+                        if best.2 != wa0 || best.3 != wb0 {
+                            changed = true;
+                            if self.trace() {
+                                eprintln!("[leaves] joint level {} {} -> {}: [{}]/[{}] ({}) -> [{}]/[{}] ({})", k + 1, s.table(tp).fmt(), s.table(t).fmt(), wstr(&wa0), wstr(&wb0), obj0, wstr(&best.2), wstr(&best.3), best.0);
+                            }
+                        }
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+
+    /// C2-7 per-predecessor final words (B5 §2.1 item 5, C_B5 F2; with `joint`): for every
+    /// predecessor t'_i (index i at level m−1) of a final non-identity type q, the word
+    /// W'_{q,i} reduced for q that minimizes the W-aware score of its own final step (candidates:
+    /// the plan word W_q and P·B, P over the prefixes of W_{t'_i}·ρ, |B| ≤ `joint_suffix`), kept
+    /// only when it is strictly better than W_q and a degree-0 rex chain W'_{q,i} ⇄ W_q is found
+    /// (B2 planner, `leaf_pair_plan_opts`). `build_leaves` composes predecessor i's final leaves
+    /// with that chain, so every leaf still lands in W_q (the chains are degree-0 maps between
+    /// reduced words of q with top scalar 1). Returns (q, i) -> W'_{q,i}.
+    pub fn final_pred_words(&self, s: &mut Schur, sc: &mut StepCache, w: &[Rung], plan: &[Vec<(Tid, Vec<Rung>)>], id: Tid) -> HashMap<(Tid, usize), Vec<Rung>> {
+        let m = w.len();
+        self.step_words(s, sc, w, plan, id, false).into_iter().filter(|((k, _, _), _)| *k == m).map(|((_, t, i), v)| ((t, i), v)).collect()
+    }
+
+    /// C2-7 per-step target words ("detours", B5 §2.1 item 4; `final_pred_words` is the final
+    /// level): for every step t'_i -ρ-> t at level k (all levels when `all_levels`, else only the
+    /// final level; never into the identity type) whose W-aware score exceeds the budget, the word
+    /// W'_{t,i} reduced for t minimizing that step's score (candidates P·B, P over the prefixes of
+    /// W_{t'_i}·ρ, |B| ≤ `joint_suffix`), kept only when strictly better and degree-0 rex chains
+    /// W'_{t,i} ⇄ W_t are found (B2 planner, `leaf_pair_plan_opts`). `build_leaves` composes the
+    /// step family into W'_{t,i} with the chain, so every leaf at t still lands in W_t. Returns
+    /// (k, t, i) -> W'_{t,i}.
+    pub fn step_words(&self, s: &mut Schur, sc: &mut StepCache, w: &[Rung], plan: &[Vec<(Tid, Vec<Rung>)>], id: Tid, all_levels: bool) -> HashMap<(usize, Tid, usize), Vec<Rung>> {
+        let mut out = HashMap::new();
+        let m = w.len();
+        if !self.joint || m == 0 {
+            return out;
+        }
+        let lam = s.lam.clone();
+        let mut wl: HashMap<Vec<u8>, Schur> = HashMap::new();
+        let opts = leaf_pair_plan_opts();
+        let k0 = if all_levels { 1 } else { m };
+        for k in k0..=m {
+            for (q, wq) in plan[k].clone() {
+                if q == id {
+                    continue;
+                }
+                for (i, (tp, wp)) in plan[k - 1].iter().enumerate() {
+                    let Some(g) = sc.step(s, *tp, &w[k - 1]).into_iter().find(|x| x.0 == q).map(|x| x.1) else { continue };
+                    let s0 = step_score_w(&mut wl, &lam, wp, &w[k - 1], &wq, &g);
+                    if s0 <= self.budget {
+                        continue;
+                    }
+                    let mut a = wp.clone();
+                    a.push(w[k - 1]);
+                    let mut cands: Vec<(u128, u128, Vec<Rung>)> = vec![];
+                    for l in 0..=a.len() {
+                        for c in suffix_words(s, &a[..l], q, self.joint_suffix, self.joint_cap) {
+                            let sc1 = step_score_w(&mut wl, &lam, wp, &w[k - 1], &c, &g);
+                            if sc1 < s0 {
+                                cands.push((sc1, crate::schur::flows(&lam, &c), c));
+                            }
+                        }
+                    }
+                    cands.sort_by(|x, y| (x.0, x.1).cmp(&(y.0, y.1)));
+                    cands.dedup_by(|x, y| x.2 == y.2);
+                    if self.trace() {
+                        eprintln!("[leaves] level {} step {} -> {} ({}): {} better candidate words{}", k, s.table(*tp).fmt(), s.table(q).fmt(), s0, cands.len(), cands.first().map(|c| format!(", best [{}] {}", wstr(&c.2), c.0)).unwrap_or_default());
+                    }
+                    let mut pl = crate::rexplan::Planner::new();
+                    for (sc1, _, c) in cands.into_iter().take(8) {
+                        let (Ok(c1), Ok(c2)) = (pl.plan(s, q, &c, &wq, &opts), pl.plan(s, q, &wq, &c, &opts)) else { continue };
+                        {
+                            let mut memo = self.chain_memo.borrow_mut();
+                            memo.insert((q, c.clone(), wq.clone()), c1);
+                            memo.insert((q, wq.clone(), c.clone()), c2);
+                        }
+                        {
+                            if self.trace() {
+                                eprintln!("[leaves] level {} word for predecessor {} of {}: [{}] ({}) instead of [{}] ({})", k, s.table(*tp).fmt(), s.table(q).fmt(), wstr(&c), sc1, wstr(&wq), s0);
+                            }
+                            out.insert((k, q, i), c);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// Lemma A, level by level (D1 §1.3/§2.3): the leaf families of X for the junction types at
@@ -885,6 +1257,8 @@ impl Leaves {
             return Err(lfail(MissKind::Exhausted, "build_leaves: no target type is reached".into()));
         }
         let plan = self.plan_words(s, &mut sc, &w, &js, id);
+        let finals = self.step_words(s, &mut sc, &w, &plan, id, self.detours);
+        let mut chain_cache = HashMap::new();
         let e0 = ar.expr(Expr::new(&lam, &[]).map_err(|e| lfail(MissKind::Exhausted, e))?);
         let id0 = ar.add(MapNode::Id(e0), "leaves base").map_err(|e| lfail(MissKind::Exhausted, e))?;
         let mut cur: Vec<LeafFamily> = vec![LeafFamily { t: id, word: vec![], wid: e0, maps: vec![id0] }];
@@ -901,9 +1275,37 @@ impl Leaves {
                 st.max_word_flows = st.max_word_flows.max(crate::schur::flows(&lam, &wt));
                 let wid = ar.expr(Expr::new(&lam, &wt).map_err(|e| lfail(MissKind::Exhausted, e))?);
                 let mut maps = vec![];
-                for f in &cur {
+                for (fi, f) in cur.iter().enumerate() {
                     let Some(g) = sc.step(s, f.t, &rho).into_iter().find(|x| x.0 == t).map(|x| x.1) else { continue };
-                    let fam = self.step_family(ar, s, &f.word, &rho, &wt, f.t, t, &g, dir, k, st)?;
+                    // C2-7: per-predecessor final word W'_{q,i}, then the rex chain to / from W_q
+                    let alt = finals.get(&(k, t, fi)).cloned();
+                    let fam = match &alt {
+                        None => self.step_family(ar, s, &f.word, &rho, &wt, f.t, t, &g, dir, k, st)?,
+                        Some(wa) => {
+                            let fam = self.step_family(ar, s, &f.word, &rho, wa, f.t, t, &g, dir, k, st)?;
+                            let mut pl = crate::rexplan::Planner::new();
+                            let opts = leaf_pair_plan_opts();
+                            let (from, to) = match dir {
+                                LeafDir::Out => (wa.clone(), wt.clone()),
+                                LeafDir::In => (wt.clone(), wa.clone()),
+                            };
+                            let memo = self.chain_memo.borrow().get(&(t, from.clone(), to.clone())).cloned();
+                            let ch = match memo {
+                                Some(c) => c,
+                                None => pl.plan(s, t, &from, &to, &opts).map_err(|e| lfail(MissKind::Refused, format!("final chain: {}", e)))?,
+                            };
+                            let (r, _) = crate::leafgen::realize_chain_opts(ar, &ch, &mut chain_cache, self.seed ^ 0xf1a1 ^ fi as u64, true).map_err(|e| lfail(MissKind::Refused, format!("final chain: {}", e)))?;
+                            let mut out = vec![];
+                            for sm in fam {
+                                let n = match dir {
+                                    LeafDir::Out => MapNode::Comp(r, sm),
+                                    LeafDir::In => MapNode::Comp(sm, r),
+                                };
+                                out.push(ar.add(n, "leaves final chain").map_err(|e| lfail(MissKind::Exhausted, e))?);
+                            }
+                            out
+                        }
+                    };
                     for &l in &f.maps {
                         let kr = ar.add(MapNode::Kron(l, vec![rho]), "leaves kron").map_err(|e| lfail(MissKind::Exhausted, e))?;
                         for &sm in &fam {
@@ -1015,13 +1417,18 @@ impl<F: Field> HomProvider<F> for Leaves {
 
 // ------------------------------------------------------------------ production wiring (A3)
 
-/// The M4c production chain for closure (A3), built around the frozen production chain
-/// `sindec::provider_for_stamped` without editing sindec.rs: Stage 0 product closure first for
-/// product types (A1 report §4: before Exact), then the production chain, then Leaves for
-/// closure calls (`leaves_first = false`, M4C_PLAN §0.2 "Leaves last"), or Leaves first for
-/// closure calls (`leaves_first = true`; the G-L5 measurements of A2 show closure Leaves maps of
-/// ≤ 10² DAG nodes). Leaves refuses `full`, `pairs` and `end0`, which go to the chain. The stamp
-/// extends the chain stamp, so layer A built with it is separate from the M5c layer A.
+/// The M4c production chain (A3 closure wiring + B4w pair wiring), built around the frozen
+/// production chain `sindec::provider_for_stamped` without editing sindec.rs:
+/// - closure calls: Stage 0 product closure first for product types (A1 report §4: before
+///   Exact), then the production chain, then Leaves (`leaves_first = false`, M4C_PLAN §0.2
+///   "Leaves last"), or Leaves first (`leaves_first = true`);
+/// - pair calls (B4w): the production chain first; on failure, `leaf_pairs` (rex-class targets:
+///   `rex_class_pairs`; other targets: `pairs_leaves`, Lemma A within the Leaves budget plus
+///   rex-chain exit/entry), Leaves last;
+/// - `full`, `end0` and closure with e_p: the chain alone.
+///
+/// The stamp extends the chain stamp (`STAGE0_STAMP_PF`, `LEAVES_STAMP(order)`,
+/// `LEAF_PAIRS_STAMP`), so layer A built with it is separate from the M5c layer A.
 pub fn provider_for_stamped_m4c<F: Field>(lam: &[u8], costs: Option<&std::path::Path>, slowdown: f64, leaves_first: bool) -> (Box<dyn HomProvider<F>>, String) {
     let (chain, stamp) = crate::sindec::provider_for_stamped::<F>(lam, costs, slowdown);
     let mut pc = ProductClosure::new(chain);
@@ -1029,7 +1436,121 @@ pub fn provider_for_stamped_m4c<F: Field>(lam: &[u8], costs: Option<&std::path::
     let mut lv = Leaves::new();
     lv.costs = costs.and_then(|p| CostTable::load(p).ok());
     let order = if leaves_first { "leaves-first" } else { "leaves-last" };
-    (Box::new(ClosureLeaves { inner: Box::new(pc), leaves: lv, leaves_first, last_fail: None }), format!("{} {} {}({})", stamp, STAGE0_STAMP_PF, LEAVES_STAMP, order))
+    // C2-7 (off by default): KRHOM_LEAVES_C27=1 turns on joint junction words (`joint_descent`)
+    // and Leaves pairs for targets with e_q; the stamp then carries the extra token C27_STAMP
+    // (a route token: `sindec::route_header` drops it, so with --stamp-route layer A is shared)
+    let c27 = std::env::var("KRHOM_LEAVES_C27").map(|v| v == "1").unwrap_or(false);
+    lv.joint = c27;
+    lv.eq_pairs = c27;
+    lv.detours = c27 && std::env::var("KRHOM_LEAVES_C27_DETOURS").map(|v| v != "0").unwrap_or(true);
+    (
+        Box::new(ClosureLeaves { inner: Box::new(pc), leaves: lv, leaves_first, leaf_pairs: true, last_fail: None }),
+        format!("{} {} {}({}) {}{}", stamp, STAGE0_STAMP_PF, LEAVES_STAMP, order, LEAF_PAIRS_STAMP, if c27 { format!(" {}", C27_STAMP) } else { String::new() }),
+    )
+}
+
+/// The A3 constructor (closure wiring only, A3 stamp): Leaves is never asked for pairs.
+pub fn provider_for_stamped_m4c_a3<F: Field>(lam: &[u8], costs: Option<&std::path::Path>, slowdown: f64, leaves_first: bool) -> (Box<dyn HomProvider<F>>, String) {
+    let (chain, stamp) = crate::sindec::provider_for_stamped::<F>(lam, costs, slowdown);
+    let mut pc = ProductClosure::new(chain);
+    pc.product_first = true;
+    let mut lv = Leaves::new();
+    lv.costs = costs.and_then(|p| CostTable::load(p).ok());
+    let order = if leaves_first { "leaves-first" } else { "leaves-last" };
+    (Box::new(ClosureLeaves { inner: Box::new(pc), leaves: lv, leaves_first, leaf_pairs: false, last_fail: None }), format!("{} {} {}({})", stamp, STAGE0_STAMP_PF, LEAVES_STAMP, order))
+}
+
+/// C2-7 route token (joint junction words W1/W2-aware, Leaves pairs with e_q); see
+/// `provider_for_stamped_m4c`
+pub const C27_STAMP: &str = "c27=joint(sfx4,keep40,w12)+eqpairs+detours";
+
+/// provider stamp suffix of the B4w pair route (layer-A headers)
+pub const LEAF_PAIRS_STAMP: &str = "leafpairs=LeafPairs(v1,last,rex-chain|lemmaA+exit-entry,plan=exact1e5/len12/visit6e4,assoc-as-template,persistable-only)";
+
+/// Planner options of the production pair route (those of the B2 `gp0 --b4` runs).
+pub fn leaf_pair_plan_opts() -> crate::rexplan::PlanOpts {
+    crate::rexplan::PlanOpts { exact_budget: 100_000, max_len: 12, max_visit: 60_000, ..crate::rexplan::PlanOpts::default() }
+}
+
+/// Elem nodes reachable from `roots` whose constant is not persisted in layer A (every Elem node
+/// except the theorem-level Assoc nodes, which smapio marks and re-checks on import). A layer-A
+/// file containing one would be rejected on load in a fresh session (A2 finding), so the
+/// production pair route refuses such maps.
+pub fn unpersistable_elems<F: Field>(ar: &Arena<F>, roots: &[MapId]) -> Vec<MapId> {
+    let mut out = vec![];
+    let mut stack = roots.to_vec();
+    let mut seen = std::collections::HashSet::new();
+    while let Some(m) = stack.pop() {
+        if !seen.insert(m) {
+            continue;
+        }
+        match ar.node(m) {
+            MapNode::Elem { kind, .. } => {
+                let thm = *kind == crate::smap::ElemKind::Assoc && ar.elem_windows(m).map(|(a, b)| crate::leafgen::thm_assoc_registered(a, b)).unwrap_or(false);
+                if !thm {
+                    out.push(m);
+                }
+            }
+            MapNode::Comp(g, f) => {
+                stack.push(*g);
+                stack.push(*f);
+            }
+            MapNode::Lin(t) => stack.extend(t.iter().map(|x| x.1)),
+            MapNode::Kron(f, _) => stack.push(*f),
+            _ => {}
+        }
+    }
+    out.sort_unstable();
+    out
+}
+
+/// Route of a `leaf_pairs` result.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LeafPairRoute {
+    /// X is a reduced expression of q (s = 0, mult 1): π, ι are realized rex chains
+    RexClass,
+    /// Lemma A leaves at q plus rex-chain exit/entry
+    LemmaA,
+}
+
+/// B4w: the Leaves pair route of the production provider. Rex-class targets (X reduced for q,
+/// s = 0, mult 1) go to `rex_class_pairs`; the others to `pairs_leaves` (whose Lemma A steps obey
+/// the Leaves budget rule: ≤ 1e5 unknowns, ≤ 4e5 with an uncensored record, the whole-word
+/// fallback included). Everything runs inside a mark/commit; the result is refused when a map
+/// uses an Elem constant that layer A cannot persist. Acceptance is `certify_pairs` here and
+/// then sindec's own checks (dechom_postcheck, D14 scaling, Π∘Ι = id, kept multiset, layer-A
+/// save and re-certified load), exactly as for any provider.
+#[allow(clippy::too_many_arguments)]
+pub fn leaf_pairs<F: Field>(lv: &Leaves, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, eq: Option<MapId>, sdeg: i32, mult: usize) -> Result<(Pairs<F>, LeafPairRoute, LeafStats), String> {
+    if eq.is_some() && !lv.eq_pairs {
+        return Err("Leaves pairs: target with an idempotent e_q (not implemented)".into());
+    }
+    let xw = ar.expr_of(x).rungs.clone();
+    let rex = eq.is_none() && sdeg == 0 && mult == 1 && crate::dcoset::reduced_for(s, &xw, q).ok();
+    let opts = leaf_pair_plan_opts();
+    let mark = ar.mark();
+    let mut st = LeafStats::default();
+    let r = if rex {
+        rex_class_pairs_opts(ar, s, x, q, lq, &opts, lv.seed ^ 0xb4b4, true).map(|(p, _)| (p, LeafPairRoute::RexClass))
+    } else {
+        pairs_leaves_eq(lv, ar, s, x, q, lq, eq, sdeg, mult, &opts, &mut st, true).map(|(p, _)| (p, LeafPairRoute::LemmaA))
+    };
+    let (p, route) = match r {
+        Ok(v) => v,
+        Err(e) => {
+            ar.commit(mark, &[]);
+            return Err(format!("Leaves pairs ({}): {}", if rex { "rex class" } else { "Lemma A" }, e));
+        }
+    };
+    let roots: Vec<MapId> = p.iotas.iter().chain(&p.pis).copied().collect();
+    let bad = unpersistable_elems(ar, &roots);
+    if !bad.is_empty() {
+        ar.commit(mark, &[]);
+        return Err(format!("Leaves pairs: {} Elem node(s) with constants not persisted in layer A", bad.len()));
+    }
+    let kept = ar.commit(mark, &roots);
+    let n = p.iotas.len();
+    Ok((Pairs { iotas: kept[..n].to_vec(), pis: kept[n..].to_vec(), form: p.form }, route, st))
 }
 
 /// The inner provider plus Leaves for closure calls without e_p (before or after the inner
@@ -1039,7 +1560,15 @@ pub struct ClosureLeaves<F: Field> {
     pub inner: Box<dyn HomProvider<F>>,
     pub leaves: Leaves,
     pub leaves_first: bool,
+    /// B4w: pair calls the inner provider fails go to `leaf_pairs` (Leaves last)
+    pub leaf_pairs: bool,
     last_fail: Option<SearchStats>,
+}
+
+impl<F: Field> ClosureLeaves<F> {
+    pub fn new(inner: Box<dyn HomProvider<F>>, leaves: Leaves, leaves_first: bool, leaf_pairs: bool) -> Self {
+        ClosureLeaves { inner, leaves, leaves_first, leaf_pairs, last_fail: None }
+    }
 }
 
 impl<F: Field> HomProvider<F> for ClosureLeaves<F> {
@@ -1054,7 +1583,37 @@ impl<F: Field> HomProvider<F> for ClosureLeaves<F> {
     fn pairs(&mut self, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, eq: Option<MapId>, sdeg: i32, mult: usize, b: &Budget) -> Result<(Pairs<F>, SearchStats), Vec<Missing>> {
         let r = self.inner.pairs(ar, s, x, q, lq, eq, sdeg, mult, b);
         self.last_fail = if r.is_err() { self.inner.failed_stats() } else { None };
-        r
+        let errs = match r {
+            Ok(v) => return Ok(v),
+            Err(e) if !self.leaf_pairs || (eq.is_some() && !self.leaves.eq_pairs) => return Err(e),
+            Err(e) => e,
+        };
+        let mut acc = self.last_fail.clone().unwrap_or_default();
+        let t0 = Instant::now();
+        let r = leaf_pairs(&self.leaves, ar, s, x, q, lq, eq, sdeg, mult);
+        let secs = t0.elapsed().as_secs_f64();
+        match r {
+            Ok((p, route, st)) => {
+                if std::env::var_os("KRHOM_TRACE").is_some() {
+                    eprintln!("[leafpairs] q {} s {} mult {}: certified by {:?} in {:.1} s (inner: {})", s.table(q).fmt(), sdeg, mult, route, secs, errs.first().map(|m| m.what.as_str()).unwrap_or(""));
+                }
+                let ss = SearchStats { candidates: p.pis.len(), evaluated: p.pis.len(), secs, exact_calls: st.exact_calls, exact_secs: st.exact_secs, detect: if route == LeafPairRoute::RexClass { "leaves-rex" } else { "leaves-lemmaA" }, ..SearchStats::default() };
+                acc.absorb(&ss);
+                self.last_fail = None;
+                Ok((p, acc))
+            }
+            Err(e) => {
+                if std::env::var_os("KRHOM_TRACE").is_some() {
+                    eprintln!("[leafpairs] q {} s {} mult {}: refused in {:.1} s: {}", s.table(q).fmt(), sdeg, mult, secs, e);
+                }
+                acc.absorb(&SearchStats { secs, ..SearchStats::default() });
+                self.last_fail = Some(acc);
+                let mut errs = errs;
+                errs.iter_mut().for_each(|m| m.what = format!("[inner] {}", m.what));
+                errs.push(Missing { what: format!("[Leaves] {}", e), degree: sdeg, stratum: None, got: 0, want: mult, kind: MissKind::Refused });
+                Err(errs)
+            }
+        }
     }
     fn end0(&mut self, ar: &mut Arena<F>, s: &mut Schur, l: ExprId, b: &Budget) -> Result<(Vec<MapId>, SearchStats), Vec<Missing>> {
         let r = self.inner.end0(ar, s, l, b);
@@ -1121,6 +1680,12 @@ pub struct RexPairReport {
 /// π∘ι = id_{L_q} at every coset of the support of L_q (End⁰(B_q) = k and the top scalar is 1).
 /// Every map that uses the theorem-level Assoc certificate is listed in `theorem_assoc`.
 pub fn rex_class_pairs<F: Field>(ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, opts: &crate::rexplan::PlanOpts, seed: u64) -> Result<(Pairs<F>, RexPairReport), String> {
+    rex_class_pairs_opts(ar, s, x, q, lq, opts, seed, false)
+}
+
+/// `rex_class_pairs` with `persistable` (`leafgen::realize_chain_opts`).
+#[allow(clippy::too_many_arguments)]
+pub fn rex_class_pairs_opts<F: Field>(ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, opts: &crate::rexplan::PlanOpts, seed: u64, persistable: bool) -> Result<(Pairs<F>, RexPairReport), String> {
     let t0 = Instant::now();
     let lam = ar.lam().to_vec();
     let (xw, lw) = (ar.expr_of(x).rungs.clone(), ar.expr_of(lq).rungs.clone());
@@ -1131,8 +1696,8 @@ pub fn rex_class_pairs<F: Field>(ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q:
     let ch_pi = pl.plan(s, q, &xw, &lw, opts)?;
     let ch_io = pl.plan(s, q, &lw, &xw, opts)?;
     let mut cache = HashMap::new();
-    let (pi, rp) = crate::leafgen::realize_chain(ar, &ch_pi, &mut cache, seed)?;
-    let (io, ri) = crate::leafgen::realize_chain(ar, &ch_io, &mut cache, seed + 1000)?;
+    let (pi, rp) = crate::leafgen::realize_chain_opts(ar, &ch_pi, &mut cache, seed, persistable)?;
+    let (io, ri) = crate::leafgen::realize_chain_opts(ar, &ch_io, &mut cache, seed + 1000, persistable)?;
     let c = rep_rank_of(s, &lam, q);
     let pairs = certify_pairs(ar, x, lq, 0, &[io], &[pi], c, 1, seed ^ 0xb4)?;
     // π∘ι = id on L_q at every coset of its support (two points)
@@ -1177,6 +1742,23 @@ pub fn rex_class_pairs<F: Field>(ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q:
 /// `plan_words`; when it differs from L_q the chains come from src/rexplan.rs.
 #[allow(clippy::too_many_arguments)]
 pub fn pairs_leaves<F: Field>(lv: &Leaves, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, sdeg: i32, mult: usize, opts: &crate::rexplan::PlanOpts, st: &mut LeafStats) -> Result<(Pairs<F>, Vec<MapId>), String> {
+    pairs_leaves_opts(lv, ar, s, x, q, lq, sdeg, mult, opts, st, false)
+}
+
+/// `pairs_leaves` with `persistable` (`leafgen::realize_chain_opts`).
+#[allow(clippy::too_many_arguments)]
+pub fn pairs_leaves_opts<F: Field>(lv: &Leaves, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, sdeg: i32, mult: usize, opts: &crate::rexplan::PlanOpts, st: &mut LeafStats, persistable: bool) -> Result<(Pairs<F>, Vec<MapId>), String> {
+    pairs_leaves_eq(lv, ar, s, x, q, lq, None, sdeg, mult, opts, st, persistable)
+}
+
+/// `pairs_leaves_opts` for a target with an idempotent e_q (C2-7, `Leaves::eq_pairs`): the
+/// Lemma A leaves and exit / entry chains as for an indecomposable target, then ι ↦ ι∘e_q,
+/// π ↦ e_q∘π (as the production backends' `with_idem`) before `certify_pairs`. e_q is the
+/// identity at rep(q) (the extra summands of L_q have types < q), so the form at rep(q) is that
+/// of the unwrapped leaves; acceptance is unchanged (certify_pairs here, then sindec's checks with
+/// e_q on the diagonal of Π∘Ι and Σιπ = e).
+#[allow(clippy::too_many_arguments)]
+pub fn pairs_leaves_eq<F: Field>(lv: &Leaves, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, eq: Option<MapId>, sdeg: i32, mult: usize, opts: &crate::rexplan::PlanOpts, st: &mut LeafStats, persistable: bool) -> Result<(Pairs<F>, Vec<MapId>), String> {
     let lam = ar.lam().to_vec();
     let lw = ar.expr_of(lq).rungs.clone();
     let fo = lv.build_leaves(ar, s, x, &[q], LeafDir::Out, st).map_err(|e| e.what)?;
@@ -1190,14 +1772,18 @@ pub fn pairs_leaves<F: Field>(lv: &Leaves, ar: &mut Arena<F>, s: &mut Schur, x: 
         let mut cache = HashMap::new();
         if fo.word != lw {
             let ch = pl.plan(s, q, &fo.word, &lw, opts)?;
-            let (exit, _) = crate::leafgen::realize_chain(ar, &ch, &mut cache, lv.seed ^ 0xe1)?;
+            let (exit, _) = crate::leafgen::realize_chain_opts(ar, &ch, &mut cache, lv.seed ^ 0xe1, persistable)?;
             pis = pis.into_iter().map(|m| ar.add(MapNode::Comp(exit, m), "leaves pi exit")).collect::<Result<_, _>>()?;
         }
         if fi.word != lw {
             let ch = pl.plan(s, q, &lw, &fi.word, opts)?;
-            let (entry, _) = crate::leafgen::realize_chain(ar, &ch, &mut cache, lv.seed ^ 0xe2)?;
+            let (entry, _) = crate::leafgen::realize_chain_opts(ar, &ch, &mut cache, lv.seed ^ 0xe2, persistable)?;
             ios = ios.into_iter().map(|m| ar.add(MapNode::Comp(m, entry), "leaves iota entry")).collect::<Result<_, _>>()?;
         }
+    }
+    if let Some(e) = eq {
+        ios = ios.into_iter().map(|m| ar.add(MapNode::Comp(m, e), "leaves iota e_q")).collect::<Result<_, _>>()?;
+        pis = pis.into_iter().map(|m| ar.add(MapNode::Comp(e, m), "leaves e_q pi")).collect::<Result<_, _>>()?;
     }
     let c = rep_rank_of(s, &lam, q);
     let p = certify_pairs(ar, x, lq, sdeg, &ios, &pis, c, mult, lv.seed ^ 0xa4)?;

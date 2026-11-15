@@ -1,0 +1,22 @@
+=== h3_u: krhom 2,3,4 --braid 1 -2 1 -2 --strands 3 --colors 2
+=== h3_r: krhom 2,3,4 --braid 1 -2 1 -2 --strands 3 --colors 2 --reduced
+=== h4_u: krhom 2,3,4 --braid 1 1 1 2 --strands 3 --colors 2 --no-simplify
+=== h4_r: krhom 2,3,4 --braid 1 1 1 2 --strands 3 --colors 2 --no-simplify --reduced
+=== h4_ref: krhom 2,3,4 --braid 1 1 1 --strands 2 --colors 2
+=== h4_refr: krhom 2,3,4 --braid 1 1 1 --strands 2 --colors 2 --reduced
+=== h5a_u: krhom 2,3,4 --braid 1 2 3 --strands 4 --colors 2 --no-simplify
+=== h5a_r: krhom 2,3,4 --braid 1 2 3 --strands 4 --colors 2 --no-simplify --reduced
+=== h5b_u: krhom 2,3,4 --braid 1 1 1 2 3 --strands 4 --colors 2 --no-simplify
+=== h5b_r: krhom 2,3,4 --braid 1 1 1 2 3 --strands 4 --colors 2 --no-simplify --reduced
+=== h6_61: krhom 2,3,4 --braid 1 1 2 -1 -3 2 -3 --strands 4 --colors 2 --check-library
+=== h6_815: krhom 2,3,4 --braid 1 1 -2 1 3 2 2 2 3 --strands 4 --colors 2 --check-library
+H8 /root/.cache/krhom/lib/l2222_n4/f31: newer than LIBRARY.txt: 0; layer_a 2873; tmpl 3048
+H8 /root/.cache/krhom/lib/l2222_n4/f32b: newer than LIBRARY.txt: 0; layer_a 2873; tmpl 3029
+H8 /root/.cache/krhom/lib/l222_n4/f31: newer than LIBRARY.txt: 0; layer_a 233; tmpl 471
+H8 /root/.cache/krhom/lib/l222_n4/f32b: newer than LIBRARY.txt: 0; layer_a 233; tmpl 471
+l222_n4/f31: verified (/root/.cache/krhom/lib/l222_n4/f31)
+l222_n4/f32b: verified (/root/.cache/krhom/lib/l222_n4/f32b)
+l2222_n4/f31: verified (/root/.cache/krhom/lib/l2222_n4/f31)
+l2222_n4/f32b: verified (/root/.cache/krhom/lib/l2222_n4/f32b)
+verify-only exit 0
+ALLDONE

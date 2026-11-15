@@ -24,7 +24,7 @@ use crate::cclose::EPoly;
 use crate::schur::{crossing_terms, Elt, Schur, Table, Tid};
 use crate::sengine::*;
 use crate::sindec::{DecData, SIndec};
-use crate::smap::{gemm_acc, Eval, LocMap, MapId, Point};
+use crate::smap::{gemm_acc, Block, Eval, Layout, LocMap, MapId, Point, Reduced};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::Instant;
@@ -75,6 +75,55 @@ pub struct WLib<F: Field> {
     pub stats: crate::sindec::DecStats,
     /// point-independent Kron flow maps, keyed by (L_a, L_b, X_a, X_b, coset)
     pub kron: std::sync::RwLock<HashMap<(u32, u32, u32, u32, u64), Arc<KronIdx>>>,
+    /// types with an idempotent e_p (M5i): blocks of maps into / out of them are taken to
+    /// reduced coordinates (Q_q · block, block · P_p)
+    pub idem: BTreeSet<Tid>,
+}
+
+/// M5i reduced coordinates per (type, coset) at one point (one Eval)
+pub struct RedCache<F> {
+    m: HashMap<(Tid, u64), Arc<Reduced<F>>>,
+}
+impl<F: Field> Default for RedCache<F> {
+    fn default() -> Self {
+        RedCache { m: HashMap::new() }
+    }
+}
+impl<F: Field> RedCache<F> {
+    pub fn get(&mut self, lib: &WLib<F>, ev: &mut Eval<F>, p: Tid, c: u64) -> Result<Arc<Reduced<F>>, String> {
+        if let Some(r) = self.m.get(&(p, c)) {
+            return Ok(r.clone());
+        }
+        let r = Arc::new(lib.dd.reduced(ev, p, c).map_err(String::from)?);
+        self.m.insert((p, c), r.clone());
+        Ok(r)
+    }
+    /// the block of a library map L_src → L_tgt at c in reduced coordinates: Q_tgt · b · P_src
+    /// (each factor only for an idempotent type)
+    pub fn red_block(&mut self, lib: &WLib<F>, ev: &mut Eval<F>, m: MapId, src: Option<Tid>, tgt: Option<Tid>, c: u64) -> Result<Block<F>, String> {
+        let b = ev.block(m, c);
+        let si = src.filter(|p| lib.idem.contains(p));
+        let ti = tgt.filter(|p| lib.idem.contains(p));
+        if si.is_none() && ti.is_none() {
+            return Ok((*b).clone());
+        }
+        let mut out = (*b).clone();
+        if let Some(p) = si {
+            let r = self.get(lib, ev, p, c)?;
+            if out.cols != r.p.rows {
+                return Err(format!("reduced block: {} columns vs {} flows of the source type at coset {}", out.cols, r.p.rows, c));
+            }
+            out = out.mul(&r.p);
+        }
+        if let Some(q) = ti {
+            let r = self.get(lib, ev, q, c)?;
+            if out.rows != r.q.cols {
+                return Err(format!("reduced block: {} rows vs {} flows of the target type at coset {}", out.rows, r.q.cols, c));
+            }
+            out = r.q.mul(&out);
+        }
+        Ok(out)
+    }
 }
 
 impl<F: Field> WLib<F> {
@@ -249,7 +298,14 @@ pub fn build_wlib<F: Field>(mut sd: SIndec<F>, words: &[Vec<i32>], closure: bool
         h.str(&format!("{:?}", w));
     }
     let by_name = names.iter().map(|(p, n)| (n.clone(), *p)).collect();
-    Ok(WLib { dd, lam, prune_n: prune, shapes, names, by_name, id_tid: id, id_coset, closure: cl, no_closure: no_cl, words: words.to_vec(), hash: h.get(), build_secs: t0.elapsed().as_secs_f64(), stats, kron: Default::default() })
+    let idem: BTreeSet<Tid> = all.iter().copied().filter(|&p| dd.ty(p).is_ok_and(|t| t.e.is_some())).collect();
+    for &p in &idem {
+        h.u64(0x1de3).u64(p as u64).str(crate::sindec::M5I_STAMP);
+    }
+    if !idem.is_empty() {
+        eprintln!("[swire] M5i: {} idempotent types in the library: {}", idem.len(), idem.iter().map(|p| format!("{} (m = {})", names[p], shapes[p].rank())).collect::<Vec<_>>().join(", "));
+    }
+    Ok(WLib { dd, lam, prune_n: prune, shapes, names, by_name, id_tid: id, id_coset, closure: cl, no_closure: no_cl, words: words.to_vec(), hash: h.get(), build_secs: t0.elapsed().as_secs_f64(), stats, kron: Default::default(), idem })
 }
 
 // ------------------------------------------------------------------ the decategorified oracle
@@ -381,11 +437,12 @@ fn kron_idx<F: Field>(ar: &crate::smap::Arena<F>, la: u32, lb: u32, xa: u32, xb:
 }
 
 /// A library map evaluated on the engine's layout of (src type, tgt type), times `scale`.
-fn lib_map<F: Field>(ev: &mut Eval<F>, eng: &mut PEngine<F>, m: MapId, qs: Tid, qt: Tid, scale: &F) -> Result<LocMap<F>, String> {
+#[allow(clippy::too_many_arguments)]
+fn lib_map<F: Field>(lib: &WLib<F>, red: &mut RedCache<F>, ev: &mut Eval<F>, eng: &mut PEngine<F>, m: MapId, qs: Tid, qt: Tid, scale: &F) -> Result<LocMap<F>, String> {
     let lay = eng.layout(qs, qt).map_err(String::from)?;
     let mut lm = LocMap::zeros(lay.clone());
     for (i, &c) in lay.cosets.iter().enumerate() {
-        let b = ev.block(m, c);
+        let b = red.red_block(lib, ev, m, Some(qs), Some(qt), c)?;
         if b.a.len() != lay.block_len(i) {
             return Err(format!("library map block at coset {}: {}x{} vs layout {}x{}", c, b.rows, b.cols, lay.rows[i], lay.cols[i]));
         }
@@ -424,6 +481,10 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
     // counters of the d_C ⊗ id construction: [edge×coset visits, KI fma, πKI fma, Σ kr, Σ nzr, T-estimate fma, (ia,it) pairs, nnz f referenced]
     let mut cnt = [0u64; 8];
     let use_ref = std::env::var("KRHOM_DCID_REF").is_ok();
+    if use_ref && !lib.idem.is_empty() {
+        return Err("KRHOM_DCID_REF: the reference d_C ⊗ id path has no M5i reduced coordinates".into());
+    }
+    let mut red: RedCache<F> = RedCache::default();
     let mut asm: HashMap<(Tid, u64), Arc<Asm<F>>> = HashMap::new();
     for (st, &g) in word.iter().enumerate() {
         let (i, pos) = letter(g);
@@ -576,7 +637,7 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
                     }
                 }
             } else {
-                dcid_step(lib, &mut ev, &mut eng, &prev, &decs, &place, k, &mut asm, &mut cnt)?;
+                dcid_step(lib, &mut red, &mut ev, &mut eng, &prev, &decs, &place, k, &mut asm, &mut cnt)?;
             }
             prof[1] += tp1.elapsed().as_secs_f64();
             let tp2 = Instant::now();
@@ -590,7 +651,7 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
                     let dk = &decs[&ob.p];
                     let sgn = if ob.h.rem_euclid(2) == 1 { &mone } else { &one };
                     for &(s_i, t_i, m) in comps.iter() {
-                        let lm = lib_map(&mut ev, &mut eng, m, dp.summands[s_i].q, dk.summands[t_i].q, sgn)?;
+                        let lm = lib_map(lib, &mut red, &mut ev, &mut eng, m, dp.summands[s_i].q, dk.summands[t_i].q, sgn)?;
                         if lm.is_zero() {
                             continue;
                         }
@@ -632,7 +693,7 @@ pub fn scan_point<F: Field>(lib: &WLib<F>, word: &[i32], x: Vec<F>, point_id: u3
                 return Err(format!("stage {} is not closable (labels {:?})", st + 1, labels));
             }
             let tx = Instant::now();
-            outs.push(extract_stage(lib, &mut ev, eng.cx(), st + 1, &crossings)?);
+            outs.push(extract_stage(lib, &mut red, &mut ev, eng.cx(), st + 1, &crossings)?);
             prof[3] += tx.elapsed().as_secs_f64();
         }
     }
@@ -660,14 +721,14 @@ pub struct Asm<F> {
     pub pi_csc: Vec<Vec<(u32, F)>>,
 }
 
-fn assemble<F: Field>(ev: &mut Eval<F>, ar: &crate::smap::Arena<F>, dec: &crate::sindec::Decomp, cc: u64) -> Asm<F> {
+fn assemble<F: Field>(lib: &WLib<F>, red: &mut RedCache<F>, ev: &mut Eval<F>, ar: &crate::smap::Arena<F>, dec: &crate::sindec::Decomp, cc: u64) -> Result<Asm<F>, String> {
     let kr = ar.flows(dec.x).range(cc).len();
     let mut coff = Vec::with_capacity(dec.summands.len() + 1);
     let mut ib = vec![];
     let mut ncol = 0;
     for sg in &dec.summands {
         coff.push(ncol);
-        let b = ev.block(sg.iota, cc);
+        let b = red.red_block(lib, ev, sg.iota, Some(sg.q), None, cc)?;
         ncol += b.cols as usize;
         ib.push(b);
     }
@@ -688,7 +749,7 @@ fn assemble<F: Field>(ev: &mut Eval<F>, ar: &crate::smap::Arena<F>, dec: &crate:
     let mut pi_csc: Vec<Vec<(u32, F)>> = vec![vec![]; kr];
     for sg in &dec.summands {
         roff.push(nrow);
-        let b = ev.block(sg.pi, cc);
+        let b = red.red_block(lib, ev, sg.pi, None, Some(sg.q), cc)?;
         let mt = b.rows as usize;
         if mt > 0 {
             debug_assert_eq!(b.cols as usize, kr);
@@ -704,7 +765,41 @@ fn assemble<F: Field>(ev: &mut Eval<F>, ar: &crate::smap::Arena<F>, dec: &crate:
         nrow += mt;
     }
     roff.push(nrow);
-    Asm { kr, ncol, coff, iota, nrow, roff, pi_csc }
+    Ok(Asm { kr, ncol, coff, iota, nrow, roff, pi_csc })
+}
+
+/// M5i: a component f: a → b in reduced coordinates as a map L_a → L_b in flow coordinates,
+/// P_b · f · Q_a per coset of f's layout (each factor only for an idempotent type)
+#[allow(clippy::too_many_arguments)]
+fn to_flows<F: Field>(lib: &WLib<F>, red: &mut RedCache<F>, ev: &mut Eval<F>, f: &LocMap<F>, pa: Tid, la: u32, pb: Tid, lb: u32) -> Result<LocMap<F>, String> {
+    let ar = lib.dd.ar();
+    let (fa, fb) = (ar.flows(la), ar.flows(lb));
+    let (mut rows, mut cols) = (vec![], vec![]);
+    for &c in &f.lay.cosets {
+        rows.push(fb.range(c).len() as u32);
+        cols.push(fa.range(c).len() as u32);
+    }
+    let lay = Arc::new(Layout::new(f.lay.cosets.clone(), rows, cols));
+    let mut out = LocMap::zeros(lay.clone());
+    for (i, &c) in f.lay.cosets.iter().enumerate() {
+        let mut b = Block { rows: f.lay.rows[i], cols: f.lay.cols[i], a: f.block(i).to_vec() };
+        if b.is_zero() {
+            continue;
+        }
+        if lib.idem.contains(&pa) {
+            let r = red.get(lib, ev, pa, c)?;
+            b = b.mul(&r.q);
+        }
+        if lib.idem.contains(&pb) {
+            let r = red.get(lib, ev, pb, c)?;
+            b = r.p.mul(&b);
+        }
+        if b.rows != lay.rows[i] || b.cols != lay.cols[i] {
+            return Err(format!("to_flows: block {}x{} vs flows {}x{} at coset {}", b.rows, b.cols, lay.rows[i], lay.cols[i], c));
+        }
+        out.block_mut(i).clone_from_slice(&b.a);
+    }
+    Ok(out)
 }
 
 /// d_C ⊗ id of one insertion step: for every component f: a → b of the previous complex and
@@ -713,6 +808,7 @@ fn assemble<F: Field>(ev: &mut Eval<F>, ar: &crate::smap::Arena<F>, dec: &crate:
 #[allow(clippy::too_many_arguments)]
 fn dcid_step<F: Field>(
     lib: &WLib<F>,
+    red: &mut RedCache<F>,
     ev: &mut Eval<F>,
     eng: &mut PEngine<F>,
     prev: &SCx<F>,
@@ -735,13 +831,21 @@ fn dcid_step<F: Field>(
         }
         let la = dd.ty(pa).map_err(String::from)?.lad;
         let sa = ar.flows(da.x).support();
-        for (&b, f) in aouts {
+        for (&b, f0) in aouts {
             let pb = prev.objs()[&b].p;
             let db = decs[&pb].clone();
             if db.summands.is_empty() {
                 continue;
             }
             let lb = dd.ty(pb).map_err(String::from)?.lad;
+            // M5i: a component touching an idempotent type, back to flow coordinates P_b f Q_a
+            let fflow;
+            let f = if lib.idem.contains(&pa) || lib.idem.contains(&pb) {
+                fflow = to_flows(lib, red, ev, f0, pa, la, pb, lb)?;
+                &fflow
+            } else {
+                f0
+            };
             let sb = ar.flows(db.x).support();
             let (na, nb) = (da.summands.len(), db.summands.len());
             let mut maps: Vec<Option<LocMap<F>>> = (0..na * nb).map(|_| None).collect();
@@ -752,8 +856,16 @@ fn dcid_step<F: Field>(
                     continue;
                 }
                 cnt[0] += 1;
-                let aa = asm.entry((pa, cc)).or_insert_with(|| Arc::new(assemble(ev, ar, &da, cc))).clone();
-                let ab = asm.entry((pb, cc)).or_insert_with(|| Arc::new(assemble(ev, ar, &db, cc))).clone();
+                if !asm.contains_key(&(pa, cc)) {
+                    let x = Arc::new(assemble(lib, red, ev, ar, &da, cc)?);
+                    asm.insert((pa, cc), x);
+                }
+                if !asm.contains_key(&(pb, cc)) {
+                    let x = Arc::new(assemble(lib, red, ev, ar, &db, cc)?);
+                    asm.insert((pb, cc), x);
+                }
+                let aa = asm[&(pa, cc)].clone();
+                let ab = asm[&(pb, cc)].clone();
                 let nc = aa.ncol;
                 if nc == 0 || ab.nrow == 0 {
                     continue;
@@ -860,7 +972,7 @@ fn dcid_step<F: Field>(
 }
 
 /// Closure skeleton and entry values of the current complex at the identity coset.
-fn extract_stage<F: Field>(lib: &WLib<F>, ev: &mut Eval<F>, cx: &SCx<F>, stage: usize, crossings: &[(bool, u8)]) -> Result<StageOut<F>, String> {
+fn extract_stage<F: Field>(lib: &WLib<F>, red: &mut RedCache<F>, ev: &mut Eval<F>, cx: &SCx<F>, stage: usize, crossings: &[(bool, u8)]) -> Result<StageOut<F>, String> {
     let cid = lib.id_coset.ok_or("no closure data in the library")?;
     let ids: Vec<usize> = cx.objs().keys().copied().collect();
     let index: HashMap<usize, usize> = ids.iter().enumerate().map(|(i, &o)| (o, i)).collect();
@@ -873,8 +985,8 @@ fn extract_stage<F: Field>(lib: &WLib<F>, ev: &mut Eval<F>, cx: &SCx<F>, stage: 
             continue;
         }
         let c = lib.closure.get(&p).ok_or_else(|| format!("final type {} has no closure generators: {}", lib.names[&p], lib.no_closure.get(&p).cloned().unwrap_or_default()))?;
-        let g: Vec<Vec<F>> = c.ins.iter().map(|&m| ev.block(m, cid).a.clone()).collect();
-        let h: Vec<Vec<F>> = c.outs.iter().map(|&m| ev.block(m, cid).a.clone()).collect();
+        let g: Vec<Vec<F>> = c.ins.iter().map(|&m| red.red_block(lib, ev, m, None, Some(p), cid).map(|b| b.a)).collect::<Result<_, _>>()?;
+        let h: Vec<Vec<F>> = c.outs.iter().map(|&m| red.red_block(lib, ev, m, Some(p), None, cid).map(|b| b.a)).collect::<Result<_, _>>()?;
         types.insert(p, TypeBasisC { ins: c.ins_deg.clone(), outs: c.outs_deg.clone(), gram: vec![vec![EPoly::zero(); c.ins.len()]; c.outs.len()] });
         gv.insert(p, (g, h));
     }
@@ -1097,15 +1209,22 @@ pub fn generator_pass<F: PrimeField>(lib: &WLib<F>, nodes: &BoxNodes<F>, grid: &
     let res: Vec<Result<usize, String>> = par_map(pts, |&id| {
         let mu = grid.mu(id);
         let mut ev = Eval::new(ar, Point { id, x: box_x(nodes, &mu) });
+        let mut red: RedCache<F> = RedCache::default();
         let mut n = 0;
+        let gprof = std::env::var_os("KRHOM_GPROF").is_some();
         for (p, c) in &lib.closure {
+            let tg = std::time::Instant::now();
             for (side, maps) in [("ins", &c.ins), ("outs", &c.outs)] {
-                let v: Vec<Vec<F>> = maps.iter().map(|&m| ev.block(m, cid).a.clone()).collect();
+                let outs = side == "outs";
+                let v: Vec<Vec<F>> = maps.iter().map(|&m| red.red_block(lib, &mut ev, m, if outs { Some(*p) } else { None }, if outs { None } else { Some(*p) }, cid).map(|b| b.a)).collect::<Result<_, _>>()?;
                 let dim = v.first().map_or(0, |x| x.len());
                 if v.len() != dim || crate::dense::rank(&v, dim) != dim {
                     return Err(format!("generator determinant fails at box point {:?} for type {} ({}: {} vectors of length {}): redraw the nodes (another --seed) before any scan", mu, lib.names[p], side, v.len(), dim));
                 }
                 n += 1;
+            }
+            if gprof {
+                eprintln!("[gprof] point {} type {}: {} + {} generators, {:.3}s", id, lib.names[p], c.ins.len(), c.outs.len(), tg.elapsed().as_secs_f64());
             }
         }
         Ok(n)

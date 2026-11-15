@@ -495,7 +495,8 @@ fn dechom_negative() {
     }
 }
 
-/// a decomposable L_q (λ = (3,1,3), type 2,0,1/0,1,0/1,0,2) is refused without e_q
+/// a decomposable L_q (λ = (3,1,3), type 2,0,1/0,1,0/1,0,2) is refused by the provider without e_q
+/// (sindec's `ty` builds e_q since M5i)
 #[test]
 fn dechom_decomposable_lq() {
     let lam = [3u8, 1, 3];
@@ -503,7 +504,8 @@ fn dechom_decomposable_lq() {
     let q = tid(&mut sd.schur, "2,0,1/0,1,0/1,0,2");
     let w = canonical_ladder(&mut sd.schur, q);
     assert!(!is_indecomposable_of(&mut sd.schur, &w, q));
-    assert!(matches!(sd.ty(q), Err(DecErr::NeedsIdempotent { .. })));
+    // M5a refused the type (NeedsIdempotent); since M5i (C2-4) ty builds e_q
+    assert!(sd.ty(q).expect("M5i e_q").e.is_some());
     let x = sd.ar.expr(Expr::new(&lam, &w).unwrap());
     let t = PairTarget { x, q, lq: x, eq: None, s: 0, mult: 1 };
     let mut prov = provider_for::<F>(&lam, Some(&costs()), 1.0);

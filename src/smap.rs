@@ -15,6 +15,10 @@ use crate::tmpl::{TmplId, TmplLib, WinLoc};
 use crate::web::Rung;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+/// C2-7: templates whose source window has at least this many fixed points are localized per
+/// coset on the needed columns only (`Eval::window_block`, `TmplLib::localize_cols`)
+pub const LOC_COLS_MIN: usize = 48;
 use std::sync::Arc;
 
 pub type ExprId = u32;
@@ -1203,6 +1207,45 @@ impl<'a, F: Field> Eval<'a, F> {
         let mut local: Vec<Mask> = vec![0; la];
         let mut l2g: Vec<u8> = Vec::with_capacity(64);
         let mut y: Vec<F> = Vec::with_capacity(64);
+        // C2-7: for templates on large windows, localize only the source columns this coset
+        // needs (`TmplLib::localize_cols`, one per distinct window configuration) instead of the
+        // full n × n inverse per configuration; KRHOM_LOC_FULL=1 restores the full localization
+        let mut partial: HashMap<Vec<Mask>, Rc<WinLoc<F>>> = HashMap::new();
+        if let WKey::T(t) = key {
+            if ar.lib.src_fixed_points(t) >= LOC_COLS_MIN && std::env::var_os("KRHOM_LOC_FULL").is_none() {
+                let mut need: HashMap<Vec<Mask>, (Vec<u32>, Vec<F>)> = HashMap::new();
+                for g in sfi.range(c) {
+                    let sigma = sfi.flow(g);
+                    let conf = sfi.conf_at(g, at);
+                    let wmasks = &conf.0[first..first + w];
+                    if self.wins.contains_key(&(key, wmasks.to_vec())) {
+                        continue;
+                    }
+                    let mut g2l = [u8::MAX; 64];
+                    l2g.clear();
+                    for &mk in wmasks {
+                        let mut bits = mk;
+                        while bits != 0 {
+                            let r = bits.trailing_zeros() as usize;
+                            bits &= bits - 1;
+                            g2l[r] = l2g.len() as u8;
+                            l2g.push(r as u8);
+                        }
+                    }
+                    for (k, &mk) in sigma[at..at + la].iter().enumerate() {
+                        local[k] = remap(mk, &g2l);
+                    }
+                    let j = ws.locate(&local).unwrap_or_else(|| panic!("window map {}: source window flow {:?} not found", m, local));
+                    let e = need.entry(wmasks.to_vec()).or_insert_with(|| (vec![], l2g.iter().map(|&gr| self.pt.x[gr as usize].clone()).collect()));
+                    e.0.push(j);
+                }
+                for (wm, (mut js, yy)) in need {
+                    js.sort_unstable();
+                    js.dedup();
+                    partial.insert(wm, Rc::new(ar.lib.localize_cols(t, &yy, &js)));
+                }
+            }
+        }
         for (col, g) in sfi.range(c).enumerate() {
             let sigma = sfi.flow(g);
             let conf = sfi.conf_at(g, at);
@@ -1228,7 +1271,10 @@ impl<'a, F: Field> Eval<'a, F> {
             let j = ws.locate(&local).unwrap_or_else(|| panic!("window map {}: source window flow {:?} not found", m, local)) as usize;
             y.clear();
             y.extend(l2g.iter().map(|&gr| self.pt.x[gr as usize].clone()));
-            let wl = self.win_map(key, wmasks, &y, wr.ws, wr.wt);
+            let wl = match partial.get(wmasks) {
+                Some(p) => p.clone(),
+                None => self.win_map(key, wmasks, &y, wr.ws, wr.wt),
+            };
             tau[..at].copy_from_slice(&sigma[..at]);
             tau[at + lb..].copy_from_slice(&sigma[at + la..]);
             for kk in wl.col_start[j] as usize..wl.col_start[j + 1] as usize {

@@ -442,12 +442,15 @@ pub fn box_point<F: PrimeField>(lib: &WLib<F>, job: &BoxJob, id: u32) -> Result<
     if id >= gs.ug.npoints {
         return Err(format!("point {} outside the box ({} points)", id, gs.ug.npoints));
     }
+    crate::tmpl::lprof_dump("record");
     generator_pass(lib, &gs.nodes, &gs.ug, &[id])?;
+    crate::tmpl::lprof_dump("generator pass");
     let mut out = vec![];
     for (wi, w) in job.words.iter().enumerate() {
         let (vals, _) = scan_box_point(lib, w, &gs.nodes, &gs.ug, id, &recs.recs[wi], &replay_opts(lib, &job.word_opts(wi)))?;
         out.push(vals.iter().zip(recs.recs[wi].stages.iter()).map(|(v, so)| (so.stage, v.len(), values_hash(v))).collect());
     }
+    crate::tmpl::lprof_dump("scan");
     Ok(out)
 }
 

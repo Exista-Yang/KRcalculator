@@ -1,0 +1,18 @@
+gl_N for N in [2, 3, 4]  strands 2  crossings 3  components 1  colors [2]
+braid: 1 1 1
+method: singular (exact 2-strand singular Soergel engine), reduced (strand at bottom position 0 marked)
+coefficients: Q
+time 0.27s
+N = 2
+  Poincare polynomial: t^0q^0
+  total rank: 1
+  Euler characteristic: 1
+N = 3
+  Poincare polynomial: t^0q^-4 + t^2q^-8 + t^3q^-12
+  total rank: 3
+  Euler characteristic: q^-4 + q^-8 - q^-12
+N = 4
+  Poincare polynomial: t^0q^-8 + t^2q^-14 + t^2q^-12 + t^3q^-18 + t^3q^-16 + t^4q^-20 + t^5q^-24 + t^5q^-22 + t^6q^-26
+  total rank: 9
+  Euler characteristic: q^-8 + q^-12 + q^-14 - q^-16 - q^-18 + q^-20 - q^-22 - q^-24 + q^-26
+exit 0 (0s)

@@ -1,0 +1,10 @@
+=== h3_r: krhom 2,3,4 --braid 1 -2 1 -2 --strands 3 --colors 2 --reduced
+=== h4_u: krhom 2,3,4 --braid 1 1 1 2 --strands 3 --colors 2 --no-simplify
+=== h4_r: krhom 2,3,4 --braid 1 1 1 2 --strands 3 --colors 2 --no-simplify --reduced
+=== h4_ref: krhom 2,3,4 --braid 1 1 1 --strands 2 --colors 2
+=== h4_refr: krhom 2,3,4 --braid 1 1 1 --strands 2 --colors 2 --reduced
+=== h5a_u: krhom 2,3,4 --braid 1 2 3 --strands 4 --colors 2 --no-simplify
+=== h5a_r: krhom 2,3,4 --braid 1 2 3 --strands 4 --colors 2 --no-simplify --reduced
+=== h5b_u: krhom 2,3,4 --braid 1 1 1 2 3 --strands 4 --colors 2 --no-simplify
+=== h5b_r: krhom 2,3,4 --braid 1 1 1 2 3 --strands 4 --colors 2 --no-simplify --reduced
+ALLDONE

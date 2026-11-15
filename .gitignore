@@ -4,3 +4,5 @@ src/bin/scratch_*
 # Claude Code local state (agent worktrees)
 /.claude/
 /tools/*/target
+__pycache__/
+runs_random/*/randcheck-*/
