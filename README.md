@@ -31,7 +31,7 @@ tools/smoke.sh                            # checks known values in a few seconds
 | color 2, 4 strands, N ≤ 4 (library `l2222_n4`) | `krhom 2,3,4 --knot 6_1 --colors 2 --reduced --checkpoint run61` | hours per prime: check first with `--estimate` |
 | anything else colored (mixed colors on ≥ 3 strands, colors ≠ 2 on 3–4 strands, ≥ 5 strands) | — | refused with a message (exit 1) |
 
-Use `--estimate` before a 3–4-strand run to see the number of evaluation points and an extrapolated time, `--checkpoint DIR` so that an interrupted run continues where it stopped, and `--reduced` to cut the cost of 4-strand runs about sixfold.
+Use `--estimate` before a 3–4-strand run to see the number of evaluation points and an extrapolated time and memory (on 4 strands the estimate itself takes several minutes, mostly loading the library), `--checkpoint DIR` so that an interrupted run continues where it stopped, and `--reduced` to cut the cost of 4-strand runs about sixfold.
 
 The crate depends only on `num-bigint`, `num-integer`, `num-rational`, `num-traits` and `rand`.
 

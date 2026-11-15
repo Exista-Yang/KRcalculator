@@ -6,6 +6,10 @@ All notable changes to krhom are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-15
+
+First release of the calculator `krhom` (crate `krhom`, Rust edition 2024, Rust 1.85 or newer).
+
 ### Added
 - `--checkpoint`: resumable long runs (the box route can be interrupted and continued).
 - `--mark`: choose the marked strand of reduced homology.
@@ -27,12 +31,6 @@ All notable changes to krhom are recorded here. The format follows
 - Smoke test: `tools/smoke.sh` (seconds without libraries; the library case runs only if
   `l222_n4` is installed) and `cargo test --release --test smoke`.
 - Continuous integration: `.github/workflows/ci.yml` (build, tests, dev build, smoke test).
-
-## [0.1.0] - 2026-11-15
-
-First release of the calculator `krhom` (crate `krhom`, Rust edition 2024, Rust 1.85 or newer).
-
-### Added
 - **One command** `krhom N[,N...] --braid WORD [--colors ...] [--reduced]` that picks the engine,
   runs it modulo two large primes (2^31 − 1 and 4294967291) and prints, for every N, the Poincaré
   polynomial, total rank and Euler characteristic of undeformed Khovanov–Rozansky gl_N homology,
