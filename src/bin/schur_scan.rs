@@ -1,4 +1,4 @@
-//! schur_scan: command-line front end of the decategorified oracle `krhom::schur` (M3a).
+//! schur_scan: command-line front end of the decategorified oracle `krhom::combinat::schur` (M3a).
 //!
 //! schur_scan basis   --lam 2,2,2,2 [--mu ...] [--save DIR] [--json]
 //!     prints: types, sum of ranks, max rank (+table), rank(p_max), kappa, sum flows (bfs, minflow), time, peak RSS
@@ -16,7 +16,7 @@
 //!
 //! Basis files written by --save / read by --load are named cb_<lam>_<mu>.txt (labels joined by '-').
 
-use krhom::schur::*;
+use krhom::combinat::schur::*;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;

@@ -1,8 +1,8 @@
 // Local Rickard differentials: dimension of degree-1 Hom between consecutive terms, and d^2 = 0.
-use krhom::crossing::{crossing_cx, Gen};
-use krhom::field::F31;
-use krhom::mpoly::MonoCache;
-use krhom::sbim::{hom_space, SBim};
+use krhom::input::crossing::{crossing_cx, Gen};
+use krhom::algebra::field::F31;
+use krhom::algebra::mpoly::MonoCache;
+use krhom::soergel::sbim::{hom_space, SBim};
 
 fn main() {
     for n in 2..=5usize {

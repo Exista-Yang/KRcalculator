@@ -4,10 +4,10 @@
 //! coset (`sexpr::deodhar_check`); Lemma 8.7 sums (identity paths = c_diag, extensions =
 //! Σ term_mult·b_q); minimal representatives, ψ and Bruhat order; rung-level Grassmannian
 //! reduction (G_local = G_global); degree sign (E2 Eta degree = identity-path defect).
-use krhom::dcoset::*;
-use krhom::schur::{tables, Elt, Lp, Schur, Table, Tid};
-use krhom::sindec::canonical_ladder;
-use krhom::web::{Dir, Rung};
+use krhom::combinat::dcoset::*;
+use krhom::combinat::schur::{tables, Elt, Lp, Schur, Table, Tid};
+use krhom::library::sindec::canonical_ladder;
+use krhom::combinat::web::{Dir, Rung};
 use std::collections::BTreeMap;
 
 const LAMS: [&[u8]; 4] = [&[3, 3], &[2, 1, 2], &[2, 2, 2], &[3, 3, 3]];
@@ -110,12 +110,12 @@ fn gl1_flows_per_coset() {
         let mut s = Schur::new(lam);
         let mut n = 0;
         for (_, _, w) in ladders(&mut s) {
-            if krhom::schur::flows(lam, &w) > 20_000 {
+            if krhom::combinat::schur::flows(lam, &w) > 20_000 {
                 continue;
             }
-            let e = krhom::sexpr::Expr::new(lam, &w).unwrap();
-            let fi = krhom::sexpr::FlowIndex::build(&e);
-            krhom::sexpr::deodhar_check(&fi, &mut s).unwrap();
+            let e = krhom::colored::sexpr::Expr::new(lam, &w).unwrap();
+            let fi = krhom::colored::sexpr::FlowIndex::build(&e);
+            krhom::colored::sexpr::deodhar_check(&fi, &mut s).unwrap();
             n += 1;
         }
         eprintln!("G-L1 flows: λ = {:?}: {} ladders checked", lam, n);
@@ -133,7 +133,7 @@ fn gl1_lemma87_sums() {
         let ord = s.canonical_basis(lam).order.clone();
         for &p in &ord {
             let w = canonical_ladder(&mut s, p);
-            if !krhom::sindec::is_indecomposable_of(&mut s, &w, p) {
+            if !krhom::library::sindec::is_indecomposable_of(&mut s, &w, p) {
                 continue;
             }
             let js = junction_types(&mut s, &mut sc, &w, &[id]);
@@ -153,7 +153,7 @@ fn gl1_lemma87_sums() {
             let ordm = s.canonical_basis(&mu).order.clone();
             for &p in &ordm {
                 let w = canonical_ladder(&mut s, p);
-                if !krhom::sindec::is_indecomposable_of(&mut s, &w, p) {
+                if !krhom::library::sindec::is_indecomposable_of(&mut s, &w, p) {
                     continue;
                 }
                 for r in rungs_on(&mu) {
@@ -251,10 +251,10 @@ fn gl1_grassmannian_reduction() {
 
 #[test]
 fn gl1_degree_sign() {
-    use krhom::field::{Field, F31};
-    use krhom::sexpr::Expr;
-    use krhom::smap::{Arena, ElemKind, MapNode};
-    use krhom::tmpl::TmplLib;
+    use krhom::algebra::field::{Field, F31};
+    use krhom::colored::sexpr::Expr;
+    use krhom::colored::smap::{Arena, ElemKind, MapNode};
+    use krhom::colored::tmpl::TmplLib;
     // the E2 unit Eta: R -> [E0.b F0.b] over (a, b) has krhom degree +ab; the identity path of
     // E0.b F0.b has defect +ab: EKLP defect = krhom normalized degree (no sign flip)
     for (a, b) in [(1u8, 1u8), (2, 1), (1, 2), (2, 2), (3, 3), (3, 6)] {

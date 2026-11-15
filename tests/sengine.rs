@@ -11,10 +11,10 @@
 //!   reproduces them, and a degenerate point is refused with PointDependent;
 //! * memory accounting and the memory refusal; the pivot assertion; API misuse;
 //! * the §5.1 library trait on a real (1,1) DecData and `gram_at_point`.
-use krhom::field::{Field, F31};
-use krhom::sengine::synth::{self, Params};
-use krhom::sengine::*;
-use krhom::smap::LocMap;
+use krhom::algebra::field::{Field, F31};
+use krhom::colored::sengine::synth::{self, Params};
+use krhom::colored::sengine::*;
+use krhom::colored::smap::LocMap;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -398,8 +398,8 @@ fn pivot_assertion_and_api_misuse() {
 
 #[test]
 fn library_trait_and_gram_at_point_on_11() {
-    use krhom::sindec::{provider_for_stamped, SIndec, SIndecOpts};
-    use krhom::smap::{points, Eval};
+    use krhom::library::sindec::{provider_for_stamped, SIndec, SIndecOpts};
+    use krhom::colored::smap::{points, Eval};
     let lam = [1u8, 1];
     let costs = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/homprov/costs_cloud.txt");
     let (prov, stamp) = provider_for_stamped::<F>(&lam, Some(&costs), 1.0);
@@ -426,7 +426,7 @@ fn library_trait_and_gram_at_point_on_11() {
             let g = gram_at_point(lib, &mut ev, p).unwrap();
             let n = g.ins.len();
             assert_eq!(g.outs.len(), n);
-            assert_eq!(krhom::dense::rank(&g.g, n), n, "Gram of type {} singular at point {}", p, pt.id);
+            assert_eq!(krhom::algebra::dense::rank(&g.g, n), n, "Gram of type {} singular at point {}", p, pt.id);
             grams.push(g);
         }
         eprintln!("[gram] (1,1) type {}: {} generators, degrees in {:?} out {:?}, rank S = {}, id coset {}", p, grams[0].ins.len(), grams[0].ins, grams[0].outs, sh.s(), grams[0].id_coset);

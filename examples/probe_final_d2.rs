@@ -1,6 +1,6 @@
-use krhom::crossing::Gen;
-use krhom::field::F31;
-use krhom::xengine::*;
+use krhom::input::crossing::Gen;
+use krhom::algebra::field::F31;
+use krhom::colored::xengine::*;
 fn gens(w: &[i32]) -> Vec<Gen> { w.iter().map(|&g| Gen { i: (g.unsigned_abs() - 1) as usize, positive: g > 0 }).collect() }
 fn main() {
     let t = std::time::Instant::now();

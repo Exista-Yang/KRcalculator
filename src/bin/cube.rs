@@ -1,8 +1,8 @@
 // Full-cube colored gl_N homology of a braid closure.
 // usage: cube N labels word   e.g.  cube 2 1,1 "1 1 1"   (generators i>0 positive, -i negative, 1-based)
-use krhom::crossing::{Gen, QConv};
-use krhom::cube::{khr_full_cube, BraidLink};
-use krhom::field::{F31, Q};
+use krhom::input::crossing::{Gen, QConv};
+use krhom::reference::cube::{khr_full_cube, BraidLink};
+use krhom::algebra::field::{F31, Q};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

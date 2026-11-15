@@ -12,10 +12,10 @@
 //!   --both: unreduced and reduced closures (default: unreduced, or reduced with --reduced)
 //!   --json OUT: write per-stage measurements and all Poincaré polynomials to OUT
 //!   --chi-only: no scan; print schur::decat_chi of every prefix word[..m] (m >= 2) at every N
-use krhom::crossing::Gen;
-use krhom::field::{Field, F31, F32b};
-use krhom::laurent::Poincare;
-use krhom::xengine::{rss_kb, xscan, XOpts};
+use krhom::input::crossing::Gen;
+use krhom::algebra::field::{Field, F31, F32b};
+use krhom::algebra::laurent::Poincare;
+use krhom::colored::xengine::{rss_kb, xscan, XOpts};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
@@ -99,7 +99,7 @@ fn run<F: Field>(labels: &[usize], word: &[Gen], a: &Args, opts: XOpts) -> bool 
         write!(j, "{{\"field\":\"{}\",\"labels\":{:?},\"word\":[{}],\"prune_n\":{},\"stream\":{},\"compact\":{},", F::name(), labels, w.join(","), opts.prune_n.map_or("null".into(), |n| n.to_string()), opts.stream, opts.compact).unwrap();
         // certification switches and provenance (2s_close F2, 2s_core m2): check_d2 also gates the
         // Π∘Ι = id composite check; a record with check_d2 = false is not certified
-        write!(j, "\"check_d2\":{},\"certified\":{},\"rung_transport\":{},\"rungwise\":{},\"seed\":{},\"threads\":{},\"commit\":\"{}\",\"basepoint_ok\":{},", opts.check_d2, opts.check_d2 && bp_ok, opts.rung_transport, opts.rungwise, opts.seed, krhom::num_threads(), krhom::boxrun::build_commit(), bp_ok).unwrap();
+        write!(j, "\"check_d2\":{},\"certified\":{},\"rung_transport\":{},\"rungwise\":{},\"seed\":{},\"threads\":{},\"commit\":\"{}\",\"basepoint_ok\":{},", opts.check_d2, opts.check_d2 && bp_ok, opts.rung_transport, opts.rungwise, opts.seed, krhom::num_threads(), krhom::colored::boxrun::build_commit(), bp_ok).unwrap();
         write!(j, "\"scan_secs\":{:.3},\"closure_data_secs\":{:.3},\"closure_secs\":{:.3},\"peak_rss_kb\":{},\"peak_rss_scope\":\"process\",\"stages\":[", sc.timings.0, sc.timings.1, t_close, peak_kb).unwrap();
         let st: Vec<String> = sc
             .stages
@@ -150,14 +150,14 @@ fn main() {
         let lam: Vec<u8> = labels.iter().map(|&a| a as u8).collect();
         let w: Vec<i32> = word.iter().map(|g| if g.positive { g.i as i32 + 1 } else { -(g.i as i32 + 1) }).collect();
         for m in 2..=w.len() {
-            let mut sch = krhom::schur::Schur::new(&lam);
-            let opts = krhom::schur::ScanOpts { peak: false, every_stage: false, marked_block: None };
-            let res = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| krhom::schur::decat_scan(&mut sch, &w[..m], &opts))) {
+            let mut sch = krhom::combinat::schur::Schur::new(&lam);
+            let opts = krhom::combinat::schur::ScanOpts { peak: false, every_stage: false, marked_block: None };
+            let res = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| krhom::combinat::schur::decat_scan(&mut sch, &w[..m], &opts))) {
                 Ok(r) => r,
                 Err(_) => continue, // colors do not close up
             };
             for &nn in &ns {
-                let c = krhom::schur::decat_chi(&mut sch, &res, &w[..m], nn);
+                let c = krhom::combinat::schur::decat_chi(&mut sch, &res, &w[..m], nn);
                 let t: Vec<String> = c.c.iter().map(|(e, k)| format!("[{},{}]", e, k)).collect();
                 println!("chi {} {} [{}]", m, nn, t.join(","));
             }

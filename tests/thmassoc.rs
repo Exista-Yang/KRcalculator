@@ -8,12 +8,12 @@
 //!      genuine maps and rejects corrupted ones; at (3,3,3) (ignored) on the braid middle step;
 //! (iv) marking: provenance tag, `relies_on_theorem`, the smapio `thm-assoc` record (round trip
 //!      re-certifies by the theorem; without the record the import is not genuine).
-use krhom::field::{Field, F31};
-use krhom::leafgen::*;
-use krhom::sexpr::{Expr, FlowIndex};
-use krhom::smap::*;
-use krhom::tmpl::*;
-use krhom::web::{Dir, Rung};
+use krhom::algebra::field::{Field, F31};
+use krhom::library::leafgen::*;
+use krhom::colored::sexpr::{Expr, FlowIndex};
+use krhom::colored::smap::*;
+use krhom::colored::tmpl::*;
+use krhom::combinat::web::{Dir, Rung};
 use std::collections::BTreeMap;
 use std::time::Instant;
 
@@ -65,8 +65,8 @@ fn lightloc_matches_sbim() {
         assert_eq!(a, b);
         assert_eq!(ll.fdeg, sb.fdeg, "fibre order");
         let y = points::<F>(e.k(), 3, 1, 0)[0].x.clone();
-        let fps = krhom::local::fixed_points(&sb);
-        let lm = krhom::local::loc_matrix(&sb, &fps, &y);
+        let fps = krhom::soergel::local::fixed_points(&sb);
+        let lm = krhom::soergel::local::loc_matrix(&sb, &fps, &y);
         let lr = ll.matrix(&y);
         for (p, row) in fps.iter().zip(&lm) {
             let f = ll.fi.locate(&p.moved).unwrap() as usize;
@@ -212,11 +212,11 @@ fn marking_and_smapio_roundtrip() {
     let uses = relies_on_theorem(&ar, m);
     assert_eq!(uses.len(), 1);
     assert!(ar.info(uses[0]).provenance.contains(THM_ASSOC_TAG));
-    let text = krhom::smapio::export(&ar, &[m]).unwrap();
+    let text = krhom::library::smapio::export(&ar, &[m]).unwrap();
     assert!(text.contains("thm-assoc "));
     // fresh arena: the record re-certifies by the theorem
     let mut ar2: Arena<F> = Arena::new(&lam, TmplLib::new(None));
-    let got = krhom::smapio::import(&mut ar2, &text).unwrap();
+    let got = krhom::library::smapio::import(&mut ar2, &text).unwrap();
     ar2.assert_genuine(got[0]).unwrap();
     assert_eq!(relies_on_theorem(&ar2, got[0]).len(), 1);
     // agrees with the original at a point
@@ -232,14 +232,14 @@ fn marking_and_smapio_roundtrip() {
     // the registry is process-wide, so test with a pair the registry does not hold
     let stripped: String = text.lines().filter(|l| !l.starts_with("thm-assoc")).map(|l| format!("{}\n", l)).collect();
     let mut ar3: Arena<F> = Arena::new(&lam, TmplLib::new(None));
-    let got3 = krhom::smapio::import(&mut ar3, &stripped).unwrap();
+    let got3 = krhom::library::smapio::import(&mut ar3, &stripped).unwrap();
     assert!(ar3.assert_genuine(got3[0]).is_err(), "Assoc certified without a record");
     // a forged record on a non-theorem pair is refused at import: replace the Assoc by one
     // between words with different multistep expressions is not expressible (add refuses), so
     // check the record on a non-Assoc node instead
     let forged = text.replace("thm-assoc ", "thm-assoc 0\n#").lines().filter(|l| !l.starts_with('#')).map(|l| format!("{}\n", l)).collect::<String>();
     let mut ar4: Arena<F> = Arena::new(&lam, TmplLib::new(None));
-    let r4 = krhom::smapio::import(&mut ar4, &forged);
+    let r4 = krhom::library::smapio::import(&mut ar4, &forged);
     if let Ok(v) = &r4 {
         // node 0 happened to be the Assoc: fine only if genuine
         ar4.assert_genuine(v[0]).unwrap();

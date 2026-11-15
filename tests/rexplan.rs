@@ -1,15 +1,15 @@
 //! M4c B2: singlestep forms and the rex-chain planner (src/rexplan.rs), realized chains
 //! (`leafgen::realize_chain`) checked against exact windows at small λ.
-use krhom::dcoset::{reduced_for, top_labels};
-use krhom::field::{Field, F31};
-use krhom::homprov::hom_unknowns;
-use krhom::leafgen::*;
-use krhom::rexplan::*;
-use krhom::schur::{Lp, Schur, Tid};
-use krhom::sexpr::{Expr, FlowIndex};
-use krhom::smap::*;
-use krhom::tmpl::*;
-use krhom::web::Rung;
+use krhom::combinat::dcoset::{reduced_for, top_labels};
+use krhom::algebra::field::{Field, F31};
+use krhom::library::homprov::hom_unknowns;
+use krhom::library::leafgen::*;
+use krhom::library::rexplan::*;
+use krhom::combinat::schur::{Lp, Schur, Tid};
+use krhom::colored::sexpr::{Expr, FlowIndex};
+use krhom::colored::smap::*;
+use krhom::colored::tmpl::*;
+use krhom::combinat::web::Rung;
 use std::collections::{BTreeMap, HashMap};
 
 type F = F31;
@@ -109,7 +109,7 @@ fn planner_connects_small() {
         let (mut ok, mut fail, mut maxlen) = (0, 0, 0);
         let mut kinds: BTreeMap<String, usize> = BTreeMap::new();
         for (&q, ws) in &by {
-            let lq = krhom::sindec::canonical_ladder(&mut s, q);
+            let lq = krhom::library::sindec::canonical_ladder(&mut s, q);
             for w in ws {
                 match pl.plan(&mut s, q, w, &lq, &opts) {
                     Ok(ch) => {
@@ -125,7 +125,7 @@ fn planner_connects_small() {
                     }
                     Err(e) => {
                         fail += 1;
-                        eprintln!("{:?} q {}: [{}] -> [{}]: {}", lam, s.table(q).fmt(), krhom::smapio::rungs_str(w), krhom::smapio::rungs_str(&lq), e);
+                        eprintln!("{:?} q {}: [{}] -> [{}]: {}", lam, s.table(q).fmt(), krhom::library::smapio::rungs_str(w), krhom::library::smapio::rungs_str(&lq), e);
                     }
                 }
             }
@@ -148,13 +148,13 @@ fn realized_chains_small() {
         let mut cache = HashMap::new();
         let k: usize = lam.iter().map(|&a| a as usize).sum();
         for (&q, ws) in &by {
-            let lq = krhom::sindec::canonical_ladder(&mut s, q);
+            let lq = krhom::library::sindec::canonical_ladder(&mut s, q);
             for w in ws.iter().take(6) {
                 if *w == lq {
                     continue;
                 }
                 let ch = pl.plan(&mut s, q, w, &lq, &opts).unwrap();
-                let (m, rep) = realize_chain(&mut ar, &ch, &mut cache, 70).unwrap_or_else(|e| panic!("{:?} [{}]: {}", lam, krhom::smapio::rungs_str(w), e));
+                let (m, rep) = realize_chain(&mut ar, &ch, &mut cache, 70).unwrap_or_else(|e| panic!("{:?} [{}]: {}", lam, krhom::library::smapio::rungs_str(w), e));
                 ar.assert_genuine(m).unwrap();
                 assert_eq!(ar.info(m).deg, 0);
                 let p = points::<F>(k, 4, 1, 0).pop().unwrap();
@@ -166,7 +166,7 @@ fn realized_chains_small() {
                     let ones = Block { rows: bl.cols, cols: 1, a: vec![F::one(); bl.cols as usize] };
                     assert!(bl.mul(&ones).a.iter().all(|v| v.is_one()), "1⊗ not mapped to 1⊗");
                 }
-                let cq = krhom::leaves::rep_rank_of(&s, &lam, q);
+                let cq = krhom::library::leaves::rep_rank_of(&s, &lam, q);
                 let bq = ev.block(m, cq);
                 assert_eq!((bq.rows, bq.cols), (1, 1));
                 assert!(bq.a[0].is_one());
@@ -178,7 +178,7 @@ fn realized_chains_small() {
                     let ys: Vec<Vec<F>> = (0..2).map(|i| points::<F>(k, 40 + i, 1, 0)[0].x.clone()).collect();
                     let flat = |wl: &WinLoc<F>| -> Vec<F> { wl.dense().into_iter().flatten().collect() };
                     let mut rows: Vec<Vec<F>> = ids.iter().map(|&t| ys.iter().flat_map(|y| flat(&ar.lib_ref().localize(t, y))).collect()).collect();
-                    let r0 = krhom::dense::rank(&rows, rows.first().map_or(0, |r| r.len()));
+                    let r0 = krhom::algebra::dense::rank(&rows, rows.first().map_or(0, |r| r.len()));
                     // the chain localized on the whole word, in sorted flow order
                     let (fa, fb) = (FlowIndex::build(&Expr::new(&lam, w).unwrap()), FlowIndex::build(&Expr::new(&lam, &lq).unwrap()));
                     let mut v = vec![];
@@ -197,10 +197,10 @@ fn realized_chains_small() {
                     }
                     let n = v.len();
                     rows.push(v);
-                    assert_eq!(krhom::dense::rank(&rows, n), r0, "{:?} chain [{}] -> [{}] not in the exact Hom^0 window", lam, krhom::smapio::rungs_str(w), krhom::smapio::rungs_str(&lq));
+                    assert_eq!(krhom::algebra::dense::rank(&rows, n), r0, "{:?} chain [{}] -> [{}] not in the exact Hom^0 window", lam, krhom::library::smapio::rungs_str(w), krhom::library::smapio::rungs_str(&lq));
                 }
                 if checked < 3 {
-                    eprintln!("{:?} [{}] -> [{}]: {:?}", lam, krhom::smapio::rungs_str(w), krhom::smapio::rungs_str(&lq), rep.lines);
+                    eprintln!("{:?} [{}] -> [{}]: {:?}", lam, krhom::library::smapio::rungs_str(w), krhom::library::smapio::rungs_str(&lq), rep.lines);
                 }
                 checked += 1;
             }
@@ -231,19 +231,19 @@ fn rex_class_pairs_small() {
     let mut n = 0;
     for lam in [vec![2u8, 1, 2], vec![2, 2, 2]] {
         let mut s = Schur::new(&lam);
-        let plan = krhom::sindec::pruned_plan(&mut s, None);
+        let plan = krhom::library::sindec::pruned_plan(&mut s, None);
         for pp in &plan.pairs {
-            let mut x = krhom::sindec::canonical_ladder(&mut s, pp.p);
+            let mut x = krhom::library::sindec::canonical_ladder(&mut s, pp.p);
             x.push(pp.rung);
             for tg in &pp.kept {
-                let lq = krhom::sindec::canonical_ladder(&mut s, tg.q);
+                let lq = krhom::library::sindec::canonical_ladder(&mut s, tg.q);
                 if lq == x || !reduced_for(&mut s, &x, tg.q).ok() {
                     continue;
                 }
                 let mut ar: Arena<F> = Arena::new(&lam, TmplLib::new(None));
                 let (xe, le) = (ar.expr(Expr::new(&lam, &x).unwrap()), ar.expr(Expr::new(&lam, &lq).unwrap()));
                 let opts = PlanOpts { exact_budget: 100_000, max_len: 10, ..PlanOpts::default() };
-                let (p, r) = krhom::leaves::rex_class_pairs(&mut ar, &mut s, xe, tg.q, le, &opts, 99).unwrap_or_else(|e| panic!("{:?} [{}] -> q {}: {}", lam, krhom::smapio::rungs_str(&x), s.table(tg.q).fmt(), e));
+                let (p, r) = krhom::library::leaves::rex_class_pairs(&mut ar, &mut s, xe, tg.q, le, &opts, 99).unwrap_or_else(|e| panic!("{:?} [{}] -> q {}: {}", lam, krhom::library::smapio::rungs_str(&x), s.table(tg.q).fmt(), e));
                 assert_eq!(p.form, vec![vec![F::one()]]);
                 assert!(r.theorem_assoc.is_empty());
                 n += 1;

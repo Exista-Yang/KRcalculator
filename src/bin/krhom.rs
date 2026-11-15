@@ -21,15 +21,15 @@
 //! Exit codes: 0 ok, 1 usage/unsupported, 2 engine/certification failure, 3 primes disagree,
 //! 4 library missing/damaged/not covering the word, 5 resource refusal.
 use krhom::calc::*;
-use krhom::colored::{cable_default, khr_colored_cable};
-use krhom::crossing::{Gen, QConv};
-use krhom::cube::{khr_full_cube, BraidLink};
-use krhom::engine2::Closure;
-use krhom::field::{F31, F32b, Q};
-use krhom::laurent::Poincare;
-use krhom::pd::{parse_pd, pd_to_braid, BraidWord};
-use krhom::tower::EndPolicy;
-use krhom::xengine::khr_singular_exact;
+use krhom::reference::cabling::{cable_default, khr_colored_cable};
+use krhom::input::crossing::{Gen, QConv};
+use krhom::reference::cube::{khr_full_cube, BraidLink};
+use krhom::uncolored::engine2::Closure;
+use krhom::algebra::field::{F31, F32b, Q};
+use krhom::algebra::laurent::Poincare;
+use krhom::input::pd::{parse_pd, pd_to_braid, BraidWord};
+use krhom::uncolored::tower::EndPolicy;
+use krhom::colored::xengine::khr_singular_exact;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -361,7 +361,7 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
             out.seeds = vec![7, 11];
             let (n, cl, red) = (bw.strands, o.closure, o.reduced);
             let (w1, w2, ns1, ns2) = (word.clone(), word.clone(), run_ns.clone(), run_ns.clone());
-            two_primes(o, &mut out, &run_ns, move || Ok(krhom::engine2::khr_engine2_closure::<F31>(n, &w1, &ns1, &[], 7, red, cl).poincare.into_iter().collect()), move || Ok(krhom::engine2::khr_engine2_closure::<F32b>(n, &w2, &ns2, &[], 11, red, cl).poincare.into_iter().collect()))?
+            two_primes(o, &mut out, &run_ns, move || Ok(krhom::uncolored::engine2::khr_engine2_closure::<F31>(n, &w1, &ns1, &[], 7, red, cl).poincare.into_iter().collect()), move || Ok(krhom::uncolored::engine2::khr_engine2_closure::<F32b>(n, &w2, &ns2, &[], 11, red, cl).poincare.into_iter().collect()))?
         }
         "cable" => {
             out.route = "cable";
@@ -411,7 +411,7 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
                     return Err(un(format!("colors {:?}: the exact 2-strand engine handles colors 1..=3; --colored-method cube is exact over Q (tiny inputs only)", colors)));
                 }
                 exact2_shape(&labels, &run_ns, o.reduced).map_err(un)?;
-                out.mem_cap_mb = Some(std::env::var("KRHOM_MEM_CAP_MB").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(krhom::cclose::DEFAULT_MEM_CAP_MB));
+                out.mem_cap_mb = Some(std::env::var("KRHOM_MEM_CAP_MB").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(krhom::colored::cclose::DEFAULT_MEM_CAP_MB));
                 println!("method: singular (exact 2-strand singular Soergel engine){}", if o.reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
                 let red = o.reduced;
                 let (l1, l2, w1, w2, ns1, ns2) = (labels.clone(), labels.clone(), word.clone(), word.clone(), run_ns.clone(), run_ns.clone());
@@ -658,7 +658,7 @@ fn box_route(o: &Opts, out: &mut Outcome, bw: &BraidWord, labels: &[usize], wi: 
             }
         }
     };
-    fn one<F: krhom::boxclose::PrimeField>(reg: &RegEntry, inst: &InstalledLib, p: BoxParams, retry: BoxParams, missing: &dyn Fn() -> Option<CalcErr>) -> Result<PrimeOut, CalcErr> {
+    fn one<F: krhom::colored::boxclose::PrimeField>(reg: &RegEntry, inst: &InstalledLib, p: BoxParams, retry: BoxParams, missing: &dyn Fn() -> Option<CalcErr>) -> Result<PrimeOut, CalcErr> {
         match guard(&format!("box engine ({})", F::name()), || run_prime::<F>(reg, inst, &p)) {
             Err(e) if e.code() == 4 && e.msg().contains("not in layer A") && p.replay_only => {
                 if let Some(m) = missing() {
@@ -714,7 +714,7 @@ fn item_json(item: &Item, o: &Opts, r: &Result<Outcome, CalcErr>, secs: f64) -> 
         Input::Pd(s) => (s.clone(), "pd"),
     };
     let env: Vec<String> = krhom_env().iter().map(|(k, v)| format!("{}:{}", jstr(k), jstr(v))).collect();
-    let common = format!("\"tool\":\"krhom\",\"commit\":{},\"name\":{},\"input\":{{\"kind\":\"{}\",\"text\":{},\"N\":{:?},\"reduced\":{}", jstr(krhom::boxrun::build_commit()), name, inkind, jstr(&inp), o.ns, o.reduced);
+    let common = format!("\"tool\":\"krhom\",\"commit\":{},\"name\":{},\"input\":{{\"kind\":\"{}\",\"text\":{},\"N\":{:?},\"reduced\":{}", jstr(krhom::colored::boxrun::build_commit()), name, inkind, jstr(&inp), o.ns, o.reduced);
     match r {
         Ok(out) => {
             let bw = |b: &Option<BraidWord>| b.as_ref().map_or("null".to_string(), |b| format!("{:?}", b.signed()));

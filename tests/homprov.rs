@@ -1,11 +1,11 @@
 //! M4b acceptance tests B1-B8 (SPEC_M4_M6a §4.6).
-use krhom::field::{Field, F31};
-use krhom::homprov::*;
-use krhom::schur::{Schur, Tid};
-use krhom::sexpr::Expr;
-use krhom::smap::*;
-use krhom::tmpl::*;
-use krhom::web::{Dir, Rung};
+use krhom::algebra::field::{Field, F31};
+use krhom::library::homprov::*;
+use krhom::combinat::schur::{Schur, Tid};
+use krhom::colored::sexpr::Expr;
+use krhom::colored::smap::*;
+use krhom::colored::tmpl::*;
+use krhom::combinat::web::{Dir, Rung};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -37,7 +37,7 @@ fn canonical(s: &mut Schur, mu: &[u8], p: Tid) -> Vec<Rung> {
 fn nakayama_gens(lam: &[u8], w: &[Rung]) -> (Vec<i32>, Vec<i32>) {
     let x = ex(lam, w);
     let b = x.sbim::<F>();
-    let basis = krhom::cclose::rlambda_bases(&b).unwrap();
+    let basis = krhom::colored::cclose::rlambda_bases(&b).unwrap();
     let sh = b.shift;
     let mut ins: Vec<i32> = basis.ins.iter().map(|g| g.0 + sh).collect();
     let mut outs: Vec<i32> = basis.outs.iter().map(|g| g.0 - sh).collect();
@@ -63,7 +63,7 @@ fn b1_hom_gens_equal_nakayama() {
         let order = s.canonical_basis(&lam).order.clone();
         for p in order {
             let w = canonical(&mut s, &lam, p);
-            if krhom::schur::flows(&lam, &w) > maxf {
+            if krhom::combinat::schur::flows(&lam, &w) > maxf {
                 continue;
             }
             let ch = s.ladder_char(&w);
@@ -398,7 +398,7 @@ fn b6_search_pairs_match_exact() {
                 let lq = ar.expr(ex(&lam, &lqw));
                 let (p, st) = search.pairs(&mut ar, &mut s, x, q, lq, None, sd, mult, &Budget::default()).unwrap_or_else(|m| panic!("B6 {:?} {} {}: {:?}\n{:?}", lam, s.table(q).fmt(), sd, m, search.trace));
                 assert_eq!(p.iotas.len(), mult);
-                assert_eq!(krhom::dense::rank(&p.form, mult), mult, "B6: form rank != term_mult");
+                assert_eq!(krhom::algebra::dense::rank(&p.form, mult), mult, "B6: form rank != term_mult");
                 // exact spaces
                 let (ei, _) = HomProvider::<F>::full(&mut exact, &mut ar, &mut s, lq, x, sd, &Budget::default()).unwrap();
                 let (ep, _) = HomProvider::<F>::full(&mut exact, &mut ar, &mut s, x, lq, -sd, &Budget::default()).unwrap();
@@ -460,16 +460,16 @@ fn b8_admission_order_and_scratch() {
         let order = s.canonical_basis(&mu).order.clone();
         for &p in &order {
             let lp = canonical(&mut s, &mu, p);
-            for t in krhom::schur::crossing_terms(mu[0], mu[1], true, 0) {
+            for t in krhom::combinat::schur::crossing_terms(mu[0], mu[1], true, 0) {
                 let mut x = lp.clone();
                 x.extend(t.rungs.iter().cloned());
-                if Expr::new(&lam, &x).is_err() || krhom::schur::flows(&lam, &x) != 144 {
+                if Expr::new(&lam, &x).is_err() || krhom::combinat::schur::flows(&lam, &x) != 144 {
                     continue;
                 }
                 let top = Expr::new(&lam, &x).unwrap().top();
                 for &q in &s.canonical_basis(&top).order.clone() {
                     let lq = canonical(&mut s, &top, q);
-                    if krhom::schur::flows(&lam, &lq) == 8 {
+                    if krhom::combinat::schur::flows(&lam, &lq) == 8 {
                         found = Some((x.clone(), lq, q));
                         break 'outer;
                     }
@@ -650,7 +650,7 @@ fn b9_certify_checks_ends_and_degrees() {
     let (p, _) = HomProvider::<F>::pairs(&mut exact, &mut ar, &mut s, x, q, lq, None, sd, mult, &Budget::default()).unwrap();
     let c = {
         let tab = s.table(q).clone();
-        let cs = krhom::coset::CosetSpace::new(&lam, &tab.cols());
+        let cs = krhom::combinat::coset::CosetSpace::new(&lam, &tab.cols());
         cs.rank(&cs.rep(&tab))
     };
     certify_pairs(&ar, x, lq, sd, &p.iotas, &p.pis, c, mult, 7).unwrap();
@@ -720,7 +720,7 @@ fn b9_cost_table_admission() {
     let lam = [2u8, 2];
     let ar: Arena<F> = Arena::new(&lam, TmplLib::new(None));
     let (a, b) = (vec![e(0, 1), f(0, 1), e(0, 1), f(0, 1)], vec![e(0, 2), f(0, 2)]);
-    let (fa, fb) = (krhom::schur::flows(&lam, &a), krhom::schur::flows(&lam, &b));
+    let (fa, fb) = (krhom::combinat::schur::flows(&lam, &a), krhom::combinat::schur::flows(&lam, &b));
     let unk = hom_unknowns(&lam, &a, &b, 0);
     let mut se = Search::tiers(0, 6);
     se.max_window_unknowns = unk - 1;
@@ -856,7 +856,7 @@ fn idempotent_from_end0(ar: &mut Arena<F>, s: &mut Schur, lam: &[u8], lp: ExprId
     let ch = s.ladder_char(&w);
     let rep = |s: &Schur, t: Tid| -> u64 {
         let tab = s.table(t).clone();
-        let cs = krhom::coset::CosetSpace::new(lam, &tab.cols());
+        let cs = krhom::combinat::coset::CosetSpace::new(lam, &tab.cols());
         cs.rank(&cs.rep(&tab))
     };
     let cos: Vec<u64> = ch.t.iter().map(|(t, _)| rep(s, *t)).collect();
@@ -877,10 +877,10 @@ fn idempotent_from_end0(ar: &mut Arena<F>, s: &mut Schur, lam: &[u8], lp: ExprId
         let n = v.len();
         let mut r2 = rows.clone();
         r2.push(v.clone());
-        if krhom::dense::rank(&r2, n) < r2.len() {
+        if krhom::algebra::dense::rank(&r2, n) < r2.len() {
             let m = rows.len();
             let mat: Vec<Vec<F>> = (0..n).map(|r| (0..m).map(|i| rows[i][r].clone()).collect()).collect();
-            let lam_ = krhom::dense::solve(&mat, m, &v).expect("krylov");
+            let lam_ = krhom::algebra::dense::solve(&mat, m, &v).expect("krylov");
             let mut mp: Vec<F> = lam_.iter().map(|l| l.neg()).collect();
             mp.push(F::one());
             break mp;

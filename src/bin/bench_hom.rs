@@ -1,8 +1,8 @@
 // Time End^0 of uncolored Bott–Samelson bimodules BS(s_i1 ... s_ik) on 4 strands.
-use krhom::field::F31;
-use krhom::mpoly::MonoCache;
-use krhom::sbim::{hom_space, SBim};
-use krhom::web::Rung;
+use krhom::algebra::field::F31;
+use krhom::algebra::mpoly::MonoCache;
+use krhom::soergel::sbim::{hom_space, SBim};
+use krhom::combinat::web::Rung;
 
 fn bs(n: usize, strands: usize, word: &[usize]) -> SBim<F31> {
     let mut b = SBim::<F31>::identity(n, &vec![1; strands]);

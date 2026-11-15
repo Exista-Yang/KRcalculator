@@ -2,14 +2,14 @@
 //! `ProductClosure` (product rule first, inner = the production chain), certified by
 //! `certify_closure` inside the provider and again here; non-product types are refused by the
 //! product rule.
-use krhom::field::F31;
-use krhom::homprov::*;
-use krhom::leaves::*;
-use krhom::schur::{Schur, Table};
-use krhom::sexpr::Expr;
-use krhom::sindec::{canonical_ladder, provider_for};
-use krhom::smap::Arena;
-use krhom::tmpl::TmplLib;
+use krhom::algebra::field::F31;
+use krhom::library::homprov::*;
+use krhom::library::leaves::*;
+use krhom::combinat::schur::{Schur, Table};
+use krhom::colored::sexpr::Expr;
+use krhom::library::sindec::{canonical_ladder, provider_for};
+use krhom::colored::smap::Arena;
+use krhom::colored::tmpl::TmplLib;
 
 const PRODUCTS: [&str; 5] = ["0,0,3/3,0,0/0,3,0", "0,3,0/0,0,3/3,0,0", "1,0,2/2,0,1/0,3,0", "1,2,0/0,0,3/2,1,0", "0,3,0/1,0,2/2,0,1"];
 
@@ -64,12 +64,12 @@ fn stage0_product_closure_certified() {
 // =============================================================================================
 // M4c A2: Lemma A leaves (Leaves backend alone)
 // =============================================================================================
-use krhom::dcoset::{top_labels, valid_word};
-use krhom::field::{Field, F32b};
-use krhom::schur::{flows, Tid};
-use krhom::smap::{points, MapNode};
-use krhom::web::{Dir, Rung};
-use krhom::tmpl::Window;
+use krhom::combinat::dcoset::{top_labels, valid_word};
+use krhom::algebra::field::{Field, F32b};
+use krhom::combinat::schur::{flows, Tid};
+use krhom::colored::smap::{points, MapNode};
+use krhom::combinat::web::{Dir, Rung};
+use krhom::colored::tmpl::Window;
 
 /// every valid word of length ≤ len on lam (rungs of any size)
 fn words(lam: &[u8], len: usize) -> Vec<Vec<Rung>> {
@@ -98,7 +98,7 @@ fn words(lam: &[u8], len: usize) -> Vec<Vec<Rung>> {
     out
 }
 
-fn lp_degrees(p: &krhom::schur::Lp) -> Vec<i32> {
+fn lp_degrees(p: &krhom::combinat::schur::Lp) -> Vec<i32> {
     let mut v = vec![];
     for (i, &c) in p.c.iter().enumerate() {
         for _ in 0..c {
@@ -248,7 +248,7 @@ fn sll_ex_7_39() {
     let lam = [2u8, 0];
     let mut s = Schur::new(&lam);
     let mut ar = Arena::<F31>::new(&lam, TmplLib::new(None));
-    let w = krhom::smapio::parse_rungs("F0.1,E0.1").unwrap();
+    let w = krhom::library::smapio::parse_rungs("F0.1,E0.1").unwrap();
     let x = ar.expr(Expr::new(&lam, &w).unwrap());
     let r0 = ar.expr(Expr::new(&lam, &[]).unwrap());
     let id = s.intern(Table::identity(&lam));
@@ -283,7 +283,7 @@ fn ex740(lam: &[u8], top: &[u8], len: usize) -> (std::collections::BTreeMap<usiz
         let ch = s.ladder_char(&w);
         totals.insert(ch.t.iter().map(|(_, c)| c.at1() as usize).sum::<usize>());
         let x = ar.expr(Expr::new(lam, &w).unwrap());
-        let ts: Vec<(Tid, krhom::schur::Lp)> = ch.t.clone();
+        let ts: Vec<(Tid, krhom::combinat::schur::Lp)> = ch.t.clone();
         for (t, c) in ts {
             for dir in [LeafDir::Out, LeafDir::In] {
                 let mut st = LeafStats::default();
@@ -294,9 +294,9 @@ fn ex740(lam: &[u8], top: &[u8], len: usize) -> (std::collections::BTreeMap<usiz
                 assert_eq!(degs, lp_degrees(&c), "7.40 [{:?}] -> {} degrees", w, s.table(t).fmt());
                 let rc = rep_rank_of(&s, lam, t);
                 for pt in points::<F31>(ar.k(), 0x740, 2, 0) {
-                    let mut ev = krhom::smap::Eval::new(&ar, pt);
+                    let mut ev = krhom::colored::smap::Eval::new(&ar, pt);
                     let rows: Vec<Vec<F31>> = f.maps.iter().map(|&m| ev.block(m, rc).a.clone()).collect();
-                    assert_eq!(krhom::dense::rank(&rows, f.maps.len()), f.maps.len());
+                    assert_eq!(krhom::algebra::dense::rank(&rows, f.maps.len()), f.maps.len());
                 }
                 for &m in &f.maps {
                     assert_genuine(&ar, m).unwrap();
@@ -372,7 +372,7 @@ fn _unused(_: u128) -> u128 {
 /// exact map (both primes); a wrong window is rejected
 #[test]
 fn validate_elem_small() {
-    use krhom::smap::ElemKind::*;
+    use krhom::colored::smap::ElemKind::*;
     fn run<F: Field>() -> usize {
         let mut n = 0;
         for la in 0..=3u8 {

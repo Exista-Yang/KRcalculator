@@ -1,7 +1,7 @@
-use krhom::field::{Field, F31};
-use krhom::hecke::Hecke;
-use krhom::indec::*;
-use krhom::soergel::Ctx;
+use krhom::algebra::field::{Field, F31};
+use krhom::combinat::hecke::Hecke;
+use krhom::soergel::indec::*;
+use krhom::soergel::soergel::Ctx;
 use std::collections::HashMap;
 fn main() {
     let n = 3;

@@ -1,8 +1,8 @@
 // Euler characteristic checks of crossing conventions via the MOY oracle.
-use krhom::crossing::{crossing_cx, qshift, Gen, QConv};
-use krhom::laurent::LPoly;
-use krhom::moy::closure_value;
-use krhom::web::Ladder;
+use krhom::input::crossing::{crossing_cx, qshift, Gen, QConv};
+use krhom::algebra::laurent::LPoly;
+use krhom::combinat::moy::closure_value;
+use krhom::combinat::web::Ladder;
 
 /// Euler characteristic of the closure of a braid word with colors.
 fn chi(n: usize, labels: &[usize], word: &[Gen], conv: QConv) -> LPoly {

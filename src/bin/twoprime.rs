@@ -1,7 +1,7 @@
 // Two-prime agreement check for the M1 engine.
-use krhom::crossing::Gen;
-use krhom::engine2::khr_engine2;
-use krhom::field::{F31, F32b};
+use krhom::input::crossing::Gen;
+use krhom::uncolored::engine2::khr_engine2;
+use krhom::algebra::field::{F31, F32b};
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let n: usize = args[1].parse().unwrap();

@@ -11,18 +11,18 @@
 //! Extra: colored kinks (one crossing, labels (a, a)) assembled from exact Rickard
 //! differentials and exact F matrices: exact oracle = adapter = `khr_full_cube`.
 
-use krhom::cclose::*;
-use krhom::crossing::{crossing_cx, Gen, QConv};
-use krhom::cube::{khr_full_cube, BraidLink};
-use krhom::engine2::{close_with, prepare_closure_data, Closure};
-use krhom::field::{Field, F31};
-use krhom::laurent::{LPoly, Poincare};
-use krhom::moy::closure_value;
-use krhom::mpoly::MonoCache;
-use krhom::sbim::{bottom_ring, hom_space, SBim, StateSpace, Tau};
-use krhom::symfun::GrTable;
-use krhom::tower::{EndPolicy, TowerOpts};
-use krhom::web::{random_closed_ladder, Ladder};
+use krhom::colored::cclose::*;
+use krhom::input::crossing::{crossing_cx, Gen, QConv};
+use krhom::reference::cube::{khr_full_cube, BraidLink};
+use krhom::uncolored::engine2::{close_with, prepare_closure_data, Closure};
+use krhom::algebra::field::{Field, F31};
+use krhom::algebra::laurent::{LPoly, Poincare};
+use krhom::combinat::moy::closure_value;
+use krhom::algebra::mpoly::MonoCache;
+use krhom::soergel::sbim::{bottom_ring, hom_space, SBim, StateSpace, Tau};
+use krhom::algebra::symfun::GrTable;
+use krhom::uncolored::tower::{EndPolicy, TowerOpts};
+use krhom::combinat::web::{random_closed_ladder, Ladder};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::collections::BTreeMap;
 
@@ -293,7 +293,7 @@ fn exact_oracle_equals_delta_tower_on_ladders() {
 fn delta_tower_refuses_uncertified_pairs() {
     // a single 2-labelled upright with an E/F digon through label 3 (closed web on (2,1))
     let mut l = Ladder::new(3, vec![2, 1]);
-    l.push(krhom::web::Rung::e(0, 1)).push(krhom::web::Rung::f(0, 1));
+    l.push(krhom::combinat::web::Rung::e(0, 1)).push(krhom::combinat::web::Rung::f(0, 1));
     let (data, _) = closure_data_from_ladder::<F31>(&l).unwrap();
     // N = 33 is outside every certified range (and beyond the tower's caps)
     assert!(!g4_certified(2, 33));
@@ -318,7 +318,7 @@ fn engine2_case(n: usize, w: &[i32], seed: u64, ns: std::ops::RangeInclusive<usi
             let expect = close_with(&data, nn, reduced, Closure::Exact);
             let got = close_exact_colored(&cdata, nn, if reduced { Some(0) } else { None });
             assert_eq!(got, expect, "{:?} N={} reduced={}", w, nn, reduced);
-            assert_eq!(cdata.global_q(nn, if reduced { Some(0) } else { None }), krhom::engine2::closure_q_shift(n, &gens(w), nn, reduced));
+            assert_eq!(cdata.global_q(nn, if reduced { Some(0) } else { None }), krhom::uncolored::engine2::closure_q_shift(n, &gens(w), nn, reduced));
         }
     }
 }
@@ -346,7 +346,7 @@ fn engine2_conway_type_dims_and_adapter() {
         for reduced in [false, true] {
             let marked = if reduced { Some(0) } else { None };
             let mine: BTreeMap<usize, usize> = exact_type_dims_colored(&cdata, nn, marked).into_iter().map(|(x, d)| (x as usize, d)).collect();
-            assert_eq!(mine, krhom::engine2::exact_type_dims(&data, nn, reduced), "N={} reduced={}", nn, reduced);
+            assert_eq!(mine, krhom::uncolored::engine2::exact_type_dims(&data, nn, reduced), "N={} reduced={}", nn, reduced);
             let tower = close_with(&data, nn, reduced, Closure::Tower(EndPolicy::Right));
             assert_eq!(close_delta_tower(&cdata, nn, marked, TowerOpts::new(EndPolicy::Right)).unwrap(), tower, "N={} reduced={}", nn, reduced);
         }
@@ -414,17 +414,17 @@ fn kink_data(a: usize, positive: bool) -> ClosureDataC<F31> {
 
 /// Copy of `cube::apply_local_poly` (private there): substitute the local bottom variables of
 /// uprights (i, i+1) by the top operators of P.
-fn apply_local_poly(p: &SBim<F31>, i: usize, c: usize, d: usize, poly: &krhom::mpoly::Poly<F31>, v: &krhom::pmat::PVec<F31>) -> krhom::pmat::PVec<F31> {
-    let mut acc = krhom::pmat::PAcc::new();
+fn apply_local_poly(p: &SBim<F31>, i: usize, c: usize, d: usize, poly: &krhom::algebra::mpoly::Poly<F31>, v: &krhom::algebra::pmat::PVec<F31>) -> krhom::algebra::pmat::PVec<F31> {
+    let mut acc = krhom::algebra::pmat::PAcc::new();
     for (m, coef) in &poly.t {
         let mut w = v.clone();
         for j in 0..c {
-            for _ in 0..krhom::mpoly::mono_exp(*m, j) {
+            for _ in 0..krhom::algebra::mpoly::mono_exp(*m, j) {
                 w = p.top[i][j].mul_vec(&w);
             }
         }
         for j in 0..d {
-            for _ in 0..krhom::mpoly::mono_exp(*m, c + j) {
+            for _ in 0..krhom::algebra::mpoly::mono_exp(*m, c + j) {
                 w = p.top[i + 1][j].mul_vec(&w);
             }
         }
@@ -442,8 +442,8 @@ fn cube_data(labels: &[usize], word: &[Gen]) -> ClosureDataC<F31> {
         g: Gen,
         c: usize,
         d: usize,
-        terms: Vec<(usize, i32, Vec<krhom::web::Rung>)>,
-        maps: Vec<krhom::pmat::PMat<F31>>,
+        terms: Vec<(usize, i32, Vec<krhom::combinat::web::Rung>)>,
+        maps: Vec<krhom::algebra::pmat::PMat<F31>>,
         fsizes: Vec<usize>,
     }
     let mut labs = labels.to_vec();
@@ -463,7 +463,7 @@ fn cube_data(labels: &[usize], word: &[Gen]) -> ClosureDataC<F31> {
             assert_eq!(h.len(), 1);
             maps.push(h.into_iter().next().unwrap());
         }
-        let terms = cx.terms.iter().map(|t| (t.k, t.hdeg, t.rungs.iter().map(|r| krhom::web::Rung { i: g.i, dir: r.dir, r: r.r }).collect())).collect();
+        let terms = cx.terms.iter().map(|t| (t.k, t.hdeg, t.rungs.iter().map(|r| krhom::combinat::web::Rung { i: g.i, dir: r.dir, r: r.r }).collect())).collect();
         locs.push(Loc { g: *g, c, d, terms, maps, fsizes: webs.iter().map(|w| w.fsize()).collect() });
         crossings.push((g.positive, c.min(d) as u8));
         labs.swap(g.i, g.i + 1);
@@ -525,16 +525,16 @@ fn cube_data(labels: &[usize], word: &[Gen]) -> ClosureDataC<F31> {
                 let ba = beta % fa;
                 let rest = beta / fa;
                 let (bl, bp) = (rest % fs, rest / fs);
-                let unit: krhom::pmat::PVec<F31> = vec![(bp as u32, krhom::mpoly::Poly::one())];
-                let mut acc = krhom::pmat::PAcc::new();
+                let unit: krhom::algebra::pmat::PVec<F31> = vec![(bp as u32, krhom::algebra::mpoly::Poly::one())];
+                let mut acc = krhom::algebra::pmat::PAcc::new();
                 for (blp, lpoly) in &loc.maps[mi].cols[bl] {
                     let w = apply_local_poly(p, loc.g.i, loc.c, loc.d, lpoly, &unit);
-                    let placed: krhom::pmat::PVec<F31> = w.into_iter().map(|(x, poly)| (((x as usize * ft + *blp as usize) * fa + ba) as u32, poly)).collect();
+                    let placed: krhom::algebra::pmat::PVec<F31> = w.into_iter().map(|(x, poly)| (((x as usize * ft + *blp as usize) * fa + ba) as u32, poly)).collect();
                     acc.add_scaled_const(&placed, &if negate { F31::one().neg() } else { F31::one() });
                 }
                 cols.push(acc.take());
             }
-            let psi = krhom::pmat::PMat { nrows: bt.fsize(), ncols: bs.fsize(), cols };
+            let psi = krhom::algebra::pmat::PMat { nrows: bt.fsize(), ncols: bs.fsize(), cols };
             let (i, j) = (sidx[s], sidx[&t]);
             let deg = 1 + bs.shift - bt.shift;
             let f = solve_f(&psi, deg, &bases[i], &bases[j], bt).unwrap_or_else(|e| panic!("edge {:?} -> {:?}: {}", s, t, e));
@@ -685,7 +685,7 @@ fn delta_tower_refuses_realistic_uncertified_pairs() {
     assert_eq!(close_delta_tower(&d6, 10, Some(0), TowerOpts::new(EndPolicy::Right)).unwrap(), close_exact_colored(&d6, 10, Some(0)));
     // label 2 at N = 11 (certified only up to N = 10): the closed (2,1) ladder with an E/F digon
     let mut l = Ladder::new(3, vec![2, 1]);
-    l.push(krhom::web::Rung::e(0, 1)).push(krhom::web::Rung::f(0, 1));
+    l.push(krhom::combinat::web::Rung::e(0, 1)).push(krhom::combinat::web::Rung::f(0, 1));
     let (data, _) = closure_data_from_ladder::<F31>(&l).unwrap();
     assert!(!g4_certified(2, 11) && g4_certified(2, 10));
     let e = close_delta_tower(&data, 11, None, TowerOpts::new(EndPolicy::Right)).unwrap_err();
@@ -707,7 +707,7 @@ fn delta_tower_resource_guard() {
     // passed 1.2 GB RSS in the review of CL1, while the exact oracle takes 0.04 s
     let cap = default_cap();
     let mut l = Ladder::new(6, vec![3, 3]);
-    l.push(krhom::web::Rung::f(0, 2)).push(krhom::web::Rung::e(0, 2));
+    l.push(krhom::combinat::web::Rung::f(0, 2)).push(krhom::combinat::web::Rung::e(0, 2));
     let (data, _) = closure_data_from_ladder::<F31>(&l).unwrap();
     let est = delta_tower_estimate(&data, 7, None);
     assert_eq!((est.roots, est.root_dim, est.max_ins), (6, 117_649, 3));
@@ -732,7 +732,7 @@ fn delta_tower_resource_guard() {
     // the measured peak (in fact 6-10x), so both calls are refused before any work.
     let mut l = Ladder::new(5, vec![1, 1, 3]);
     for (e, i) in [(true, 1), (true, 0), (false, 0), (false, 1), (true, 1), (false, 1)] {
-        l.push(if e { krhom::web::Rung::e(i, 1) } else { krhom::web::Rung::f(i, 1) });
+        l.push(if e { krhom::combinat::web::Rung::e(i, 1) } else { krhom::combinat::web::Rung::f(i, 1) });
     }
     let (data, _) = closure_data_from_ladder::<F31>(&l).unwrap();
     for (nn, marked, measured_mb) in [(5usize, None, 642u128), (7, Some(0), 622)] {

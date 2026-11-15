@@ -1,16 +1,16 @@
 //! Acceptance tests for the Soergel-bimodule + universal-construction model.
 
-use krhom::crossing::{crossing_cx, Gen, QConv};
-use krhom::cube::{khr_full_cube, BraidLink};
-use krhom::field::{F31, Q};
-use krhom::laurent::{LPoly, Poincare};
-use krhom::moy::closure_value;
-use krhom::mpoly::MonoCache;
-use krhom::sbim::{hom_space, SBim, StateSpace};
-use krhom::web::{random_closed_ladder, Dir, Ladder, Rung};
+use krhom::input::crossing::{crossing_cx, Gen, QConv};
+use krhom::reference::cube::{khr_full_cube, BraidLink};
+use krhom::algebra::field::{F31, Q};
+use krhom::algebra::laurent::{LPoly, Poincare};
+use krhom::combinat::moy::closure_value;
+use krhom::algebra::mpoly::MonoCache;
+use krhom::soergel::sbim::{hom_space, SBim, StateSpace};
+use krhom::combinat::web::{random_closed_ladder, Dir, Ladder, Rung};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
-fn state_space_poly<F: krhom::field::Field>(lad: &Ladder) -> LPoly {
+fn state_space_poly<F: krhom::algebra::field::Field>(lad: &Ladder) -> LPoly {
     let b = SBim::<F>::identity(lad.n, &lad.bottom).add_rungs(&lad.rungs);
     let mut mc = MonoCache::new(b.ring.clone());
     let ss = StateSpace::compute(&b, &mut mc);
@@ -149,7 +149,7 @@ fn colored_unknot_stabilization() {
 
 #[test]
 fn soergel_engine_matches_full_cube() {
-    use krhom::engine2::{close_with, khr_engine2, prepare_closure_data, Closure};
+    use krhom::uncolored::engine2::{close_with, khr_engine2, prepare_closure_data, Closure};
     let cases: Vec<(usize, Vec<i32>)> = vec![(2, vec![1, 1, 1]), (3, vec![1, -2, 1, -2]), (3, vec![1, 1, 1, 2, -1, 2]), (4, vec![1, 1, 2, -1, -3, 2, -3])];
     for (n, w) in cases {
         let word = gens(&w);
@@ -168,8 +168,8 @@ fn soergel_engine_matches_full_cube() {
 
 // ---------------------------------------------------------------- M1b.1 restriction tower
 
-use krhom::engine2::{close_tower_with, close_with, exact_type_dims, prepare_closure_data, tower_type_dims, Closure, ClosureData};
-use krhom::tower::{EndPolicy, TowerOpts};
+use krhom::uncolored::engine2::{close_tower_with, close_with, exact_type_dims, prepare_closure_data, tower_type_dims, Closure, ClosureData};
+use krhom::uncolored::tower::{EndPolicy, TowerOpts};
 
 const TOWER_ENDS: [EndPolicy; 3] = [EndPolicy::Right, EndPolicy::Left, EndPolicy::Alternate];
 const CONWAY: [i32; 11] = [1, 1, 2, -3, 2, 1, -3, -2, -2, -3, -3];
@@ -362,9 +362,9 @@ fn tower_correct_without_splitting() {
 // depends on the elimination update d_YX − d_YZ φ^{-1} d_Z'X being exactly right; φ is a
 // non-cyclic isomorphism between different generator matrices with a non-constant inverse.
 mod synthetic {
-    use krhom::engine::Obj;
-    use krhom::engine2::{ClosureData, EPoly, TypeBasis};
-    use krhom::field::{Field, F31};
+    use krhom::uncolored::engine::Obj;
+    use krhom::uncolored::engine2::{ClosureData, EPoly, TypeBasis};
+    use krhom::algebra::field::{Field, F31};
     use std::collections::BTreeMap;
 
     type EP = EPoly<F31>;
@@ -487,7 +487,7 @@ fn tower_synthetic_noncyclic_elimination() {
 #[test]
 fn tower_second_prime() {
     // the same comparison over F_p, p = 4294967291 (two-prime agreement for Q-ranks)
-    use krhom::field::F32b;
+    use krhom::algebra::field::F32b;
     let data = prepare_closure_data::<F32b>(4, &gens(&CONWAY), &[], 11);
     let ranks = [34i128, 83, 132, 181, 230];
     for nn in 2..=6usize {
@@ -523,9 +523,9 @@ fn tower_six_strand_nonsplit_right_end() {
 /// Closure data with one type of Gram matrix [[1]] (Φ_N(B) = A_n) and one map
 /// X{0}[0] -> Y{-2k}[1] given by multiplication with the monomial x^e (|e| = k).
 fn monomial_map_data(n: usize, e: &[u32]) -> ClosureData<F31> {
-    use krhom::engine::Obj;
-    use krhom::engine2::{EPoly, TypeBasis};
-    use krhom::field::Field;
+    use krhom::uncolored::engine::Obj;
+    use krhom::uncolored::engine2::{EPoly, TypeBasis};
+    use krhom::algebra::field::Field;
     use std::collections::BTreeMap;
     let k: u32 = e.iter().sum();
     let mono = |e: &[u32]| -> EPoly<F31> { [(e.to_vec(), F31::one())].into_iter().collect() };
@@ -554,7 +554,7 @@ fn exact_closure_large_n_no_packed_overflow() {
         let data = monomial_map_data(n, &e);
         for nn in [16usize, 17, 18, 20, 32] {
             for reduced in [false, true] {
-                let caps = krhom::engine2::closure_caps(n, nn, reduced);
+                let caps = krhom::uncolored::engine2::closure_caps(n, nn, reduced);
                 let dim: i128 = caps.iter().map(|&c| c as i128 + 1).product();
                 let rank: i128 = caps.iter().zip(&e).map(|(&c, &x)| (c as i128 + 1 - x as i128).max(0)).product();
                 let exact = close_with(&data, nn, reduced, Closure::Exact);
@@ -587,13 +587,13 @@ fn exact_closure_large_n_braids() {
 
 #[test]
 fn closure_data_save_load_roundtrip() {
-    use krhom::engine2::{load_closure_data, save_closure_data};
+    use krhom::uncolored::engine2::{load_closure_data, save_closure_data};
     let data = data_for(3, &[1, -2, 1, -2], 5);
     let path = std::env::temp_dir().join(format!("krhom_roundtrip_{}.data", std::process::id()));
     let path = path.to_str().unwrap();
     save_closure_data(&data, path).unwrap();
     let back = load_closure_data::<F31>(path).unwrap();
-    let wrong_field = load_closure_data::<krhom::field::F32b>(path);
+    let wrong_field = load_closure_data::<krhom::algebra::field::F32b>(path);
     std::fs::remove_file(path).ok();
     assert!(wrong_field.is_err_and(|e| e.contains("field mismatch")));
     assert_eq!((back.n, &back.word, &back.objs, &back.edges, &back.fpolys), (data.n, &data.word, &data.objs, &data.edges, &data.fpolys));
@@ -613,9 +613,9 @@ fn exact_closure_degree_range_when_outs_below_ins() {
     // which drops the top degrees when min(outs) < min(ins) (found by the re-verification).
     // One type with ins of degrees 0, 2 and outs of degrees 0, -2 and Gram = identity has
     // Φ_N = A_1 ⊕ A_1{2}, so the closure has total rank 2N (unreduced) and 2 (reduced).
-    use krhom::engine::Obj;
-    use krhom::engine2::{EPoly, TypeBasis};
-    use krhom::field::Field;
+    use krhom::uncolored::engine::Obj;
+    use krhom::uncolored::engine2::{EPoly, TypeBasis};
+    use krhom::algebra::field::Field;
     use std::collections::BTreeMap;
     let one: EPoly<F31> = [(vec![0u32], F31::one())].into_iter().collect();
     let zero: EPoly<F31> = EPoly::new();
@@ -639,7 +639,7 @@ fn tower_adds_parallel_edges() {
     // Regression: the tower kept only the last of several edges with the same source and
     // target, while close_exact adds them. X{0}[0] -> Y{-2}[1] with F = x0 and F = ±x0:
     // the sum 0 gives total rank 2N^2, the sum 2x0 behaves like x0 (rank 2N).
-    use krhom::field::Field;
+    use krhom::algebra::field::Field;
     for (sign, want) in [(-1i64, None), (1, Some(()))] {
         let mut data = monomial_map_data(2, &[1, 0]);
         let mut second = data.fpolys[0].clone();
@@ -668,7 +668,7 @@ fn tower_adds_parallel_edges() {
 
 // ---------------------------------------------------------------- colored homology by cabling
 
-use krhom::colored::{colored_euler_moy, khr_colored_cable};
+use krhom::reference::cabling::{colored_euler_moy, khr_colored_cable};
 
 /// Colored homology by cabling (uncolored Soergel engine + tower closure), all N at once;
 /// also checks the Euler characteristic against the MOY state sum.

@@ -1,8 +1,8 @@
 // Test: universal construction (pairing) state space vs MOY.
-use krhom::field::F31;
-use krhom::moy::closure_value;
-use krhom::untrunc::{universal_state_space, UAlg};
-use krhom::web::{random_closed_ladder, Dir, Ladder, Rung};
+use krhom::algebra::field::F31;
+use krhom::combinat::moy::closure_value;
+use krhom::legacy::untrunc::{universal_state_space, UAlg};
+use krhom::combinat::web::{random_closed_ladder, Dir, Ladder, Rung};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 fn parse(n: usize, bottom: Vec<usize>, s: &str) -> Ladder {

@@ -4,8 +4,8 @@
 //! coefficient exactly 1, char W has coefficient 1 at the table p (one flow at rep(p)), and
 //! expand(char W) has more than one term. Prints the shortest per type, with flows.
 //! usage: m5i_force_search LAM DEPTH CAP [any] [maxlabel]
-use krhom::schur::{flows, Elt, Lp, Schur, Tid};
-use krhom::web::{Dir, Rung};
+use krhom::combinat::schur::{flows, Elt, Lp, Schur, Tid};
+use krhom::combinat::web::{Dir, Rung};
 use std::collections::{BTreeMap, HashSet, VecDeque};
 fn main() {
     let a: Vec<String> = std::env::args().collect();
@@ -53,7 +53,7 @@ fn main() {
                                 if *m == Lp::one() && y.coef(*p) == Lp::one() && !found.contains_key(p) {
                                     let parts: Vec<String> = ex.iter().map(|(t, c)| format!("{}{{{}}}", s.table(*t).fmt(), c.fmt_ec())).collect();
                                     let fl = flows(&lam, &w2);
-                                    println!("FORCE {} = {} | len {} flows {} | char {}", s.table(*p).fmt(), krhom::smapio::rungs_str(&w2), w2.len(), fl, parts.join(" + "));
+                                    println!("FORCE {} = {} | len {} flows {} | char {}", s.table(*p).fmt(), krhom::library::smapio::rungs_str(&w2), w2.len(), fl, parts.join(" + "));
                                     found.insert(*p, (w2.clone(), parts.join(" + "), fl));
                                 }
                             }

@@ -2,7 +2,7 @@
 //! (tests/data/wang_ref.txt) and the closed Hopf-link formula.
 #![allow(dead_code)]
 
-use krhom::laurent::{LPoly, Poincare};
+use krhom::algebra::laurent::{LPoly, Poincare};
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 

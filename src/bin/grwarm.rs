@@ -1,7 +1,7 @@
 //! Build and persist GrTable(r, b) tables (M4c B2): `grwarm r:b [r:b ...]`.
 //! Each table is loaded from the on-disk cache if present and valid, else computed and written
 //! (see `symfun::GrTable::load_or_compute`). Prints the wall time and the cache file.
-use krhom::symfun::GrTable;
+use krhom::algebra::symfun::GrTable;
 fn main() {
     let dir = GrTable::cache_dir().expect("KRHOM_GRCACHE=off: nothing to do");
     for a in std::env::args().skip(1) {

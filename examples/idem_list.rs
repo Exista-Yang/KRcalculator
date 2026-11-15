@@ -1,6 +1,6 @@
 //! C2-2: decomposable canonical ladders (M5i idempotents) of λ: idem_list 2,2,2,2 [N]
-use krhom::schur::Schur;
-use krhom::sindec::{decomposable_ladders, idem_needed};
+use krhom::combinat::schur::Schur;
+use krhom::library::sindec::{decomposable_ladders, idem_needed};
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     let lam: Vec<u8> = a[1].split(',').map(|x| x.parse().unwrap()).collect();

@@ -3,7 +3,7 @@
 // PD convention: KnotTheory / Knot Atlas (X[i,j,k,l] counterclockwise from the incoming under-strand).
 // Output: number of strands, the word as signed 1-based generators (k: σ_k, -k: σ_k^{-1},
 // σ_k positive = left strand over), and the link component of each bottom strand position.
-use krhom::pd::{parse_pd, pd_to_braid, pd_to_braid_vogel};
+use krhom::input::pd::{parse_pd, pd_to_braid, pd_to_braid_vogel};
 use std::io::Read;
 
 fn main() {

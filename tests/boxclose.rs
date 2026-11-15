@@ -12,12 +12,12 @@
 //! * (d) Shuffled point order and shard splits (through checkpoints) give identical results.
 //! * The staged rank stage on P equals the exact oracle on F (and its type dims) on exact data.
 
-use krhom::boxclose::*;
-use krhom::cclose::*;
-use krhom::crossing::Gen;
-use krhom::field::{Field, F31, F32b};
-use krhom::laurent::{LPoly, Poincare};
-use krhom::xengine::*;
+use krhom::colored::boxclose::*;
+use krhom::colored::cclose::*;
+use krhom::input::crossing::Gen;
+use krhom::algebra::field::{Field, F31, F32b};
+use krhom::algebra::laurent::{LPoly, Poincare};
+use krhom::colored::xengine::*;
 use rand::{rngs::StdRng, seq::SliceRandom, Rng, SeedableRng};
 use std::collections::BTreeMap;
 use std::sync::Arc;

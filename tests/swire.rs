@@ -7,13 +7,13 @@
 //! * The one-word box loop against xengine's exact closure: (2,2) σ^3 (stages 2, 3) and (3,2) σ^2,
 //!   N' = 3..6, unreduced and reduced; the scaling check (D14). Its negative test on the wired
 //!   path is `scaling_check_catches_a_misdeclared_weight` in tests/boxrun.rs.
-use krhom::boxclose::*;
-use krhom::crossing::Gen;
-use krhom::field::{Field, F31, F32b};
-use krhom::sengine::*;
-use krhom::sindec::*;
-use krhom::swire::*;
-use krhom::xengine::{xscan, XOpts};
+use krhom::colored::boxclose::*;
+use krhom::input::crossing::Gen;
+use krhom::algebra::field::{Field, F31, F32b};
+use krhom::colored::sengine::*;
+use krhom::library::sindec::*;
+use krhom::colored::swire::*;
+use krhom::colored::xengine::{xscan, XOpts};
 use std::path::PathBuf;
 
 fn costs() -> PathBuf {
@@ -77,7 +77,7 @@ fn objects_111_against_engine2() {
     let opts = ScanOpts { eng: EngOpts { check_d2: true, ..Default::default() }, close_stages: vec![], k0_check: true };
     for w in &words {
         let a = scan_point(&lib, w, record_x::<F31>(3, 5), 0, Mode::Record, &opts).unwrap();
-        let e2 = krhom::engine2::khr_engine2::<F31>(3, &gens(w), &[2], &[], 7);
+        let e2 = krhom::uncolored::engine2::khr_engine2::<F31>(3, &gens(w), &[2], &[], 7);
         assert_eq!(a.ps.objs.len(), e2.final_objects, "(1,1,1) {:?}: sengine {} objects, engine2 {}", w, a.ps.objs.len(), e2.final_objects);
         eprintln!("(1,1,1) {:?}: {} final objects = engine2", w, e2.final_objects);
     }

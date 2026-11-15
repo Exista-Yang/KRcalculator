@@ -6,9 +6,9 @@
 //! t1 rbfs  LAM N [targetonly]    restricted (labels <= N) BFS + peel, compared with the full basis
 //! t1 count LAM N                 surviving type counts per block (RSK rule only, no basis)
 
-use krhom::laurent::LPoly;
-use krhom::schur::*;
-use krhom::web::{Dir, Ladder, Rung};
+use krhom::algebra::laurent::LPoly;
+use krhom::combinat::schur::*;
+use krhom::combinat::web::{Dir, Ladder, Rung};
 use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
@@ -228,7 +228,7 @@ fn closure_checked(lam: &[u8], rs: &[Rung], n: usize) -> LPoly {
         }
     }
     let lad = Ladder { n, bottom: lam.iter().map(|&a| a as usize).collect(), rungs: rs.to_vec() };
-    krhom::moy::closure_value(&lad)
+    krhom::combinat::moy::closure_value(&lad)
 }
 
 /// tr_N(b_p), p in (lam, lam): copy of schur::trace_b (v -> q)
@@ -794,7 +794,7 @@ fn print_stats(tag: &str, st: &TStats) {
     );
 }
 
-/// cmp: truncated scans at the given Ns, untruncated own scan, and krhom::schur::decat_scan (validation)
+/// cmp: truncated scans at the given Ns, untruncated own scan, and krhom::combinat::schur::decat_scan (validation)
 fn cmd_cmp(s: &mut Schur, name: &str, lam: Vec<u8>, word: Vec<i32>, ns: Vec<usize>, check_chi: bool, check_decat: bool) {
     let t0 = Instant::now();
     assert_eq!(s.lam, lam);

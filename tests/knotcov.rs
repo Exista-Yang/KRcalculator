@@ -1,6 +1,6 @@
 //! M5c: library jobs of a pruned scan of a braid word (`sindec::knot_jobs`).
-use krhom::schur::{decat_scan, ScanOpts, Schur, Table};
-use krhom::sindec::{knot_jobs, pruned_plan};
+use krhom::combinat::schur::{decat_scan, ScanOpts, Schur, Table};
+use krhom::library::sindec::{knot_jobs, pruned_plan};
 use std::collections::BTreeSet;
 
 /// Unpruned: the lower-bound final types (+ identity) are exactly the types of the signed K_0

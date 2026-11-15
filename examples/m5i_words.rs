@@ -1,7 +1,7 @@
 //! C2-4 debugging: canonical ladders of the given tables and their flows; with --x TABLE RUNG the
 //! word L_TABLE·RUNG, its character, and for each summand q whether L_q is commutation-equivalent.
-use krhom::schur::{flows, Schur};
-use krhom::sindec::canonical_ladder;
+use krhom::combinat::schur::{flows, Schur};
+use krhom::library::sindec::canonical_ladder;
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     let lam: Vec<u8> = a[1].split(',').map(|x| x.parse().unwrap()).collect();
@@ -20,16 +20,16 @@ fn main() {
     };
     let p = find(&mut s, &a[2]);
     let mut w = canonical_ladder(&mut s, p);
-    println!("L_p = {} ({} flows)", krhom::smapio::rungs_str(&w), flows(&lam, &w));
+    println!("L_p = {} ({} flows)", krhom::library::smapio::rungs_str(&w), flows(&lam, &w));
     if let Some(r) = a.get(3) {
-        w.extend(krhom::smapio::parse_rungs(r).unwrap());
-        let cls = krhom::homprov::commutation_class(&w, 4096);
+        w.extend(krhom::library::smapio::parse_rungs(r).unwrap());
+        let cls = krhom::library::homprov::commutation_class(&w, 4096);
         let ch = s.ladder_char(&w);
         for (q, m) in s.expand(&ch) {
             let lq = canonical_ladder(&mut s, q);
             let ce = cls.contains(&lq);
-            println!("  {}{{{}}} L_q {} ({} flows) comm-equivalent to X: {}", s.table(q).fmt(), m.fmt_ec(), krhom::smapio::rungs_str(&lq), flows(&lam, &lq), ce);
+            println!("  {}{{{}}} L_q {} ({} flows) comm-equivalent to X: {}", s.table(q).fmt(), m.fmt_ec(), krhom::library::smapio::rungs_str(&lq), flows(&lam, &lq), ce);
         }
-        println!("  X = {} ({} flows), class size {}", krhom::smapio::rungs_str(&w), flows(&lam, &w), cls.len());
+        println!("  X = {} ({} flows), class size {}", krhom::library::smapio::rungs_str(&w), flows(&lam, &w), cls.len());
     }
 }

@@ -11,13 +11,13 @@
 //!     Stage 0 (M4C_PLAN §3.2): closure generators of the product types through
 //!     `leaves::ProductClosure` around the production chain, in a SIndec with layer A in DIR;
 //!     `--replay` uses a provider that refuses every call (everything must load from layer A).
-use krhom::dcoset::*;
-use krhom::field::{Field, F31, F32b};
-use krhom::homprov::*;
-use krhom::schur::{flows, Lp, Schur, Table, Tid};
-use krhom::sindec::*;
-use krhom::smap::{Arena, ExprId, MapId};
-use krhom::web::{Dir, Rung};
+use krhom::combinat::dcoset::*;
+use krhom::algebra::field::{Field, F31, F32b};
+use krhom::library::homprov::*;
+use krhom::combinat::schur::{flows, Lp, Schur, Table, Tid};
+use krhom::library::sindec::*;
+use krhom::colored::smap::{Arena, ExprId, MapId};
+use krhom::combinat::web::{Dir, Rung};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -250,7 +250,7 @@ fn cmd_census(args: &[String]) {
     let t0 = Instant::now();
     let mut out: Vec<String> = vec![];
     // the replica check (C_m4c header): 852 011, 392 995, 224 249, 406 634
-    let pw = |s: &str| -> Vec<Rung> { krhom::smapio::parse_rungs(s).unwrap() };
+    let pw = |s: &str| -> Vec<Rung> { krhom::library::smapio::parse_rungs(s).unwrap() };
     let checks = [
         ("E0.3,F0.3,E1.3,F1.3", 18, 852_011u128),
         ("E0.2,F0.2,E1.3,F1.3", 13, 392_995),
@@ -277,7 +277,7 @@ fn cmd_census(args: &[String]) {
         let cd = s.c_diag(p);
         let d0 = cd.min_exp().unwrap();
         let whole = unk2(&lam, &[], &w, d0);
-        let prod = krhom::leaves::product_factorization(&mut s, &w, p, 64);
+        let prod = krhom::library::leaves::product_factorization(&mut s, &w, p, 64);
         let prods = match &prod {
             Some(f) => format!("{} · {}{}", s.table(f.a).fmt(), s.table(f.b).fmt(), if f.swaps.is_empty() { String::new() } else { format!(" ({} swap)", f.swaps.len()) }),
             None => "no".into(),
@@ -357,11 +357,11 @@ fn stage0<F: Field>(args: &[String]) {
     std::fs::create_dir_all(cache.join("layer_a")).unwrap();
     let (chain, stamp) = provider_for_stamped::<F>(&lam, costs.as_deref(), 1.0);
     let pf = flag(args, "--product-first");
-    let stamp = format!("{} {}", stamp, if pf { krhom::leaves::STAGE0_STAMP_PF } else { krhom::leaves::STAGE0_STAMP });
+    let stamp = format!("{} {}", stamp, if pf { krhom::library::leaves::STAGE0_STAMP_PF } else { krhom::library::leaves::STAGE0_STAMP });
     let prov: Box<dyn HomProvider<F>> = if replay {
         Box::new(NoProvider)
     } else {
-        let mut pc = krhom::leaves::ProductClosure::new(chain);
+        let mut pc = krhom::library::leaves::ProductClosure::new(chain);
         pc.product_first = pf;
         Box::new(pc)
     };
@@ -376,7 +376,7 @@ fn stage0<F: Field>(args: &[String]) {
         }
         let p = sd.schur.intern(Table::parse(ts));
         let w = canonical_ladder(&mut sd.schur, p);
-        let fac = krhom::leaves::product_factorization(&mut sd.schur, &w, p, 64);
+        let fac = krhom::library::leaves::product_factorization(&mut sd.schur, &w, p, 64);
         if only_prod && fac.is_none() {
             continue;
         }
@@ -399,7 +399,7 @@ fn stage0<F: Field>(args: &[String]) {
 /// FlowIndex bytes, and the wall time of a full localization (`Eval::all`) of every map at one
 /// fresh point (one Eval memo for the family, as M6a evaluates a library per point).
 fn gl5<F: Field>(ar: &Arena<F>, ms: &[MapId]) -> (usize, usize, usize, f64, usize) {
-    use krhom::smap::MapNode;
+    use krhom::colored::smap::MapNode;
     let mut seen = std::collections::HashSet::new();
     let mut exprs = std::collections::HashSet::new();
     let mut stack: Vec<MapId> = ms.to_vec();
@@ -418,9 +418,9 @@ fn gl5<F: Field>(ar: &Arena<F>, ms: &[MapId]) -> (usize, usize, usize, f64, usiz
         }
     }
     let bytes: usize = exprs.iter().filter(|&&e| ar.has_index(e)).map(|&e| ar.flows(e).bytes()).sum();
-    let pt = krhom::smap::points::<F>(ar.k(), 0x6151, 1, 7).remove(0);
+    let pt = krhom::colored::smap::points::<F>(ar.k(), 0x6151, 1, 7).remove(0);
     let t0 = Instant::now();
-    let mut ev = krhom::smap::Eval::new(ar, pt);
+    let mut ev = krhom::colored::smap::Eval::new(ar, pt);
     let mut entries = 0usize;
     for &m in ms {
         entries += ev.all(m).nonzero_blocks();
@@ -434,7 +434,7 @@ fn gl5<F: Field>(ar: &Arena<F>, ms: &[MapId]) -> (usize, usize, usize, f64, usiz
 /// --direct: the provider on a fresh arena (step records and costs printed per type);
 /// otherwise a SIndec with layer A in --cache (stamp: Leaves alone), `--replay` = refuse all.
 fn leaves_cmd<F: Field>(args: &[String]) {
-    use krhom::leaves::*;
+    use krhom::library::leaves::*;
     let lam = parse_lam(&opt(args, "--lam").unwrap_or("3,3,3".into()));
     let costs = opt(args, "--costs").map(PathBuf::from);
     let replay = flag(args, "--replay");
@@ -448,7 +448,7 @@ fn leaves_cmd<F: Field>(args: &[String]) {
             let mut v = vec![];
             for p in order {
                 let w = canonical_ladder(&mut s0, p);
-                if types == "product" && krhom::leaves::product_factorization(&mut s0, &w, p, 64).is_none() {
+                if types == "product" && krhom::library::leaves::product_factorization(&mut s0, &w, p, 64).is_none() {
                     continue;
                 }
                 v.push(s0.table(p).fmt());
@@ -469,13 +469,13 @@ fn leaves_cmd<F: Field>(args: &[String]) {
     let t_all = Instant::now();
     if direct {
         let cache = opt(args, "--cache").map(PathBuf::from);
-        let mut ar = Arena::<F>::new(&lam, krhom::tmpl::TmplLib::new(cache.map(|c| c.join("tmpl"))));
+        let mut ar = Arena::<F>::new(&lam, krhom::colored::tmpl::TmplLib::new(cache.map(|c| c.join("tmpl"))));
         let b = Budget::default();
         let from: usize = opt(args, "--from").map(|v| v.parse().unwrap()).unwrap_or(0);
         for (ix, ts) in list.iter().enumerate().skip(from) {
             let p = s0.intern(Table::parse(ts));
             let w = canonical_ladder(&mut s0, p);
-            let lp = ar.expr(krhom::sexpr::Expr::new(&lam, &w).unwrap());
+            let lp = ar.expr(krhom::colored::sexpr::Expr::new(&lam, &w).unwrap());
             eprintln!("START #{} {} L_p = {} ({} flows)", ix, ts, wstr(&w), flows(&lam, &w));
             for outs in [false, true] {
                 tried += 1;
@@ -565,17 +565,17 @@ fn measure_cmd(args: &[String]) {
     let cache = opt(args, "--cache").map(PathBuf::from);
     let mut table = CostTable::load(std::path::Path::new(&out)).or_else(|_| CostTable::load(std::path::Path::new(&base))).expect("cost table");
     let calls: Vec<&String> = args.iter().filter(|a| a.matches(';').count() == 3).collect();
-    let mut lib: krhom::tmpl::TmplLib<F31> = krhom::tmpl::TmplLib::new(cache);
+    let mut lib: krhom::colored::tmpl::TmplLib<F31> = krhom::colored::tmpl::TmplLib::new(cache);
     for c in calls {
         let f: Vec<&str> = c.split(';').collect();
         let lab = parse_lam(f[0]);
-        let pw = |x: &str| -> Vec<Rung> { if x == "-" { vec![] } else { krhom::smapio::parse_rungs(x).unwrap() } };
+        let pw = |x: &str| -> Vec<Rung> { if x == "-" { vec![] } else { krhom::library::smapio::parse_rungs(x).unwrap() } };
         let (a, b) = (pw(f[1]), pw(f[2]));
         let d: i32 = f[3].parse().unwrap();
         let (fs, ft, unk) = (flows(&lab, &a), flows(&lab, &b), hom_unknowns(&lab, &a, &b, d));
         let t0 = Instant::now();
         let before = lib.stats().computed;
-        let ids = lib.try_hom_basis_cap(&krhom::tmpl::Window::new(&lab, &a), &krhom::tmpl::Window::new(&lab, &b), d, u128::MAX).unwrap();
+        let ids = lib.try_hom_basis_cap(&krhom::colored::tmpl::Window::new(&lab, &a), &krhom::colored::tmpl::Window::new(&lab, &b), d, u128::MAX).unwrap();
         let secs = t0.elapsed().as_secs_f64();
         if lib.stats().computed == before {
             println!("MEASURE {} : loaded from cache, not a measurement", c);

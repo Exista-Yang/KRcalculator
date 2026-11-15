@@ -1,10 +1,10 @@
 // 6B acceptance: localization matrices invertible, top action diagonal, maps block-diagonal.
-use krhom::crossing::{crossing_cx, Gen};
-use krhom::field::{Field, F31};
-use krhom::local::*;
-use krhom::mpoly::MonoCache;
-use krhom::sbim::{hom_space, SBim};
-use krhom::web::{random_closed_ladder, Rung};
+use krhom::input::crossing::{crossing_cx, Gen};
+use krhom::algebra::field::{Field, F31};
+use krhom::soergel::local::*;
+use krhom::algebra::mpoly::MonoCache;
+use krhom::soergel::sbim::{hom_space, SBim};
+use krhom::combinat::web::{random_closed_ladder, Rung};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 fn rand_pt(rng: &mut StdRng, k: usize) -> Vec<F31> {

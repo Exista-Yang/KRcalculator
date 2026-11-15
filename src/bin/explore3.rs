@@ -1,8 +1,8 @@
 // Test model H2: F_N(closure W) = Hom_SSBim(R,B_W) / J Hom_SSBim(R,B_W).
-use krhom::field::F31;
-use krhom::moy::closure_value;
-use krhom::untrunc::UAlg;
-use krhom::web::{random_closed_ladder, Ladder, Rung, Dir};
+use krhom::algebra::field::F31;
+use krhom::combinat::moy::closure_value;
+use krhom::legacy::untrunc::UAlg;
+use krhom::combinat::web::{random_closed_ladder, Ladder, Rung, Dir};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 fn parse(n: usize, bottom: Vec<usize>, s: &str) -> Ladder {

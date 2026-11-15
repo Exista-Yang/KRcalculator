@@ -4,14 +4,14 @@
 //!
 //! usage: gp0 [--lam 3,3,3] --n 5|6 [--pairs 313,322,...] [--out FILE.jsonl] [--costs PATH]
 //!            [--visit N] [--maxlen N] [--exact-budget N] [--no-pad] [--alt-len N]
-use krhom::dcoset::{junction_types, reduced_for, StepCache};
-use krhom::homprov::CostTable;
-use krhom::leaves::{step_score, Leaves};
-use krhom::rexplan::*;
-use krhom::schur::{flows, Schur, Table, Tid};
-use krhom::sindec::{canonical_ladder, pruned_plan};
-use krhom::smapio::rungs_str;
-use krhom::web::Rung;
+use krhom::combinat::dcoset::{junction_types, reduced_for, StepCache};
+use krhom::library::homprov::CostTable;
+use krhom::library::leaves::{step_score, Leaves};
+use krhom::library::rexplan::*;
+use krhom::combinat::schur::{flows, Schur, Table, Tid};
+use krhom::library::sindec::{canonical_ladder, pruned_plan};
+use krhom::library::smapio::rungs_str;
+use krhom::combinat::web::Rung;
 use std::io::Write;
 use std::time::Instant;
 
@@ -59,10 +59,10 @@ fn main() {
     if let Some(c) = opt(&args, "--unknowns") {
         let f: Vec<&str> = c.split(';').collect();
         let lab: Vec<u8> = f[0].split(',').map(|x| x.parse().unwrap()).collect();
-        let pw = |x: &str| -> Vec<Rung> { if x == "-" { vec![] } else { krhom::smapio::parse_rungs(x).unwrap() } };
+        let pw = |x: &str| -> Vec<Rung> { if x == "-" { vec![] } else { krhom::library::smapio::parse_rungs(x).unwrap() } };
         let (a, b) = (pw(f[1]), pw(f[2]));
         for d in -12..=12 {
-            println!("d {:>3}: a->b {:>10} b->a {:>10}", d, krhom::homprov::hom_unknowns(&lab, &a, &b, d), krhom::homprov::hom_unknowns(&lab, &b, &a, d));
+            println!("d {:>3}: a->b {:>10} b->a {:>10}", d, krhom::library::homprov::hom_unknowns(&lab, &a, &b, d), krhom::library::homprov::hom_unknowns(&lab, &b, &a, d));
         }
         return;
     }
@@ -90,8 +90,8 @@ fn main() {
     let mut out = opt(&args, "--out").map(|p| std::fs::File::create(p).expect("out"));
     if let Some(f) = opt(&args, "--b4") {
         match f.as_str() {
-            "31" => b4::<krhom::field::F31>(&lam, n, &pairs, &args),
-            "32b" => b4::<krhom::field::F32b>(&lam, n, &pairs, &args),
+            "31" => b4::<krhom::algebra::field::F31>(&lam, n, &pairs, &args),
+            "32b" => b4::<krhom::algebra::field::F32b>(&lam, n, &pairs, &args),
             _ => panic!("--b4 31|32b"),
         }
         return;
@@ -171,7 +171,7 @@ fn main() {
             };
             let mut alt_final = String::new();
             if m > 0 && final_into(&mut s, &mut sc, &wq) > 100_000 {
-                let cands = krhom::dcoset::reduced_words(&mut s, q, alt_final_len, 400_000);
+                let cands = krhom::combinat::dcoset::reduced_words(&mut s, q, alt_final_len, 400_000);
                 let mut best = (final_into(&mut s, &mut sc, &wq), flows(&lam, &wq), wq.clone());
                 for c in cands {
                     let sc_c = final_into(&mut s, &mut sc, &c);
@@ -228,7 +228,7 @@ fn main() {
                 Some((c, label)) => {
                     let lam_c = if *label == "pad4" { lam4.clone() } else { lam.clone() };
                     let unc = c.moves.iter().filter(|m| m.uncertifiable()).count();
-                    let ok = c.max_template_flows() <= krhom::leafgen::MAX_INTERP_FLOWS as u128 && unc == 0 && c.max_exact_unknowns() <= exact_budget && c.max_word_flows(&lam_c) <= 1_000_000;
+                    let ok = c.max_template_flows() <= krhom::library::leafgen::MAX_INTERP_FLOWS as u128 && unc == 0 && c.max_exact_unknowns() <= exact_budget && c.max_word_flows(&lam_c) <= 1_000_000;
                     let mv: Vec<String> = c.moves.iter().map(|m| m.fmt()).collect();
                     (ok, label.to_string(), *label == "pad4", c.len(), c.max_template_flows(), c.max_assoc_flows(), c.theorem_moves(), unc, c.max_exact_unknowns(), c.max_word_flows(&lam_c), c.predicted_secs(), mv)
                 }
@@ -341,10 +341,10 @@ fn main() {
 
 /// B4 start: rex-class pairs through `leaves::rex_class_pairs` (π, ι = realized rex chains,
 /// `certify_pairs`, π∘ι = id at every coset of L_q).
-fn b4<F: krhom::field::Field>(lam: &[u8], n: u8, pairs: &[usize], args: &[String]) {
-    use krhom::sexpr::Expr;
-    use krhom::smap::Arena;
-    use krhom::tmpl::TmplLib;
+fn b4<F: krhom::algebra::field::Field>(lam: &[u8], n: u8, pairs: &[usize], args: &[String]) {
+    use krhom::colored::sexpr::Expr;
+    use krhom::colored::smap::Arena;
+    use krhom::colored::tmpl::TmplLib;
     let exact_budget: u128 = opt(args, "--exact-budget").map(|v| v.parse().unwrap()).unwrap_or(100_000);
     let mut s = Schur::new(lam);
     let plan = pruned_plan(&mut s, Some(n));
@@ -361,12 +361,12 @@ fn b4<F: krhom::field::Field>(lam: &[u8], n: u8, pairs: &[usize], args: &[String
                 // general target: Lemma A leaves + exit/entry chains
                 let mut ar: Arena<F> = Arena::new(lam, TmplLib::new(opt(args, "--tmpl-cache").map(std::path::PathBuf::from)));
                 let (xe, le) = (ar.expr(Expr::new(lam, &x).unwrap()), ar.expr(Expr::new(lam, &lq).unwrap()));
-                let mut lv = krhom::leaves::Leaves::default();
+                let mut lv = krhom::library::leaves::Leaves::default();
                 lv.costs = opt(args, "--costs").map(|p| CostTable::load(std::path::Path::new(&p)).expect("cost table"));
                 let opts = PlanOpts { exact_budget, max_len: 12, max_visit: 60_000, ..PlanOpts::default() };
                 let t0 = Instant::now();
-                let mut st = krhom::leaves::LeafStats::default();
-                match krhom::leaves::pairs_leaves(&lv, &mut ar, &mut s, xe, tg.q, le, tg.s, tg.mult, &opts, &mut st) {
+                let mut st = krhom::library::leaves::LeafStats::default();
+                match krhom::library::leaves::pairs_leaves(&lv, &mut ar, &mut s, xe, tg.q, le, tg.s, tg.mult, &opts, &mut st) {
                     Ok((p, thm)) => println!("B4 {} pair {} q {} s {} mult {}: CERTIFIED by Lemma A (form {}x{}), exact calls {} ({:.1} s), max unknowns {}, theorem-Assoc {:?}, {:.1} s", F::name(), k, s.table(tg.q).fmt(), tg.s, tg.mult, p.form.len(), p.form.len(), st.exact_calls, st.exact_secs, st.max_unknowns, thm, t0.elapsed().as_secs_f64()),
                     Err(e) => println!("B4 {} pair {} q {} s {}: FAILED: {}", F::name(), k, s.table(tg.q).fmt(), tg.s, e),
                 }
@@ -375,7 +375,7 @@ fn b4<F: krhom::field::Field>(lam: &[u8], n: u8, pairs: &[usize], args: &[String
             let mut ar: Arena<F> = Arena::new(lam, TmplLib::new(None));
             let (xe, le) = (ar.expr(Expr::new(lam, &x).unwrap()), ar.expr(Expr::new(lam, &lq).unwrap()));
             let opts = PlanOpts { exact_budget, max_len: 12, max_visit: 60_000, ..PlanOpts::default() };
-            match krhom::leaves::rex_class_pairs(&mut ar, &mut s, xe, tg.q, le, &opts, 0xb4b4 + k as u64) {
+            match krhom::library::leaves::rex_class_pairs(&mut ar, &mut s, xe, tg.q, le, &opts, 0xb4b4 + k as u64) {
                 Ok((p, r)) => {
                     println!("B4 {} pair {} q {} X {} flows: CERTIFIED (form {:?}), pi.iota = id at all cosets; templates {}, exact moves {} (≤ {} unknowns), theorem-Assoc nodes {:?}, {:.1} s", F::name(), k, s.table(tg.q).fmt(), flows(lam, &x), p.form, r.templates, r.exact_moves, r.max_exact_unknowns, r.theorem_assoc, r.secs);
                     for l in r.pi_chain.iter() {
@@ -393,7 +393,7 @@ fn b4<F: krhom::field::Field>(lam: &[u8], n: u8, pairs: &[usize], args: &[String
 
 /// C2-7 all-steps census (see `--steps` in main).
 fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
-    use krhom::leaves::plan_steps;
+    use krhom::library::leaves::plan_steps;
     let mut s = Schur::new(lam);
     let id = s.intern(Table::identity(lam));
     let mut leaves = Leaves::default();
@@ -415,7 +415,7 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
     for one in spec.split(';').filter(|x| !x.is_empty()) {
         let f: Vec<&str> = one.split('|').collect();
         let p = s.intern(Table::parse(f[0]));
-        let rung = krhom::smapio::parse_rung(f[1]).unwrap();
+        let rung = krhom::library::smapio::parse_rung(f[1]).unwrap();
         let q = s.intern(Table::parse(f[2]));
         let mut x = canonical_ladder(&mut s, p);
         x.push(rung);
@@ -436,11 +436,11 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
                 // admission: ≤ 4e5 with an uncensored exact-shape record (window if proper, else whole)
                 let mut a = st.wfrom.clone();
                 a.push(st.rho);
-                let ws = krhom::homprov::win_split(lam, &a, &st.wto);
+                let ws = krhom::library::homprov::win_split(lam, &a, &st.wto);
                 let (labs, wa, wb) = if ws.at > 0 || ws.suffix > 0 { (ws.labels.clone(), ws.a.clone(), ws.b.clone()) } else { (lam.to_vec(), a.clone(), st.wto.clone()) };
                 for &(d, _, _) in &st.degs {
                     for (sa, sb) in [(&wa, &wb), (&wb, &wa)] {
-                        let u = krhom::homprov::hom_unknowns(&labs, sa, sb, d);
+                        let u = krhom::library::homprov::hom_unknowns(&labs, sa, sb, d);
                         if u > 100_000 {
                             let r = costs.as_ref().and_then(|c| c.predict_exact(&labs, flows(&labs, sa), flows(&labs, sb), u, d));
                             rec.push_str(&format!(" [{:?} {}->{} d={} {} {}]", labs, flows(&labs, sa), flows(&labs, sb), d, u, match r { Some(t) => format!("rec {:.0}s", t), None => "norec".into() }));
@@ -481,7 +481,7 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
             let wa = &allw[&(lv, tt, i)];
             let (tp, wp) = plan[lv - 1][i].clone();
             let g = sc.step(&mut s, tp, &x[lv - 1]).into_iter().find(|e| e.0 == tt).map(|e| e.1).unwrap();
-            let sw = krhom::leaves::step_score_w(&mut wld, lam, &wp, &x[lv - 1], wa, &g);
+            let sw = krhom::library::leaves::step_score_w(&mut wld, lam, &wp, &x[lv - 1], wa, &g);
             println!("  detour L{}: {} -> {}: [{}]·{} -> [{}] score_w {}", lv, s.table(tp).fmt(), s.table(tt).fmt(), rungs_str(&wp), rungs_str(&[x[lv - 1]]), rungs_str(wa), sw);
             let e = repl.entry((lv, tt, tp)).or_insert(0u128);
             *e = (*e).max(sw);
@@ -494,7 +494,7 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
             let wa = &finals[&(qq, i)];
             let (tp, wp) = plan[x.len() - 1][i].clone();
             let g = sc.step(&mut s, tp, &x[x.len() - 1]).into_iter().find(|e| e.0 == qq).map(|e| e.1).unwrap();
-            let sw = krhom::leaves::step_score_w(&mut wlc, lam, &wp, &x[x.len() - 1], wa, &g);
+            let sw = krhom::library::leaves::step_score_w(&mut wlc, lam, &wp, &x[x.len() - 1], wa, &g);
             println!("  per-predecessor final: {} -> {}: [{}]·{} -> [{}] score_w {}", s.table(tp).fmt(), s.table(qq).fmt(), rungs_str(&wp), rungs_str(&[x[x.len() - 1]]), rungs_str(wa), sw);
             for st in steps.iter().filter(|st| st.level == x.len() && st.from == tp && st.to == qq) {
                 over -= (st.score_w > 100_000) as usize;
@@ -505,7 +505,7 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
         }
         // max over the steps actually built: a replaced step (a detour at a lower level or a
         // per-predecessor final word) counts with its replacement's score sw (not 0)
-        let eff = |st: &krhom::leaves::PlanStep| repl.get(&(st.level, st.to, st.from)).copied().unwrap_or(st.score_w);
+        let eff = |st: &krhom::library::leaves::PlanStep| repl.get(&(st.level, st.to, st.from)).copied().unwrap_or(st.score_w);
         let mx = steps.iter().map(|st| eff(st)).max().unwrap_or(0).max(mx.min(0));
         // exit chain dry run
         let wq = plan[x.len()].iter().find(|e| e.0 == q).map(|e| e.1.clone()).unwrap_or_default();
@@ -514,7 +514,7 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
             "W_q = L_q".to_string()
         } else {
             let mut pl = Planner::new();
-            match pl.plan(&mut s, q, &wq, &lq, &krhom::leaves::leaf_pair_plan_opts()) {
+            match pl.plan(&mut s, q, &wq, &lq, &krhom::library::leaves::leaf_pair_plan_opts()) {
                 Ok(c) => format!("exit chain len {} (template ≤ {} flows, exact ≤ {})", c.len(), c.max_template_flows(), c.max_exact_unknowns()),
                 Err(e) => format!("exit chain: {}", e),
             }

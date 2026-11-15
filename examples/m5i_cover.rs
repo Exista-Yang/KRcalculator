@@ -2,8 +2,8 @@
 //! (sindec::knot_jobs: upper bound and K_0 lower bound) missing from a status file (lines "JOB ok",
 //! JOB = "pair K" | "closure TABLE"); idempotent types (M5i) marked.
 //! usage: m5i_cover LAM N KNOTS STATUS
-use krhom::schur::Schur;
-use krhom::sindec::{canonical_ladder, is_indecomposable_of, knot_jobs, pruned_plan};
+use krhom::combinat::schur::Schur;
+use krhom::library::sindec::{canonical_ladder, is_indecomposable_of, knot_jobs, pruned_plan};
 use std::collections::BTreeSet;
 fn main() {
     let a: Vec<String> = std::env::args().collect();

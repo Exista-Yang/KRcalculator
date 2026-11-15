@@ -1,9 +1,9 @@
 //! C2-2: search for an indecomposable ladder of the types whose minimal-flow canonical ladder is
 //! decomposable (M5i types): BFS over rung words from 1_λ, states deduplicated by character, up to
 //! a depth and state cap. usage: ladder_search 2,2,2,2 N DEPTH CAP
-use krhom::schur::{Elt, Schur, Tid};
-use krhom::sindec::{idem_needed, is_indecomposable_of};
-use krhom::web::{Dir, Rung};
+use krhom::combinat::schur::{Elt, Schur, Tid};
+use krhom::library::sindec::{idem_needed, is_indecomposable_of};
+use krhom::combinat::web::{Dir, Rung};
 use std::collections::{HashMap, HashSet, VecDeque};
 fn main() {
     let a: Vec<String> = std::env::args().collect();
@@ -59,7 +59,7 @@ fn main() {
                     // candidate: the character contains a target with coefficient 1 at its top
                     for (tq, _) in y.t.iter() {
                         if targets.contains_key(tq) && !found.contains_key(tq) && is_indecomposable_of(&mut s, &w2, *tq) {
-                            println!("FOUND {} : {} (len {})", targets[tq], krhom::smapio::rungs_str(&w2), w2.len());
+                            println!("FOUND {} : {} (len {})", targets[tq], krhom::library::smapio::rungs_str(&w2), w2.len());
                             found.insert(*tq, w2.clone());
                         }
                     }

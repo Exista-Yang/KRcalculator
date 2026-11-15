@@ -1,7 +1,7 @@
 //! Gate G4 (SYNTHESIS §3.1; C2 M1(b), U3): freeness of Δ_a R_N over A = H*(Gr(a, N)), the
 //! hypothesis of the (Δ_λ G, F) adapter in src/cclose.rs.
 //!
-//! Command-line front end of the library check `krhom::cclose::g4::check`, whose module doc
+//! Command-line front end of the library check `krhom::colored::cclose::g4::check`, whose module doc
 //! states the certificate (A), (B) (exact, for every (a, N)) and the cross-checks (C), (D)
 //! (C2's direct method). tests/cclose.rs re-runs the certificate on every pair of
 //! `cclose::G4_CERTIFIED`.
@@ -11,7 +11,7 @@
 //! certified list in the form of `cclose::G4_CERTIFIED`. Supported pairs: 1 ≤ a ≤ min(N, 8),
 //! N ≤ 20 (`g4::MAX_N`); any other pair is a usage error (exit status 2).
 
-use krhom::cclose::g4::{binom, check, fact, pi_a};
+use krhom::colored::cclose::g4::{binom, check, fact, pi_a};
 use std::collections::BTreeMap;
 use std::time::Instant;
 

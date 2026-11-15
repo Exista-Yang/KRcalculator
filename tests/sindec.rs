@@ -4,15 +4,15 @@
 //!
 //! Default suite: (2,1), (2,2), (3,2), (1,1,1). The (3,3) comparisons and the (3,3,3) plan are
 //! `#[ignore]` (cloud).
-use krhom::crossing::Gen;
-use krhom::field::{Field, F31};
-use krhom::homprov::{Budget, HomProvider, Missing, Pairs, SearchStats};
-use krhom::schur::{crossing_terms, Schur, Tid};
-use krhom::sexpr::Expr;
-use krhom::sindec::*;
-use krhom::smap::{points, Arena, Eval, ExprId, MapId, MapNode, Point};
-use krhom::web::Rung;
-use krhom::xengine::{xscan, XOpts};
+use krhom::input::crossing::Gen;
+use krhom::algebra::field::{Field, F31};
+use krhom::library::homprov::{Budget, HomProvider, Missing, Pairs, SearchStats};
+use krhom::combinat::schur::{crossing_terms, Schur, Tid};
+use krhom::colored::sexpr::Expr;
+use krhom::library::sindec::*;
+use krhom::colored::smap::{points, Arena, Eval, ExprId, MapId, MapNode, Point};
+use krhom::combinat::web::Rung;
+use krhom::colored::xengine::{xscan, XOpts};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -34,7 +34,7 @@ fn builder(lam: &[u8], prune: Option<u8>, cache: Option<PathBuf>) -> SIndec<F> {
     SIndec::with_stamp(lam, prov, stamp, SIndecOpts { cache_dir: cache, prune_n: prune, ..Default::default() })
 }
 fn tid(s: &mut Schur, t: &str) -> Tid {
-    s.intern(krhom::schur::Table::parse(t))
+    s.intern(krhom::combinat::schur::Table::parse(t))
 }
 
 // ------------------------------------------------------------------ mini localized scan
@@ -142,7 +142,7 @@ fn simplify(sd: &mut SIndec<F>, cx: &mut Cx, pts: &[Point<F>]) {
                 let (qb, _, tb) = cx.objs[&b];
                 if qa == qb && ta == tb {
                     let tab = sd.schur.table(qa).clone();
-                    let cs = krhom::coset::CosetSpace::new(&sd.schur.lam.clone(), &tab.cols());
+                    let cs = krhom::combinat::coset::CosetSpace::new(&sd.schur.lam.clone(), &tab.cols());
                     let c = cs.rank(&cs.rep(&tab));
                     let v = Eval::new(&sd.ar, pts[0].clone()).block(m, c).a[0].clone();
                     if !v.is_zero() {
@@ -176,7 +176,7 @@ fn simplify(sd: &mut SIndec<F>, cx: &mut Cx, pts: &[Point<F>]) {
 fn mini_scan(sd: &mut SIndec<F>, word: &[i32]) -> Vec<(String, i32, i32)> {
     let pts = points::<F>(sd.ar.k(), 0x6d69, 2, 0);
     let lam = sd.schur.lam.clone();
-    let p0 = sd.schur.intern(krhom::schur::Table::identity(&lam));
+    let p0 = sd.schur.intern(krhom::combinat::schur::Table::identity(&lam));
     let mut cx = Cx::new();
     cx.add_obj((p0, 0, 0));
     for &g in word {
@@ -227,7 +227,7 @@ fn d1_kill_counts_333() {
     let mut per6 = BTreeMap::new();
     let mut all = 0;
     for mu in visited_blocks(&[3, 3, 3]) {
-        let ts = krhom::schur::tables(&[3, 3, 3], &mu);
+        let ts = krhom::combinat::schur::tables(&[3, 3, 3], &mu);
         all += ts.len();
         let mut k6 = 0;
         for t in ts {
@@ -486,7 +486,7 @@ fn dechom_negative() {
     // degree scaling (D14): the true degree passes, a declared degree off by 1 or 2 fails
     let z = points::<F>(sd.ar.k(), 3, 1, 0).remove(0);
     let tab = sd.schur.table(t.q).clone();
-    let cs = krhom::coset::CosetSpace::new(&lam, &tab.cols());
+    let cs = krhom::combinat::coset::CosetSpace::new(&lam, &tab.cols());
     let c = cs.rank(&cs.rep(&tab));
     for &m in &ok.maps_in {
         check_scaling(&sd.ar, m, c, t.s, &z).unwrap();
@@ -523,7 +523,7 @@ fn summand_lists(dd: &DecData<F>) -> BTreeMap<(String, String), Vec<(String, i32
         let d = dd.dec_word(p, &rs).unwrap();
         let mut v: Vec<(String, i32)> = d.summands.iter().map(|s| (format!("{}", s.q), s.s)).collect();
         v.sort();
-        out.insert((format!("{}", p), krhom::smapio::rungs_str(&rs)), v);
+        out.insert((format!("{}", p), krhom::library::smapio::rungs_str(&rs)), v);
     }
     out
 }
@@ -585,7 +585,7 @@ fn d7_layer_a_round_trip_and_stale_stamp() {
     for f in std::fs::read_dir(&la).unwrap() {
         let p = f.unwrap().path();
         let t = std::fs::read_to_string(&p).unwrap();
-        std::fs::write(&p, t.replacen(&format!("tmpl_alg={}", krhom::tmpl::TMPL_ALG), "tmpl_alg=stale", 1)).unwrap();
+        std::fs::write(&p, t.replacen(&format!("tmpl_alg={}", krhom::colored::tmpl::TMPL_ALG), "tmpl_alg=stale", 1)).unwrap();
     }
     let mut c = builder(&lam, None, Some(dir.clone()));
     build_terms(&mut c);
@@ -787,7 +787,7 @@ fn m5c_leaf_iso_refusal_is_engineering() {
     let plan = pruned_plan(&mut s, Some(5));
     let pp = &plan.pairs[322];
     let (p, r) = (s.table(pp.p).fmt(), pp.rung);
-    assert_eq!((p.as_str(), krhom::smapio::rung_str(&r).as_str()), ("1,2,0/1,1,1/1,1,1", "F1.1"));
+    assert_eq!((p.as_str(), krhom::library::smapio::rung_str(&r).as_str()), ("1,2,0/1,1,1/1,1,1", "F1.1"));
     // the M5b provider (cost table v3; the table is stamped for the M5b host class)
     unsafe { std::env::set_var("KRHOM_COSTS_ANY_HOST", "1") };
     let costs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/homprov/costs_333.txt");

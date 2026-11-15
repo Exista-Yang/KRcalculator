@@ -10,9 +10,9 @@
 //! The parent runs one child process per pair, sequentially, and polls its RSS (`ps -o rss=`)
 //! and wall time; a child above the RSS cap or the wall limit is killed and recorded as
 //! MissKind::Memory or MissKind::Time for its pair.
-use krhom::homprov::*;
-use krhom::schur::{flows, Schur};
-use krhom::web::{Dir, Rung};
+use krhom::library::homprov::*;
+use krhom::combinat::schur::{flows, Schur};
+use krhom::combinat::web::{Dir, Rung};
 
 fn rstr(r: &Rung) -> String {
     format!("{}{}({})", if r.dir == Dir::E { "E" } else { "F" }, r.i, r.r)
@@ -34,7 +34,7 @@ fn window_info(lam: &[u8], a: &[Rung], b: &[Rung]) -> (usize, usize, Vec<u8>, Ve
     }
     let wa = &a[pre..a.len() - suf];
     let wb = &b[pre..b.len() - suf];
-    let ex = krhom::sexpr::Expr::new(lam, &a[..pre]).unwrap();
+    let ex = krhom::colored::sexpr::Expr::new(lam, &a[..pre]).unwrap();
     let lv = ex.top();
     if wa.is_empty() && wb.is_empty() {
         return (pre, suf, vec![], vec![], vec![], 1, 1);
@@ -173,15 +173,15 @@ fn parse_word(s: &str) -> Vec<Rung> {
 
 fn explore(args: &[String]) {
     if args[1] == "time" {
-        use krhom::field::F31;
+        use krhom::algebra::field::F31;
         let lab: Vec<u8> = args[2].split(',').map(|x| x.parse().unwrap()).collect();
         let a = parse_word(&args[3]);
         let b = parse_word(&args[4]);
         let d: i32 = args[5].parse().unwrap();
         let unk = hom_unknowns(&lab, &a, &b, d);
         let t0 = std::time::Instant::now();
-        let mut lib: krhom::tmpl::TmplLib<F31> = krhom::tmpl::TmplLib::new(None);
-        let ids = lib.try_hom_basis_cap(&krhom::tmpl::Window::new(&lab, &a), &krhom::tmpl::Window::new(&lab, &b), d, u128::MAX).unwrap();
+        let mut lib: krhom::colored::tmpl::TmplLib<F31> = krhom::colored::tmpl::TmplLib::new(None);
+        let ids = lib.try_hom_basis_cap(&krhom::colored::tmpl::Window::new(&lab, &a), &krhom::colored::tmpl::Window::new(&lab, &b), d, u128::MAX).unwrap();
         println!("time {:?} [{}] -> [{}] d {} fibres {}x{} unknowns {} dim {} secs {:.3}", lab, wstr(&a), wstr(&b), d, flows(&lab, &a), flows(&lab, &b), unk, ids.len(), t0.elapsed().as_secs_f64());
         return;
     }
@@ -235,10 +235,10 @@ fn explore(args: &[String]) {
 
 // ------------------------------------------------------------------ harness
 
-use krhom::field::F31;
-use krhom::sexpr::Expr;
-use krhom::smap::Arena;
-use krhom::tmpl::TmplLib;
+use krhom::algebra::field::F31;
+use krhom::colored::sexpr::Expr;
+use krhom::colored::smap::Arena;
+use krhom::colored::tmpl::TmplLib;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -574,7 +574,7 @@ fn calib_one(args: &[String]) {
     let cache = opt(args, "--cache").map(PathBuf::from);
     let mut lib: TmplLib<F> = TmplLib::new(cache);
     let t0 = Instant::now();
-    let ids = lib.try_hom_basis_cap(&krhom::tmpl::Window::new(&lab, &a), &krhom::tmpl::Window::new(&lab, &b), d, u128::MAX).unwrap();
+    let ids = lib.try_hom_basis_cap(&krhom::colored::tmpl::Window::new(&lab, &a), &krhom::colored::tmpl::Window::new(&lab, &b), d, u128::MAX).unwrap();
     let secs = t0.elapsed().as_secs_f64();
     let computed = lib.stats().computed;
     println!("RESULT {} {} {} {} {} {:.6} {} {}", lam_str(&lab), flows(&lab, &a), flows(&lab, &b), hom_unknowns(&lab, &a, &b, d), d, secs, ids.len(), computed);

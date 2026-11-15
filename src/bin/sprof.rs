@@ -3,11 +3,11 @@
 //!
 //! usage: sprof --lam 3,3 --word "1 1 1 1" --n 6 [--field 31|32b] [--seed S] [--cache DIR]
 //!              [--costs FILE] [--prune N] [--replay] [--points K] [--no-k0]
-use krhom::boxclose::*;
-use krhom::field::{F31, F32b};
-use krhom::sengine::{EngOpts, Mode};
-use krhom::sindec::*;
-use krhom::swire::*;
+use krhom::colored::boxclose::*;
+use krhom::algebra::field::{F31, F32b};
+use krhom::colored::sengine::{EngOpts, Mode};
+use krhom::library::sindec::*;
+use krhom::colored::swire::*;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -21,7 +21,7 @@ fn list<T: std::str::FromStr>(s: &str) -> Vec<T> {
     s.split([',', ' ']).filter(|x| !x.is_empty()).map(|x| x.parse().ok().expect("bad list")).collect()
 }
 
-fn show<F: krhom::field::Field>(what: &str, r: &ScanOut<F>, secs: f64) {
+fn show<F: krhom::algebra::field::Field>(what: &str, r: &ScanOut<F>, secs: f64) {
     let p = &r.prof;
     let e = &r.eprof;
     let other = secs - p.iter().sum::<f64>() - e.0 - e.1;
@@ -48,7 +48,7 @@ fn run<F: PrimeField>(a: &[String]) {
     let cache = opt(a, "--cache").map(PathBuf::from);
     let costs = opt(a, "--costs").map(PathBuf::from).unwrap_or(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/homprov/costs_cloud.txt"));
     let (prov, stamp) = provider_for_stamped::<F>(&lam, Some(&costs), 1.0);
-    let prov: Box<dyn krhom::homprov::HomProvider<F>> = if flag(a, "--replay") { Box::new(NoProvider) } else { prov };
+    let prov: Box<dyn krhom::library::homprov::HomProvider<F>> = if flag(a, "--replay") { Box::new(NoProvider) } else { prov };
     let sd = SIndec::with_stamp(&lam, prov, stamp, SIndecOpts { cache_dir: cache, prune_n: prune, layer_a_route_stamp: flag(a, "--stamp-route"), ..Default::default() });
     let lib = build_wlib(sd, &[word.clone()], true).unwrap_or_else(|e| panic!("library: {}", e));
     eprintln!("library: {} types, build {:.1}s, hash {:x}", lib.shapes.len(), lib.build_secs, lib.hash);
@@ -68,7 +68,7 @@ fn run<F: PrimeField>(a: &[String]) {
     let rec = scan_point(&lib, &word, record_x::<F>(k, seed ^ 0x7265_636f_7264), u32::MAX, Mode::Record, &so).unwrap();
     show("record", &rec, t.elapsed().as_secs_f64());
     {
-        let mut h = krhom::sengine::Fnv::new();
+        let mut h = krhom::colored::sengine::Fnv::new();
         for &x in &rec.ps.trace {
             h.word(x);
         }
@@ -92,7 +92,7 @@ fn run<F: PrimeField>(a: &[String]) {
         r.ps.same_structure(&rec.ps).unwrap();
         show(&format!("replay point {}", id), &r, s);
         // values digest (result preservation check across code versions)
-        let mut h = krhom::sengine::Fnv::new();
+        let mut h = krhom::colored::sengine::Fnv::new();
         for st in &r.stages {
             for v in &st.vals {
                 h.word(v.to_u64());
@@ -100,7 +100,7 @@ fn run<F: PrimeField>(a: &[String]) {
         }
         eprintln!("   values digest {:016x}", h.finish());
     }
-    eprintln!("mean replay {:.3}s; VmHWM {} MB", tot / npts.max(1) as f64, krhom::xengine::rss_kb().1 / 1024);
+    eprintln!("mean replay {:.3}s; VmHWM {} MB", tot / npts.max(1) as f64, krhom::colored::xengine::rss_kb().1 / 1024);
 }
 
 fn main() {

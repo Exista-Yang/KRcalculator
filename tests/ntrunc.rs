@@ -17,14 +17,14 @@
 //!   d∘d components in the ideal of killed types, whose closures are checked to vanish. N = 5
 //!   is `#[ignore]` (Hom spaces of hours, see the test).
 
-use krhom::cclose::{ClosureDataC, EPoly, ERing, TypeBasisC};
-use krhom::crossing::Gen;
-use krhom::cube::local_cx;
-use krhom::engine2::{khr_engine2_closure, Closure};
-use krhom::field::{Field, F31, F32b};
-use krhom::laurent::{LPoly, Poincare};
-use krhom::schur::{decat_chi, decat_scan, ScanOpts, Schur, Table};
-use krhom::xengine::*;
+use krhom::colored::cclose::{ClosureDataC, EPoly, ERing, TypeBasisC};
+use krhom::input::crossing::Gen;
+use krhom::reference::cube::local_cx;
+use krhom::uncolored::engine2::{khr_engine2_closure, Closure};
+use krhom::algebra::field::{Field, F31, F32b};
+use krhom::algebra::laurent::{LPoly, Poincare};
+use krhom::combinat::schur::{decat_chi, decat_scan, ScanOpts, Schur, Table};
+use krhom::colored::xengine::*;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::any::Any;
 use std::collections::{BTreeMap, HashMap};

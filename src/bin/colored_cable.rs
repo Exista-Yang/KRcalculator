@@ -18,13 +18,13 @@
 //!                resolutions (independent oracle; done by default when there are at most
 //!                2000 resolutions, forced up to 10^6 with this flag); --no-check skips it
 //! --cube         also run the full cube (exponential; tiny cases only) and compare
-use krhom::colored::{cable_default, colored_euler_moy, khr_colored_cable};
-use krhom::crossing::{Gen, QConv};
-use krhom::cube::{khr_full_cube, BraidLink};
-use krhom::engine2::Closure;
-use krhom::field::F31;
-use krhom::pd::{parse_pd, pd_to_braid, BraidWord};
-use krhom::tower::EndPolicy;
+use krhom::reference::cabling::{cable_default, colored_euler_moy, khr_colored_cable};
+use krhom::input::crossing::{Gen, QConv};
+use krhom::reference::cube::{khr_full_cube, BraidLink};
+use krhom::uncolored::engine2::Closure;
+use krhom::algebra::field::F31;
+use krhom::input::pd::{parse_pd, pd_to_braid, BraidWord};
+use krhom::uncolored::tower::EndPolicy;
 
 fn usage() -> ! {
     eprintln!("usage: colored_cable N[,N,..] (--braid WORD [--strands n] | --pd PD) [--colors c1,c2,..] [--closure tower|exact] [--end right|left|alt] [--seed s] [--raw] [--check-euler | --no-check] [--cube]");

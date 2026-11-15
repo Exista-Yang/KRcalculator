@@ -9,11 +9,11 @@
 //! caller runs both primes and compares ([`compare_primes`]). Every layer-A map loaded from the
 //! library is re-certified on load (`SIndecOpts::layer_a_route_stamp`, sindec.rs), so the
 //! library's integrity checks (sha256) are about corruption, not soundness.
-use crate::boxclose::PrimeField;
-use crate::laurent::Poincare;
-use crate::sengine::EngOpts;
-use crate::sindec::{route_header, SIndec, SIndecOpts};
-use crate::swire::{box_word, build_wlib, record_scan, BoxOpts, NoProvider};
+use crate::colored::boxclose::PrimeField;
+use crate::algebra::laurent::Poincare;
+use crate::colored::sengine::EngOpts;
+use crate::library::sindec::{route_header, SIndec, SIndecOpts};
+use crate::colored::swire::{box_word, build_wlib, record_scan, BoxOpts, NoProvider};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
@@ -394,11 +394,11 @@ pub fn run_prime<F: PrimeField>(reg: &RegEntry, inst: &InstalledLib, p: &BoxPara
     let t0 = Instant::now();
     let lam = reg.lambda.clone();
     let (_, stamp) = match reg.provider.as_str() {
-        "default" => crate::sindec::provider_for_stamped::<F>(&lam, Some(&inst.costs), 1.0),
-        "m4c-lf" => crate::leaves::provider_for_stamped_m4c::<F>(&lam, Some(&inst.costs), 1.0, true),
+        "default" => crate::library::sindec::provider_for_stamped::<F>(&lam, Some(&inst.costs), 1.0),
+        "m4c-lf" => crate::library::leaves::provider_for_stamped_m4c::<F>(&lam, Some(&inst.costs), 1.0, true),
         pv => return Err(CalcErr::Library(format!("unknown provider {} in the registry", pv))),
     };
-    crate::smapio::set_replay_only(p.replay_only);
+    crate::library::smapio::set_replay_only(p.replay_only);
     let sd: SIndec<F> = SIndec::with_stamp(&lam, Box::new(NoProvider), stamp, SIndecOpts { cache_dir: Some(inst.dir.clone()), prune_n: Some(reg.n), layer_a_route_stamp: true, ..Default::default() });
     let (stamp_ok, stamp_legacy) = stamp_preflight(reg, inst, &sd.layer_a_stamps())?;
     let lib = build_wlib(sd, &[p.word.clone()], true).map_err(|e| map_engine(&F::name(), format!("library: {}", e)))?;
@@ -415,7 +415,7 @@ pub fn run_prime<F: PrimeField>(reg: &RegEntry, inst: &InstalledLib, p: &BoxPara
             record_scan(&lib, &p.word, &o).map_err(|e| map_engine(&F::name(), e))?;
         }
         out.secs = t0.elapsed().as_secs_f64();
-        out.vmhwm_kb = crate::xengine::rss_kb().1;
+        out.vmhwm_kb = crate::colored::xengine::rss_kb().1;
         return Ok(out);
     }
     let bo = loop {
@@ -453,7 +453,7 @@ pub fn run_prime<F: PrimeField>(reg: &RegEntry, inst: &InstalledLib, p: &BoxPara
     out.scaling = (sc.report.checked, sc.report.zero_both, sc.report.declared_zero);
     out.det_pass = bo.det_pass;
     out.secs = t0.elapsed().as_secs_f64();
-    out.vmhwm_kb = crate::xengine::rss_kb().1;
+    out.vmhwm_kb = crate::colored::xengine::rss_kb().1;
     Ok(out)
 }
 
@@ -469,8 +469,8 @@ pub fn run_prime_live<F: PrimeField>(lam: &[u8], costs: &Path, word: &[i32], ns:
     if lam.iter().any(|&a| a as usize > n_box) {
         return Err(CalcErr::Unsupported("--box-live: N below a color".into()));
     }
-    crate::smapio::set_replay_only(false);
-    let (prov, stamp) = crate::sindec::provider_for_stamped::<F>(lam, Some(costs), 1.0);
+    crate::library::smapio::set_replay_only(false);
+    let (prov, stamp) = crate::library::sindec::provider_for_stamped::<F>(lam, Some(costs), 1.0);
     let sd: SIndec<F> = SIndec::with_stamp(lam, prov, stamp, SIndecOpts { prune_n: None, ..Default::default() });
     let lib = build_wlib(sd, &[word.to_vec()], true).map_err(|e| map_engine(&F::name(), format!("library: {}", e)))?;
     let mode = if reduced { Some(0) } else { None };
@@ -487,7 +487,7 @@ pub fn run_prime_live<F: PrimeField>(lam: &[u8], costs: &Path, word: &[i32], ns:
         out.closed.insert(nn, bo.stages[0].closed.get(&(nn, mode)).cloned().ok_or_else(|| CalcErr::Engine(format!("--box-live: no closure for N' = {}", nn)))?);
     }
     out.secs = t0.elapsed().as_secs_f64();
-    out.vmhwm_kb = crate::xengine::rss_kb().1;
+    out.vmhwm_kb = crate::colored::xengine::rss_kb().1;
     Ok(out)
 }
 
@@ -501,19 +501,19 @@ pub fn diagnose_missing(lam: &[u8], n: u8, word: &[i32], status: &[PathBuf]) -> 
         oks.push(t.lines().filter_map(|l| l.strip_suffix(" ok")).map(|l| l.to_string()).collect());
     }
     let ok = |k: &str| oks.iter().all(|o| o.contains(k));
-    let mut s = crate::schur::Schur::new(lam);
-    let plan = crate::sindec::pruned_plan(&mut s, Some(n));
-    let kj = crate::sindec::knot_jobs(&mut s, &plan, word)?;
+    let mut s = crate::combinat::schur::Schur::new(lam);
+    let plan = crate::library::sindec::pruned_plan(&mut s, Some(n));
+    let kj = crate::library::sindec::knot_jobs(&mut s, &plan, word)?;
     let mut miss = vec![];
     for &k in &kj.pairs {
         let key = format!("pair {}", k);
         if !ok(&key) {
             let pp = &plan.pairs[k];
-            miss.push(format!("{} (p={}, rung={})", key, s.table(pp.p).fmt(), crate::smapio::rungs_str(&[pp.rung])));
+            miss.push(format!("{} (p={}, rung={})", key, s.table(pp.p).fmt(), crate::library::smapio::rungs_str(&[pp.rung])));
         }
     }
     for &q in &kj.closure {
-        let w = crate::sindec::canonical_ladder(&mut s, q);
+        let w = crate::library::sindec::canonical_ladder(&mut s, q);
         if w.is_empty() {
             continue;
         }

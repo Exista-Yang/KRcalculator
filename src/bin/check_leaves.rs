@@ -1,11 +1,11 @@
 // 6D acceptance: localized double leaves are genuine bimodule maps (same Q-combination of
 // exact Hom basis at several points) and linearly independent.
-use krhom::field::{Field, F31};
-use krhom::local::localize_map;
-use krhom::mpoly::MonoCache;
-use krhom::sbim::{hom_space, SBim};
-use krhom::soergel::{double_leaves, Ctx, LVec};
-use krhom::web::Rung;
+use krhom::algebra::field::{Field, F31};
+use krhom::soergel::local::localize_map;
+use krhom::algebra::mpoly::MonoCache;
+use krhom::soergel::sbim::{hom_space, SBim};
+use krhom::soergel::soergel::{double_leaves, Ctx, LVec};
+use krhom::combinat::web::Rung;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::collections::HashMap;
 
@@ -92,12 +92,12 @@ fn main() {
                             rhs.push(vals[k][i].clone());
                         }
                     }
-                    match krhom::dense::solve(&rows, m, &rhs) {
+                    match krhom::algebra::dense::solve(&rows, m, &rhs) {
                         None => { bad += 1; println!("DL not genuine: {:?}->{:?} d={}", x, y, d); }
                         Some(_) => { ok += 1; }
                     }
                 }
-                if krhom::dense::rank(&dl_flat0, dl_flat0[0].len()) < dl_flat0.len() {
+                if krhom::algebra::dense::rank(&dl_flat0, dl_flat0[0].len()) < dl_flat0.len() {
                     dep += 1;
                     println!("dependent DLs {:?}->{:?} d={}", x, y, d);
                 }
@@ -107,7 +107,7 @@ fn main() {
     println!("genuine={} not={} dependent-sets={}", ok, bad, dep);
 }
 
-fn bits_of(fp: &krhom::local::FixedPoint, word: &[usize], strands: usize) -> u64 {
+fn bits_of(fp: &krhom::soergel::local::FixedPoint, word: &[usize], strands: usize) -> u64 {
     let mut pi: Vec<u64> = (0..strands).map(|u| 1u64 << u).collect();
     let mut bits = 0u64;
     for (j, &i) in word.iter().enumerate() {

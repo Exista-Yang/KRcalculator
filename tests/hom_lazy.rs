@@ -1,12 +1,12 @@
 //! The lazy-verified kernel solver of `sbim::hom_space` (linsys::kernel_lazy) returns exactly the
 //! reduced kernel basis of the reference solver (incremental Echelon over every equation).
-use krhom::field::{Field, F31};
-use krhom::linsys::{kernel_lazy_counters, kernel_lazy_traced, Echelon};
+use krhom::algebra::field::{Field, F31};
+use krhom::algebra::linsys::{kernel_lazy_counters, kernel_lazy_traced, Echelon};
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use krhom::mpoly::MonoCache;
-use krhom::sbim::{hom_space, hom_space_reference, SBim};
-use krhom::sexpr::Expr;
-use krhom::web::{Dir, Rung};
+use krhom::algebra::mpoly::MonoCache;
+use krhom::soergel::sbim::{hom_space, hom_space_reference, SBim};
+use krhom::colored::sexpr::Expr;
+use krhom::combinat::web::{Dir, Rung};
 
 fn w(s: &str) -> Vec<Rung> {
     if s.is_empty() {

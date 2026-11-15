@@ -1,9 +1,9 @@
 // Localized Soergel engine for uncolored braid closures.
 // usage: engine N strands "word" [cube]   (word: signed 1-based generators)
-use krhom::crossing::{Gen, QConv};
-use krhom::cube::{khr_full_cube, BraidLink};
-use krhom::engine::khr_engine;
-use krhom::field::F31;
+use krhom::input::crossing::{Gen, QConv};
+use krhom::reference::cube::{khr_full_cube, BraidLink};
+use krhom::uncolored::engine::khr_engine;
+use krhom::algebra::field::F31;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

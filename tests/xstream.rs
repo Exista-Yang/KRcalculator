@@ -9,13 +9,13 @@
 //! * gate G2X pieces on (3,3) `#[ignore]` (cloud): σ^5 with close_stages at N = 3..8 against
 //!   Wang 3 N 1, 3 N 2 and the Hopf formula, both primes, χ, reduced base-point check.
 
-use krhom::crossing::Gen;
-use krhom::field::{Field, F31, F32b};
-use krhom::laurent::{LPoly, Poincare};
-use krhom::mpoly::Poly;
-use krhom::pmat::PMat;
-use krhom::schur::{decat_chi, decat_scan, ScanOpts, Schur};
-use krhom::xengine::*;
+use krhom::input::crossing::Gen;
+use krhom::algebra::field::{Field, F31, F32b};
+use krhom::algebra::laurent::{LPoly, Poincare};
+use krhom::algebra::mpoly::Poly;
+use krhom::algebra::pmat::PMat;
+use krhom::combinat::schur::{decat_chi, decat_scan, ScanOpts, Schur};
+use krhom::colored::xengine::*;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::collections::BTreeMap;
 

@@ -6,8 +6,8 @@
 //!     V = (-A^3)^{-w} <D> / δ at A = q^{-1/4}  (V(unknot) = 1, V(right trefoil) = q + q^3 - q^4),
 //! and compare PD codes with the PD codes of the closures of the computed braids.
 
-use krhom::crossing::Gen;
-use krhom::pd::{braid_to_pd, parse_pd, pd_to_braid, pd_to_braid_vogel, BraidWord, Pd};
+use krhom::input::crossing::Gen;
+use krhom::input::pd::{braid_to_pd, parse_pd, pd_to_braid, pd_to_braid_vogel, BraidWord, Pd};
 use std::collections::{BTreeMap, HashMap};
 
 // PD codes and Jones polynomials from the Knot Atlas, https://katlas.org/wiki/<name>

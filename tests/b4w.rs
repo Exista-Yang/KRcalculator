@@ -2,12 +2,12 @@
 //! `ClosureLeaves::pairs`, `provider_for_stamped_m4c`), through SIndec's full checks
 //! (certify_pairs, dechom_postcheck, D14 scaling, Π∘Ι = id, kept multiset), layer-A save and a
 //! replay with a provider that refuses every call (every map re-certified on load).
-use krhom::field::{Field, F31};
-use krhom::homprov::*;
-use krhom::leaves::*;
-use krhom::schur::{Schur, Tid};
-use krhom::sindec::*;
-use krhom::smap::{Arena, ExprId, MapId};
+use krhom::algebra::field::{Field, F31};
+use krhom::library::homprov::*;
+use krhom::library::leaves::*;
+use krhom::combinat::schur::{Schur, Tid};
+use krhom::library::sindec::*;
+use krhom::colored::smap::{Arena, ExprId, MapId};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -87,7 +87,7 @@ impl<F: Field> HomProvider<F> for Count<F> {
 }
 
 fn run(lam: &[u8], max_pairs: usize) {
-    let dir = std::env::temp_dir().join(format!("krhom_b4w_{}_{}", krhom::smapio::labels_str(lam).replace(',', ""), std::process::id()));
+    let dir = std::env::temp_dir().join(format!("krhom_b4w_{}_{}", krhom::library::smapio::labels_str(lam).replace(',', ""), std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let (chain, cstamp) = provider_for_stamped::<F31>(lam, None, 1.0);

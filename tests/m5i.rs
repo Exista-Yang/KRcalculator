@@ -7,12 +7,12 @@
 //! coordinates (QP = id, PQ = e_p) and frozen-data reduced shapes; the (2,2,2,2) type of block
 //! (2,4,0,2) (96 flows) through prefix propagation. Ignored (minutes, layer A recommended): the
 //! (2,2,2,2) End^0 comparison (196 k unknowns) and a forced-ladder (2,2,2) scan of 4_1.
-use krhom::field::{Field, F31};
-use krhom::homprov::{hom_unknowns, Budget, Exact, HomProvider};
-use krhom::schur::{Schur, Tid};
-use krhom::sindec::*;
-use krhom::smap::{points, Eval, MapId};
-use krhom::web::{Dir, Rung};
+use krhom::algebra::field::{Field, F31};
+use krhom::library::homprov::{hom_unknowns, Budget, Exact, HomProvider};
+use krhom::combinat::schur::{Schur, Tid};
+use krhom::library::sindec::*;
+use krhom::colored::smap::{points, Eval, MapId};
+use krhom::combinat::web::{Dir, Rung};
 use std::path::PathBuf;
 
 type F = F31;
@@ -43,7 +43,7 @@ fn in_end0_span(sd: &mut SIndec<F>, lad: u32, e: MapId) -> (usize, bool) {
     let mut st2 = st.clone();
     st2.extend(Eval::stacked(&sd.ar, &[e], &pts, &cos));
     let n = st[0].len();
-    let (r1, r2) = (krhom::dense::rank(&st, n), krhom::dense::rank(&st2, n));
+    let (r1, r2) = (krhom::algebra::dense::rank(&st, n), krhom::algebra::dense::rank(&st2, n));
     (basis.len(), r1 == basis.len() && r2 == r1)
 }
 
@@ -79,7 +79,7 @@ fn m5i_313_idempotent_end0_dec_closure() {
     for &c in &cos {
         let r = dd.reduced(&mut ev, p, c).expect("reduced");
         let b = ev.block(e, c);
-        assert_eq!(r.q.mul(&r.p), krhom::smap::Block::identity(r.m));
+        assert_eq!(r.q.mul(&r.p), krhom::colored::smap::Block::identity(r.m));
         assert_eq!(r.p.mul(&r.q), *b);
         tot += r.m as u128;
     }

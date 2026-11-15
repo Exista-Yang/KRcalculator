@@ -1,11 +1,11 @@
 //! Tests of the decategorified oracle `schur.rs` (milestone M3a, SYNTHESIS §8.5).
 //! Heavy cases are `#[ignore]`; run them one at a time with `--ignored`.
 
-use krhom::crossing::{crossing_cx, qshift, Gen, QConv};
-use krhom::hecke::Hecke;
-use krhom::laurent::LPoly;
-use krhom::schur::*;
-use krhom::web::{Dir, Rung};
+use krhom::input::crossing::{crossing_cx, qshift, Gen, QConv};
+use krhom::combinat::hecke::Hecke;
+use krhom::algebra::laurent::LPoly;
+use krhom::combinat::schur::*;
+use krhom::combinat::web::{Dir, Rung};
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 

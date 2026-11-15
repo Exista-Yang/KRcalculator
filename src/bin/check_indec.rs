@@ -1,8 +1,8 @@
 // 6E acceptance: idempotents and decompositions for S_3, S_4.
-use krhom::field::{Field, F31};
-use krhom::hecke::Hecke;
-use krhom::indec::*;
-use krhom::soergel::Ctx;
+use krhom::algebra::field::{Field, F31};
+use krhom::combinat::hecke::Hecke;
+use krhom::soergel::indec::*;
+use krhom::soergel::soergel::Ctx;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::collections::HashMap;
 

@@ -10,12 +10,12 @@
 //!   engine bindings never merge, and `load_expect` refuses a stale checkpoint;
 //! * the D14 scaling check on the wired path catches a weight declared one too high;
 //! * χ = decat_chi is fatal (a perturbed closure is an Err).
-use krhom::boxclose::*;
-use krhom::boxrun::*;
-use krhom::field::{Field, F31};
-use krhom::sengine::{EngOpts, PivotOrder};
-use krhom::sindec::*;
-use krhom::swire::*;
+use krhom::colored::boxclose::*;
+use krhom::colored::boxrun::*;
+use krhom::algebra::field::{Field, F31};
+use krhom::colored::sengine::{EngOpts, PivotOrder};
+use krhom::library::sindec::*;
+use krhom::colored::swire::*;
 use std::path::PathBuf;
 use std::sync::Arc;
 

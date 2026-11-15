@@ -6,12 +6,12 @@
 //! decomposes L_p ⊗ R for every rung R (dec_rung, source idempotent) and builds the closure
 //! generators through e_p for types of (λ, λ).
 //! usage: m5i_check LAM N|none [--field F31|F32b] [--costs T] [--cache DIR] [--types T1;T2 | --all] [--end0 MAXUNK] [--rungs] [--closure]
-use krhom::field::{Field, F31, F32b};
-use krhom::homprov::{hom_unknowns, Budget, Exact, HomProvider};
-use krhom::schur::{flows, Schur, Tid};
-use krhom::sindec::{decomposable_ladders, provider_for, SIndec, SIndecOpts};
-use krhom::smap::{points, Eval};
-use krhom::web::{Dir, Rung};
+use krhom::algebra::field::{Field, F31, F32b};
+use krhom::library::homprov::{hom_unknowns, Budget, Exact, HomProvider};
+use krhom::combinat::schur::{flows, Schur, Tid};
+use krhom::library::sindec::{decomposable_ladders, provider_for, SIndec, SIndecOpts};
+use krhom::colored::smap::{points, Eval};
+use krhom::combinat::web::{Dir, Rung};
 use std::time::Instant;
 
 fn arg(a: &[String], k: &str) -> Option<String> {
@@ -46,7 +46,7 @@ fn run<F: Field>(a: &[String]) {
         // forced (non-canonical) ladders: the types named there
         for item in force.split(';') {
             let Some((t, _)) = item.split_once('=') else { continue };
-            for mu in krhom::sindec::visited_blocks(&lam) {
+            for mu in krhom::library::sindec::visited_blocks(&lam) {
                 for q in sd.schur.canonical_basis(&mu).order.clone() {
                     if sd.schur.table(q).fmt() == t.trim() && !sel.iter().any(|x| x.0 == q) {
                         sel.push((q, t.trim().to_string(), mu.clone()));
@@ -86,7 +86,7 @@ fn run<F: Field>(a: &[String]) {
                         let mut st2 = st.clone();
                         st2.extend(Eval::stacked(&sd.ar, &[e], &pts, &cos));
                         let len = st[0].len();
-                        let (r1, r2) = (krhom::dense::rank(&st, len), krhom::dense::rank(&st2, len));
+                        let (r1, r2) = (krhom::algebra::dense::rank(&st, len), krhom::algebra::dense::rank(&st2, len));
                         let pass = basis.len() == 1 + nextra && r1 == basis.len() && r2 == r1;
                         println!("END0 {}: unknowns {} dim End^0 {} (expected {}), e_p in span: {} -> {} ({:.1}s)", name, unk, basis.len(), 1 + nextra, r2 == r1, if pass { "PASS" } else { "MISMATCH" }, t1.elapsed().as_secs_f64());
                         if !pass {
@@ -108,9 +108,9 @@ fn run<F: Field>(a: &[String]) {
                         let rg = Rung { i, dir, r };
                         let t1 = Instant::now();
                         match sd.dec_rung(q, rg) {
-                            Ok(d) => println!("  DEC {} ⊗ {}: {} summands {:?} killed {} ({:.1}s)", name, krhom::smapio::rung_str(&rg), d.summands.len(), d.summands.iter().map(|s| s.s).collect::<Vec<_>>(), d.killed.len(), t1.elapsed().as_secs_f64()),
+                            Ok(d) => println!("  DEC {} ⊗ {}: {} summands {:?} killed {} ({:.1}s)", name, krhom::library::smapio::rung_str(&rg), d.summands.len(), d.summands.iter().map(|s| s.s).collect::<Vec<_>>(), d.killed.len(), t1.elapsed().as_secs_f64()),
                             Err(err) => {
-                                println!("  DECFAIL {} ⊗ {}: {}", name, krhom::smapio::rung_str(&rg), String::from(err));
+                                println!("  DECFAIL {} ⊗ {}: {}", name, krhom::library::smapio::rung_str(&rg), String::from(err));
                                 bad += 1;
                             }
                         }

@@ -16,7 +16,7 @@
 //! with a provider that refuses every call checks that. Use with `libbuild --stamp-route`.
 //!
 //! usage: b4wstamp --cache DIR --lam 3,3,3 --costs PATH --provider m4c|m4c-lf [--dry]
-use krhom::field::F31;
+use krhom::algebra::field::F31;
 use std::path::PathBuf;
 
 fn opt(args: &[String], k: &str) -> Option<String> {
@@ -31,8 +31,8 @@ fn main() {
     let pv = opt(&args, "--provider").unwrap_or("m4c".into());
     assert!(pv == "m4c" || pv == "m4c-lf", "--provider m4c|m4c-lf");
     let dry = args.iter().any(|a| a == "--dry");
-    let (_, chain) = krhom::sindec::provider_for_stamped::<F31>(&lam, costs.as_deref(), 1.0);
-    let (_, m4c) = krhom::leaves::provider_for_stamped_m4c::<F31>(&lam, costs.as_deref(), 1.0, pv == "m4c-lf");
+    let (_, chain) = krhom::library::sindec::provider_for_stamped::<F31>(&lam, costs.as_deref(), 1.0);
+    let (_, m4c) = krhom::library::leaves::provider_for_stamped_m4c::<F31>(&lam, costs.as_deref(), 1.0, pv == "m4c-lf");
     let suffix = m4c.strip_prefix(chain.as_str()).expect("the M4c stamp extends the chain stamp").to_string();
     eprintln!("chain stamp: {}\nm4c suffix: {}", chain, suffix);
     let dir = cache.join("layer_a");
@@ -52,7 +52,7 @@ fn main() {
             already += 1;
             continue;
         }
-        if krhom::sindec::route_header(prov) != krhom::sindec::route_header(&chain) {
+        if krhom::library::sindec::route_header(prov) != krhom::library::sindec::route_header(&chain) {
             other += 1;
             eprintln!("skip (other provider stamp {:?}): {}", prov, p.display());
             continue;

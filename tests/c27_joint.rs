@@ -1,9 +1,9 @@
 //! C2-7: joint junction words (Leaves::joint_descent), Prop W checks W1/W2 and per-predecessor
 //! final words; pure combinatorics (no maps are built here).
-use krhom::dcoset::{junction_types, StepCache};
-use krhom::leaves::{plan_steps, Leaves};
-use krhom::schur::{Schur, Table};
-use krhom::sindec::canonical_ladder;
+use krhom::combinat::dcoset::{junction_types, StepCache};
+use krhom::library::leaves::{plan_steps, Leaves};
+use krhom::combinat::schur::{Schur, Table};
+use krhom::library::sindec::canonical_ladder;
 
 fn plan_max(lam: &[u8], p: &str, rung: &str, q: &str, joint: bool) -> (u128, usize) {
     let mut s = Schur::new(lam);
@@ -11,7 +11,7 @@ fn plan_max(lam: &[u8], p: &str, rung: &str, q: &str, joint: bool) -> (u128, usi
     let p = s.intern(Table::parse(p));
     let q = s.intern(Table::parse(q));
     let mut x = canonical_ladder(&mut s, p);
-    x.push(krhom::smapio::parse_rung(rung).unwrap());
+    x.push(krhom::library::smapio::parse_rung(rung).unwrap());
     let mut lv = Leaves::default();
     lv.joint = joint;
     let mut sc = StepCache::new();
@@ -26,7 +26,7 @@ fn plan_max(lam: &[u8], p: &str, rung: &str, q: &str, joint: bool) -> (u128, usi
     for (&(qq, i), wa) in &finals {
         let (tp, wp) = plan[x.len() - 1][i].clone();
         let g = sc.step(&mut s, tp, &x[x.len() - 1]).into_iter().find(|e| e.0 == qq).map(|e| e.1).unwrap();
-        let sw = krhom::leaves::step_score_w(&mut wlc, lam, &wp, &x[x.len() - 1], wa, &g);
+        let sw = krhom::library::leaves::step_score_w(&mut wlc, lam, &wp, &x[x.len() - 1], wa, &g);
         let e = repl.entry((qq, tp)).or_insert(0u128);
         *e = (*e).max(sw);
     }
@@ -64,15 +64,15 @@ fn w12_rejects_suffix_window() {
     let mut s = Schur::new(&lam);
     let tp = s.intern(Table::parse("0,1,1,0/1,0,1,0/1,1,0,0/0,0,1,1"));
     let t = s.intern(Table::parse("0,2,0,0/1,0,1,0/1,1,0,0/0,1,0,1"));
-    let pw = |x: &str| krhom::smapio::parse_rungs(x).unwrap();
+    let pw = |x: &str| krhom::library::smapio::parse_rungs(x).unwrap();
     let wfrom = pw("E0.1,F0.1,E1.2,E0.1,F1.2,F0.1,E2.1");
     let rho = pw("E1.2")[0];
     let wto = pw("E1.1,E0.2,F1.1,F0.2,E2.1,E1.2");
     let mut sc = StepCache::new();
     let g = sc.step(&mut s, tp, &rho).into_iter().find(|x| x.0 == t).unwrap().1;
     let mut wl = std::collections::HashMap::new();
-    assert!(!krhom::leaves::window_w12(&mut wl, &lam, &wfrom, &rho, &wto, &g));
-    let sw = krhom::leaves::step_score_w(&mut wl, &lam, &wfrom, &rho, &wto, &g);
-    let s0 = krhom::leaves::step_score(&lam, &wfrom, &rho, &wto, &g);
+    assert!(!krhom::library::leaves::window_w12(&mut wl, &lam, &wfrom, &rho, &wto, &g));
+    let sw = krhom::library::leaves::step_score_w(&mut wl, &lam, &wfrom, &rho, &wto, &g);
+    let s0 = krhom::library::leaves::step_score(&lam, &wfrom, &rho, &wto, &g);
     assert!(s0 < 100_000 && sw > 1_000_000, "score {} score_w {}", s0, sw);
 }

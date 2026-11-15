@@ -1,10 +1,10 @@
 // Test hypothesis H: state space of a closed ladder = truncated closed edge ring.
-use krhom::algebra::{quotient_by_span, Alg};
-use krhom::field::F31;
-use krhom::hom::closure_ops;
-use krhom::laurent::LPoly;
-use krhom::moy::closure_value;
-use krhom::web::random_closed_ladder;
+use krhom::legacy::algebra::{quotient_by_span, Alg};
+use krhom::algebra::field::F31;
+use krhom::legacy::hom::closure_ops;
+use krhom::algebra::laurent::LPoly;
+use krhom::combinat::moy::closure_value;
+use krhom::combinat::web::random_closed_ladder;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 fn coinv(a: &Alg<F31>) -> LPoly {

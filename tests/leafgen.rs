@@ -5,16 +5,16 @@
 //! Default suite: small blocks and cells ((1,1,1), (1,2,1), (2,1,2), (2,2,2)). Ignored (run once,
 //! reported in docs/colored_design/m4c/B1_report.md): `certify_all_to_333` (every template up to
 //! blocks (3,3,3)) and `braid_large`.
-use krhom::coset::CosetSpace;
-use krhom::dense::rank;
-use krhom::field::{Field, F31};
-use krhom::homprov::hom_unknowns;
-use krhom::leafgen::*;
-use krhom::schur::Table;
-use krhom::sexpr::{Expr, FlowIndex};
-use krhom::smap::*;
-use krhom::tmpl::*;
-use krhom::web::Rung;
+use krhom::combinat::coset::CosetSpace;
+use krhom::algebra::dense::rank;
+use krhom::algebra::field::{Field, F31};
+use krhom::library::homprov::hom_unknowns;
+use krhom::library::leafgen::*;
+use krhom::combinat::schur::Table;
+use krhom::colored::sexpr::{Expr, FlowIndex};
+use krhom::colored::smap::*;
+use krhom::colored::tmpl::*;
+use krhom::combinat::web::Rung;
 use std::time::Instant;
 
 type F = F31;
@@ -75,7 +75,7 @@ fn check(lib: &mut TmplLib<F>, cf: &ClosedForm, seed: u64, want_deg: Option<i32>
 }
 
 fn mul(a: &[Vec<F>], b: &[Vec<F>]) -> Vec<Vec<F>> {
-    krhom::local::matmul(a, b)
+    krhom::soergel::local::matmul(a, b)
 }
 
 fn is_identity(m: &[Vec<F>]) -> bool {
@@ -532,7 +532,7 @@ fn interp_gate_refuses_braid_fallback_323() {
         assert!(validate_assoc(&mut ar, &me, &mpe, 1).is_err());
     }
     // the (3,2,3) count matches the review's generating-function count (39 148 at degree 42)
-    assert_eq!(krhom::rexplan::monos_of_deg(&[3, 2, 3], 42), 39_148);
+    assert_eq!(krhom::library::rexplan::monos_of_deg(&[3, 2, 3], 42), 39_148);
     // small windows pass the gate and still build (r1 shapes)
     let (a, b) = sideways_abc(1, 2, 1).unwrap();
     for cf in [&a, &b] {

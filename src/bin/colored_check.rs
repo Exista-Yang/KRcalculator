@@ -1,10 +1,10 @@
 // Compare cabled-engine colored homology with the full cube (colored Rickard complexes).
-use krhom::colored::cable;
-use krhom::crossing::{Gen, QConv};
-use krhom::cube::{khr_full_cube, BraidLink};
-use krhom::engine::khr_engine_start;
-use krhom::field::F31;
-use krhom::laurent::{LPoly, Poincare};
+use krhom::reference::cabling::cable;
+use krhom::input::crossing::{Gen, QConv};
+use krhom::reference::cube::{khr_full_cube, BraidLink};
+use krhom::uncolored::engine::khr_engine_start;
+use krhom::algebra::field::F31;
+use krhom::algebra::laurent::{LPoly, Poincare};
 
 fn divide(p: &Poincare, d: &LPoly) -> Option<Poincare> {
     let mut out = Poincare::default();

@@ -1,9 +1,9 @@
 // Compare Soergel's Hom formula with hom_space on small Bott–Samelson bimodules.
-use krhom::field::F31;
-use krhom::hecke::Hecke;
-use krhom::mpoly::MonoCache;
-use krhom::sbim::{hom_space, SBim};
-use krhom::web::Rung;
+use krhom::algebra::field::F31;
+use krhom::combinat::hecke::Hecke;
+use krhom::algebra::mpoly::MonoCache;
+use krhom::soergel::sbim::{hom_space, SBim};
+use krhom::combinat::web::Rung;
 
 fn bs(n: usize, word: &[usize]) -> SBim<F31> {
     let mut b = SBim::<F31>::identity(n, &vec![1; n]);

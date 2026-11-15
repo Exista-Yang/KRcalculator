@@ -1,8 +1,8 @@
-use krhom::algebra::Alg;
-use krhom::field::F31;
-use krhom::hom::closure_graded_dim;
-use krhom::moy::closure_value;
-use krhom::web::{Dir, Ladder, Rung};
+use krhom::legacy::algebra::Alg;
+use krhom::algebra::field::F31;
+use krhom::legacy::hom::closure_graded_dim;
+use krhom::combinat::moy::closure_value;
+use krhom::combinat::web::{Dir, Ladder, Rung};
 
 fn all_ladders(n: usize, m: usize, len: usize) -> Vec<Ladder> {
     let mut out = vec![];
@@ -56,11 +56,11 @@ fn main() {
     for l in lads {
         let a = Alg::<F31>::ladder(&l);
         let got = {
-            let ops = krhom::hom::closure_ops(&a);
+            let ops = krhom::legacy::hom::closure_ops(&a);
             let mut gens = vec![];
             for (op, _) in &ops { for c in &op.cols { if !c.is_empty() { gens.push(c.clone()); } } }
-            let (keep, _) = krhom::algebra::quotient_by_span(&a.deg, gens);
-            let mut co = krhom::laurent::LPoly::zero();
+            let (keep, _) = krhom::legacy::algebra::quotient_by_span(&a.deg, gens);
+            let mut co = krhom::algebra::laurent::LPoly::zero();
             for &i in &keep { co.add_term(a.deg[i], 1); }
             let exp0 = closure_value(&l);
             if !co.is_zero() && !exp0.is_zero() { co.shift(exp0.min_deg().unwrap() - co.min_deg().unwrap()) } else { co }

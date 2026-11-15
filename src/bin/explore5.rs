@@ -1,10 +1,10 @@
 // Universal construction with the polynomial-matrix SBim implementation vs MOY.
-use krhom::field::F31;
-use krhom::moy::closure_value;
-use krhom::mpoly::MonoCache;
-use krhom::sbim::{SBim, StateSpace};
-use krhom::laurent::LPoly;
-use krhom::web::{random_closed_ladder, Dir, Ladder, Rung};
+use krhom::algebra::field::F31;
+use krhom::combinat::moy::closure_value;
+use krhom::algebra::mpoly::MonoCache;
+use krhom::soergel::sbim::{SBim, StateSpace};
+use krhom::algebra::laurent::LPoly;
+use krhom::combinat::web::{random_closed_ladder, Dir, Ladder, Rung};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 fn parse(n: usize, bottom: Vec<usize>, s: &str) -> Ladder {

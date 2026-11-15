@@ -21,19 +21,19 @@
 //! * 3 colors: (3,1) by default (formula, cabling); (3,2) and (3,3) `#[ignore]` (timings in the
 //!   test output), against the Hopf formula, Wang and duality at N = a + 1.
 
-use krhom::cclose::exact_type_dims_colored;
-use krhom::colored::khr_colored_cable;
-use krhom::crossing::{Gen, QConv};
-use krhom::cube::{khr_full_cube, BraidLink};
-use krhom::engine2::{khr_engine2_closure, Closure};
-use krhom::field::{Field, F31, F32b};
-use krhom::laurent::{LPoly, Poincare};
-use krhom::mpoly::MonoCache;
-use krhom::sbim::{hom_space, SBim};
-use krhom::schur::{decat_chi, decat_scan, ScanOpts, Schur, Table};
-use krhom::tower::EndPolicy;
-use krhom::web::Ladder;
-use krhom::xengine::*;
+use krhom::colored::cclose::exact_type_dims_colored;
+use krhom::reference::cabling::khr_colored_cable;
+use krhom::input::crossing::{Gen, QConv};
+use krhom::reference::cube::{khr_full_cube, BraidLink};
+use krhom::uncolored::engine2::{khr_engine2_closure, Closure};
+use krhom::algebra::field::{Field, F31, F32b};
+use krhom::algebra::laurent::{LPoly, Poincare};
+use krhom::algebra::mpoly::MonoCache;
+use krhom::soergel::sbim::{hom_space, SBim};
+use krhom::combinat::schur::{decat_chi, decat_scan, ScanOpts, Schur, Table};
+use krhom::uncolored::tower::EndPolicy;
+use krhom::combinat::web::Ladder;
+use krhom::colored::xengine::*;
 use std::any::Any;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -326,7 +326,7 @@ fn v2_labels_above_n_and_wedge_n() {
             let dims = exact_type_dims_colored(&sc.data, nn, None);
             for (p, rungs) in &sc.type_ladders {
                 let lad = Ladder { n: nn, bottom: labels.clone(), rungs: rungs.clone() };
-                let moy = if lad.is_valid() { krhom::moy::closure_value(&lad).eval_at_one() } else { 0 };
+                let moy = if lad.is_valid() { krhom::combinat::moy::closure_value(&lad).eval_at_one() } else { 0 };
                 if moy == 0 {
                     zero_seen += 1;
                 }

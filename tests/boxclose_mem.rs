@@ -10,9 +10,9 @@
 //! each (type, q), h = 0 or 1 by sign, spread over h = −1..2) and P entries are random sparse
 //! homogeneous of the bookkeeping weight between objects of adjacent h with |q_s − q_t| ≤ 4.
 
-use krhom::cclose::*;
-use krhom::field::{Field, F31};
-use krhom::schur::{decat_scan, ScanOpts, Schur};
+use krhom::colored::cclose::*;
+use krhom::algebra::field::{Field, F31};
+use krhom::combinat::schur::{decat_scan, ScanOpts, Schur};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::BTreeMap;

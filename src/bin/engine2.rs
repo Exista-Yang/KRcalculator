@@ -11,11 +11,11 @@
 // --save-data FILE: write the prepared closure data (scan, bases, Gram, F) to FILE.
 // --load-data FILE: read the prepared data from FILE instead of scanning (strands and
 //            word must match the file).
-use krhom::crossing::Gen;
-use krhom::engine::khr_engine;
-use krhom::engine2::{close_tower_with, close_with, load_closure_data, prepare_closure_data, save_closure_data, Closure};
-use krhom::field::F31;
-use krhom::tower::{EndPolicy, TowerOpts};
+use krhom::input::crossing::Gen;
+use krhom::uncolored::engine::khr_engine;
+use krhom::uncolored::engine2::{close_tower_with, close_with, load_closure_data, prepare_closure_data, save_closure_data, Closure};
+use krhom::algebra::field::F31;
+use krhom::uncolored::tower::{EndPolicy, TowerOpts};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();

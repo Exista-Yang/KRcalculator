@@ -16,13 +16,13 @@
 //!   --modes: u = unreduced extraction (serves N' unreduced), r = reduced (block 0 marked)
 //! The D14 scaling check (scans at z and λz at 2 box points) and χ = decat_chi are mandatory: a
 //! failure of either exits nonzero and writes no results. (`--scaling` is accepted and ignored.)
-use krhom::boxclose::*;
-use krhom::boxrun::*;
-use krhom::field::{F31, F32b};
+use krhom::colored::boxclose::*;
+use krhom::colored::boxrun::*;
+use krhom::algebra::field::{F31, F32b};
 use krhom::calc::poly_json;
-use krhom::sengine::EngOpts;
-use krhom::sindec::*;
-use krhom::swire::*;
+use krhom::colored::sengine::EngOpts;
+use krhom::library::sindec::*;
+use krhom::colored::swire::*;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -36,7 +36,7 @@ fn list<T: std::str::FromStr>(s: &str) -> Vec<T> {
     s.split([',', ' ']).filter(|x| !x.is_empty()).map(|x| x.parse().ok().expect("bad list")).collect()
 }
 fn hwm_kb() -> usize {
-    krhom::xengine::rss_kb().1
+    krhom::colored::xengine::rss_kb().1
 }
 fn die(msg: &str) -> ! {
     eprintln!("FATAL: {}", msg);
@@ -62,10 +62,10 @@ fn setup<F: PrimeField>(a: &[String]) -> (WLib<F>, BoxJob) {
     // by `libbuild --provider m4c|m4c-lf` (with --replay the provider itself is never called)
     let (prov, stamp) = match opt(a, "--provider").as_deref() {
         None | Some("default") => provider_for_stamped::<F>(&lam, Some(&costs), 1.0),
-        Some(pv @ ("m4c" | "m4c-lf")) => krhom::leaves::provider_for_stamped_m4c::<F>(&lam, Some(&costs), 1.0, pv == "m4c-lf"),
+        Some(pv @ ("m4c" | "m4c-lf")) => krhom::library::leaves::provider_for_stamped_m4c::<F>(&lam, Some(&costs), 1.0, pv == "m4c-lf"),
         Some(pv) => die(&format!("--provider {}: expected default, m4c or m4c-lf", pv)),
     };
-    let prov: Box<dyn krhom::homprov::HomProvider<F>> = if flag(a, "--replay") { Box::new(NoProvider) } else { prov };
+    let prov: Box<dyn krhom::library::homprov::HomProvider<F>> = if flag(a, "--replay") { Box::new(NoProvider) } else { prov };
     let sd = SIndec::with_stamp(&lam, prov, stamp, SIndecOpts { cache_dir: cache, prune_n: prune, layer_a_route_stamp: flag(a, "--stamp-route"), ..Default::default() });
     let lib = build_wlib(sd, &words, true).unwrap_or_else(|e| die(&format!("library: {}", e)));
     eprintln!("library: {} types, {} closable, build {:.1}s ({} provider calls, {} layer-A loads), hash {:x}, commit {}", lib.shapes.len(), lib.closure.len(), lib.build_secs, lib.stats.provider_calls, lib.stats.layer_a_loaded, lib.hash, build_commit());
@@ -76,7 +76,7 @@ fn setup<F: PrimeField>(a: &[String]) -> (WLib<F>, BoxJob) {
         }
         None => words.iter().map(|w| closable_stages(&lam, w)).collect(),
     };
-    let eng = EngOpts { check_d2: prune.is_none() && !flag(a, "--no-d2"), order: if flag(a, "--lazy-markowitz") { krhom::sengine::PivotOrder::Lazy } else { krhom::sengine::PivotOrder::Heap }, mem_point_bytes: opt(a, "--mem-mb").map_or(2048, |s| s.parse::<u64>().unwrap()) << 20, ..Default::default() };
+    let eng = EngOpts { check_d2: prune.is_none() && !flag(a, "--no-d2"), order: if flag(a, "--lazy-markowitz") { krhom::colored::sengine::PivotOrder::Lazy } else { krhom::colored::sengine::PivotOrder::Heap }, mem_point_bytes: opt(a, "--mem-mb").map_or(2048, |s| s.parse::<u64>().unwrap()) << 20, ..Default::default() };
     let mut o = BoxOpts::new(n, seed, ns, modes, stages[0].clone(), eng);
     o.d2_all_points = flag(a, "--d2-all");
     if let Some(b) = opt(a, "--batch") {
@@ -148,7 +148,7 @@ fn run<F: PrimeField>(a: &[String]) {
         let mut so = ScanOpts { eng: o.eng.clone(), close_stages: o.stages.clone(), k0_check: !flag(a, "--no-k0") };
         so.eng.id_coset = lib.id_coset;
         let t = Instant::now();
-        let r = scan_point(&lib, &word, record_x::<F>(k, seed), 0, krhom::sengine::Mode::Record, &so).unwrap();
+        let r = scan_point(&lib, &word, record_x::<F>(k, seed), 0, krhom::colored::sengine::Mode::Record, &so).unwrap();
         for s in &r.ps.stages {
             eprintln!("stage {}: inserted {} objects {} components {} pivots {} rounds {} entries {} c_e {:.2} peak {:.1} MB secs {:.2}", s.stage + 1, s.inserted, s.objects, s.components, s.pivots, s.rounds, s.stored_entries, s.c_e, s.peak_bytes as f64 / 1e6, s.secs);
         }

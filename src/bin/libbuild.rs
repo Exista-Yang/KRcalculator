@@ -29,13 +29,13 @@
 //! the M4c list (a Refused outcome, i.e. admission, is not retried: the budget does not change it).
 //! A replay runs the same jobs with a provider that refuses every call: everything
 //! must load from layer A and pass the same checks.
-use krhom::field::{Field, F31, F32b};
-use krhom::homprov::*;
-use krhom::schur::{crossing_terms, flows, Schur, Tid};
-use krhom::sindec::*;
-use krhom::smap::{Arena, ExprId, MapId};
-use krhom::smapio::{labels_str, rung_str, rungs_str};
-use krhom::web::Rung;
+use krhom::algebra::field::{Field, F31, F32b};
+use krhom::library::homprov::*;
+use krhom::combinat::schur::{crossing_terms, flows, Schur, Tid};
+use krhom::library::sindec::*;
+use krhom::colored::smap::{Arena, ExprId, MapId};
+use krhom::library::smapio::{labels_str, rung_str, rungs_str};
+use krhom::combinat::web::Rung;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -69,7 +69,7 @@ fn jstr(s: &str) -> String {
 }
 /// the commit of this binary (embedded at build time; the code that actually runs)
 fn build_commit() -> String {
-    krhom::boxrun::build_commit().to_string()
+    krhom::colored::boxrun::build_commit().to_string()
 }
 
 #[allow(dead_code)]
@@ -324,15 +324,15 @@ fn provider_and_stamp<F: Field>(lam: &[u8], args: &[String]) -> (Box<dyn HomProv
     let costs = opt(args, "--costs").map(PathBuf::from);
     // M4c A2: `--provider leaves` = the Leaves backend alone (closure only; acceptance runs)
     if opt(args, "--provider").as_deref() == Some("leaves") {
-        let mut lv = krhom::leaves::Leaves::new();
+        let mut lv = krhom::library::leaves::Leaves::new();
         lv.costs = costs.as_ref().and_then(|p| CostTable::load(p).ok());
-        let stamp = format!("homprov[{}] maxl={} {}", COST_ALG, lam.iter().copied().max().unwrap_or(0), krhom::leaves::LEAVES_STAMP);
+        let stamp = format!("homprov[{}] maxl={} {}", COST_ALG, lam.iter().copied().max().unwrap_or(0), krhom::library::leaves::LEAVES_STAMP);
         return (Box::new(lv), stamp);
     }
     // M4c A3: the production chain with Stage 0 (product first) and Leaves for closure calls
     // (`m4c` = Leaves last, `m4c-lf` = Leaves first); separate stamp, sindec.rs unchanged
     if let Some(pv) = opt(args, "--provider").filter(|p| p == "m4c" || p == "m4c-lf") {
-        return krhom::leaves::provider_for_stamped_m4c::<F>(lam, costs.as_deref(), 1.0, pv == "m4c-lf");
+        return krhom::library::leaves::provider_for_stamped_m4c::<F>(lam, costs.as_deref(), 1.0, pv == "m4c-lf");
     }
     provider_for_stamped::<F>(lam, costs.as_deref(), 1.0)
 }
@@ -342,7 +342,7 @@ fn provider_and_stamp<F: Field>(lam: &[u8], args: &[String]) -> (Box<dyn HomProv
 fn plan_pair_at(s: &mut Schur, k: usize) -> (Tid, Rung) {
     let lam = s.lam.clone();
     let mut i = 0usize;
-    for (mu, r) in krhom::homprov::g1_work(&lam) {
+    for (mu, r) in krhom::library::homprov::g1_work(&lam) {
         let order = s.canonical_basis(&mu).order.clone();
         if k < i + order.len() {
             return (order[k - i], r);
@@ -360,7 +360,7 @@ fn child<F: Field>(args: &[String], job: &[String]) {
     let replay = flag(args, "--replay");
     // replay: a template referenced by layer A must already be in the template cache (smapio
     // refuses to recompute it; libbuild review F3)
-    krhom::smapio::set_replay_only(replay);
+    krhom::library::smapio::set_replay_only(replay);
     let (prov, stamp) = provider_and_stamp::<F>(&lam, args);
     let prov: Box<dyn HomProvider<F>> = if replay { Box::new(NoProvider) } else { prov };
     let opts = SIndecOpts { cache_dir: Some(cache.clone()), budget: scaled_budget(scale), prune_n: Some(n), layer_a_route_stamp: flag(args, "--stamp-route"), ..SIndecOpts::default() };
@@ -572,7 +572,7 @@ fn cmd_run(args: &[String], replay: bool) {
         "31" => provider_and_stamp::<F31>(&lam, args).1,
         _ => provider_and_stamp::<F32b>(&lam, args).1,
     };
-    let stamps = format!("{} ladfn={} tmpl_alg={} prov={}", SINDEC_VERSION, LADDER_STAMP, krhom::tmpl::TMPL_ALG, stamp);
+    let stamps = format!("{} ladfn={} tmpl_alg={} prov={}", SINDEC_VERSION, LADDER_STAMP, krhom::colored::tmpl::TMPL_ALG, stamp);
     let cache_abs = std::fs::canonicalize(&cache).map(|p| p.display().to_string()).unwrap_or_else(|_| cache.clone());
     // the governing key of the attempt lines of a run: an attempt line counts for a resume only
     // under a header with exactly this key (mode, λ, N, field, set, cache, stamps, seed, provider)
@@ -745,13 +745,13 @@ fn cmd_run(args: &[String], replay: bool) {
 /// child: one Exact whole-ladder hom_space call, prints "RESULT labels fs ft unknowns d secs dim computed"
 fn calib_one<F: Field>(args: &[String], job: &[String]) {
     let lam = parse_lam(&opt(args, "--lam").expect("--lam"));
-    let a = krhom::smapio::parse_rungs(&job[0]).unwrap();
-    let b = krhom::smapio::parse_rungs(&job[1]).unwrap();
+    let a = krhom::library::smapio::parse_rungs(&job[0]).unwrap();
+    let b = krhom::library::smapio::parse_rungs(&job[1]).unwrap();
     let d: i32 = job[2].parse().unwrap();
     let cache = opt(args, "--cache").map(|c| PathBuf::from(c).join("tmpl"));
-    let mut lib: krhom::tmpl::TmplLib<F> = krhom::tmpl::TmplLib::new(cache);
+    let mut lib: krhom::colored::tmpl::TmplLib<F> = krhom::colored::tmpl::TmplLib::new(cache);
     let t0 = Instant::now();
-    let ids = lib.try_hom_basis_cap(&krhom::tmpl::Window::new(&lam, &a), &krhom::tmpl::Window::new(&lam, &b), d, u128::MAX).unwrap();
+    let ids = lib.try_hom_basis_cap(&krhom::colored::tmpl::Window::new(&lam, &a), &krhom::colored::tmpl::Window::new(&lam, &b), d, u128::MAX).unwrap();
     let secs = t0.elapsed().as_secs_f64();
     let computed = lib.stats().computed;
     let _ = lib.save();
@@ -801,7 +801,7 @@ fn cmd_calib(args: &[String]) {
                 continue;
             }
             let lab = parse_lam(f[0]);
-            let pr = |w: &str| if w == "-" { vec![] } else { krhom::smapio::parse_rungs(w).unwrap() };
+            let pr = |w: &str| if w == "-" { vec![] } else { krhom::library::smapio::parse_rungs(w).unwrap() };
             let (a, b, d): (Vec<Rung>, Vec<Rung>, i32) = (pr(f[1]), pr(f[2]), f[3].parse().unwrap());
             let key = (lab.clone(), flows(&lab, &a), flows(&lab, &b), hom_unknowns(&lab, &a, &b, d), d);
             if done.contains(&key) || !seen.insert(key.clone()) {
@@ -814,7 +814,7 @@ fn cmd_calib(args: &[String]) {
             let redo: BTreeSet<(Vec<u8>, u128, u128, u128, i32)> = calls
                 .iter()
                 .map(|(u, lab, a, b, d)| {
-                    let pr = |w: &str| if w == "-" { vec![] } else { krhom::smapio::parse_rungs(w).unwrap() };
+                    let pr = |w: &str| if w == "-" { vec![] } else { krhom::library::smapio::parse_rungs(w).unwrap() };
                     (lab.clone(), flows(lab, &pr(a)), flows(lab, &pr(b)), *u, *d)
                 })
                 .collect();
@@ -848,7 +848,7 @@ fn cmd_calib(args: &[String]) {
                     continue;
                 }
                 let cmd = vec!["calib-one".to_string(), "--lam".into(), labels_str(&lab), "--field".into(), field.clone(), "--cache".into(), cache.clone(), "--".into(), a.clone(), b.clone(), d.to_string()];
-                let pr = |w: &str| if w == "-" { vec![] } else { krhom::smapio::parse_rungs(w).unwrap() };
+                let pr = |w: &str| if w == "-" { vec![] } else { krhom::library::smapio::parse_rungs(w).unwrap() };
                 let (fs, ft) = (flows(&lab, &pr(&a)), flows(&lab, &pr(&b)));
                 let (line, w, peak, killed) = supervised(&cmd, limit, rss, 1);
                 let rec = match (line, killed) {

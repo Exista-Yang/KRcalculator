@@ -5,17 +5,17 @@
 //! inside the tests that build those templates). Ignored (run once each, timings reported):
 //! A7(iv) a + b <= 9, A9 (3,3), A11 on (2,2), the release performance targets of §3.6 and the
 //! (2,2,2,2) FlowIndex.
-use krhom::coset::*;
-use krhom::field::{Field, F31};
-use krhom::local::{fixed_points, localize_map};
-use krhom::mpoly::Poly;
-use krhom::pmat::PMat;
-use krhom::sbim::SBim;
-use krhom::schur::{crossing_terms, Elt, Schur, Tid};
-use krhom::sexpr::*;
-use krhom::smap::*;
-use krhom::tmpl::*;
-use krhom::web::{Dir, Rung};
+use krhom::combinat::coset::*;
+use krhom::algebra::field::{Field, F31};
+use krhom::soergel::local::{fixed_points, localize_map};
+use krhom::algebra::mpoly::Poly;
+use krhom::algebra::pmat::PMat;
+use krhom::soergel::sbim::SBim;
+use krhom::combinat::schur::{crossing_terms, Elt, Schur, Tid};
+use krhom::colored::sexpr::*;
+use krhom::colored::smap::*;
+use krhom::colored::tmpl::*;
+use krhom::combinat::web::{Dir, Rung};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -279,7 +279,7 @@ fn block_ladders(lam: &[u8], extra: Option<Rung>) -> Vec<Expr> {
 /// a dummy SBim carrying only bottom labels and rungs (enough for local::fixed_points)
 fn fp_sbim(x: &Expr) -> SBim<F> {
     let lab: Vec<usize> = x.bottom.iter().map(|&a| a as usize).collect();
-    let (ring, voff) = krhom::sbim::bottom_ring(&lab);
+    let (ring, voff) = krhom::soergel::sbim::bottom_ring(&lab);
     SBim { n: 2 * x.k(), ring, voff, bot_labels: lab.clone(), top_labels: lab, fdeg: vec![], top: vec![], shift: 0, rungs: x.rungs.clone() }
 }
 
@@ -359,7 +359,7 @@ fn a1_cosets() {
                 assert_eq!(union, low_mask(cs.roots.k), "unrank: masks do not cover the roots");
             }
         }
-        let tabs = krhom::schur::tables(lam, mu);
+        let tabs = krhom::combinat::schur::tables(lam, mu);
         let mut total = 0u64;
         let mut all = vec![];
         for t in &tabs {
@@ -1381,7 +1381,7 @@ fn a13_cache_header_and_corruption() {
     assert_eq!((l3.stats().rejected, l3.stats().computed), (1, 1), "corrupted header not rejected");
     assert!(lib.get(ids[0]).phi.sub(&l3.get(ids3[0]).phi).is_zero());
     // a different field does not read F31 files (the name and header carry the field)
-    let mut l4: TmplLib<krhom::field::F32b> = TmplLib::new(Some(dir));
+    let mut l4: TmplLib<krhom::algebra::field::F32b> = TmplLib::new(Some(dir));
     let _ = l4.hom_basis(&w1, &w0, 1);
     assert_eq!(l4.stats().loaded, 0, "an F32b library loaded an F31 cache file");
 }
