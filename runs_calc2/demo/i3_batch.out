@@ -1,0 +1,25 @@
+name: L6a5{0,1}
+gl_N for N in [2]  strands 2  crossings 3  components 1  colors [1]
+braid: 1 1 1
+closure: tower (Right end first)
+coefficients: Q
+time 0.01s
+N = 2
+  Poincare polynomial: t^0q^-3 + t^0q^-1 + t^2q^-5 + t^3q^-9
+  total rank: 4
+  Euler characteristic: q^-1 + q^-3 + q^-5 - q^-9
+
+name: bad
+error: bad: exit 1 (unsupported)
+
+name: "q"
+gl_N for N in [2]  strands 3  crossings 4  components 1  colors [1]
+braid: 1 -2 1 -2
+closure: tower (Right end first)
+coefficients: Q
+time 0.04s
+N = 2
+  Poincare polynomial: t^-2q^5 + t^-1q^1 + t^0q^-1 + t^0q^1 + t^1q^-1 + t^2q^-5
+  total rank: 6
+  Euler characteristic: q^5 + q^-5
+

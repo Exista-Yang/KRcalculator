@@ -1,0 +1,16 @@
+gl_N for N in [2]  strands 2  crossings 3  components 1  colors [1]
+braid: 1 1 1
+closure: tower (Right end first), reduced (strand at bottom position 0 marked)
+coefficients: Q
+convention: knotjob (q -> q^-1)
+time 0.01s
+N = 2
+  Poincare polynomial: t^0q^2 + t^2q^6 + t^3q^8
+  total rank: 3
+  Euler characteristic: -q^8 + q^6 + q^2
+  table (rows t, columns q):
+  t\q  2  4  6  8
+    0  1
+    1
+    2        1
+    3           1

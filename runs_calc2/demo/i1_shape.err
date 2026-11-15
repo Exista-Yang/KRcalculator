@@ -1,0 +1,1 @@
+krhom: N = 130 with color 2: the exact 2-strand engine supports a(N - a) <= 255 for every color a (here 2 * 128 = 256), i.e. N <= 256 for color 1, N <= 129 for color 2, N <= 88 for color 3

@@ -1171,12 +1171,16 @@ impl<F: Field> SIndec<F> {
     /// (`dec_word(a, R·w[j..])`, the ordinary machinery, which never meets the non-local splitting
     /// of L_p). Returns per kept (q, s) the family (ι: L_q → X, π: X → L_q) transported through the
     /// commutation isomorphism, Π∘Ι = δ. When L_a is indecomposable (L_a = B_a), Y = B_a·R·w[j..]
-    /// and the family is a basis of the multiplicity space of b_q⟨s⟩ in char X, which is what the
-    /// callers' `len == mx` check requires. When L_a is decomposable, dec_word only decomposes
-    /// B_a ⊗ R·w[j..] (the family would have the term multiplicity, not that of char X, which
-    /// also counts the extra summands of L_a), so the reroute is not used: None (review engine #1;
-    /// fail-closed, the other routes are tried). None also if R does not commute past the last
-    /// rung of w or w[..j] is not a canonical ladder.
+    /// and the family is a basis of the multiplicity space of b_q⟨s⟩ in char X. When L_a is
+    /// decomposable (not checked here), dec_word only decomposes B_a ⊗ R·w[j..]: the family has
+    /// the multiplicity of b_q⟨s⟩ in that product, which can be smaller than its multiplicity mx
+    /// in char X (char X also counts the extra summands of L_a). The callers require exactly mx
+    /// pairs, so such a family is rejected (DecErr::Check; fail-closed, never a wrong map) unless
+    /// the sizes match; when they match, the downstream checks (Π∘Ι = δ, Σιπ = E) certify it.
+    /// (Review engine #1. Returning None for a decomposable `a` was tried in CALC-2 and reverted:
+    /// the certified l2222_n4 jobs 1812, 2052, 2086 and 2298 use such reroutes; see
+    /// docs/colored_design/calc/CALC_2_report.md.) None if R does not commute past the last rung
+    /// of w or w[..j] is not a canonical ladder.
     #[allow(clippy::type_complexity)]
     fn reroute_family(&mut self, p: Tid, r: Rung) -> Result<Option<BTreeMap<(Tid, i32), (Vec<MapId>, Vec<MapId>)>>, DecErr> {
         if std::env::var("KRHOM_M5I_NO_REROUTE").is_ok() {
@@ -1195,9 +1199,6 @@ impl<F: Field> SIndec<F> {
         let ch = self.schur.ladder_char(&w1);
         let a = self.schur.expand(&ch).into_iter().map(|t| t.0).find(|&q| canonical_ladder(&mut self.schur, q) == w1);
         let Some(a) = a else { return Ok(None) };
-        if !is_indecomposable_of(&mut self.schur, &w1, a) {
-            return Ok(None);
-        }
         let key = (p, (r.i, r.dir as u8, r.r));
         if !self.busy.insert(key) {
             return Err(DecErr::Check(format!("M5i reroute cycle at {} ⊗ {}", self.tfmt(p), crate::smapio::rung_str(&r))));
