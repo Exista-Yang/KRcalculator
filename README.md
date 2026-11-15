@@ -17,14 +17,28 @@ For a knot colored by ∧², N = 2 gives `t^0q^0` (∧²C² is one-dimensional),
 ```sh
 git clone https://github.com/Exista-Yang/KRcalculator.git && cd KRcalculator
 cargo build --release                     # edition 2024, so Rust 1.85 or newer; binaries go to target/release/
-tools/fetch_library.sh l222_n4 l2222_n4   # only for colored braids on 3-4 strands; run once, about 2 min
+tools/fetch_library.sh l222_n4 l2222_n4   # only for colored braids on 3-4 strands; run once
+tools/smoke.sh                            # checks known values in a few seconds (more with the libraries)
 ```
+
+**What can I compute, and how long does it take?**
+
+| Input | Example | Typical time |
+|---|---|---|
+| uncolored, ≤ 5 strands, any N ≤ 32 | `krhom 2,3,4 --knot 8_19` | seconds (12-crossing 4-strand knots: up to minutes) |
+| colored, 2 strands (T(2,n)), colors ≤ 3 | `krhom 2,3,4 --braid aaa --colors 2` | ∧²: < 1 s; ∧³: seconds to an hour |
+| color 2, 3 strands, N ≤ 4 (library `l222_n4`) | `krhom 2,3,4 --knot 4_1 --colors 2` | minutes; large 12-crossing knots up to hours |
+| color 2, 4 strands, N ≤ 4 (library `l2222_n4`) | `krhom 2,3,4 --knot 6_1 --colors 2 --reduced --checkpoint run61` | hours per prime: check first with `--estimate` |
+| anything else colored (mixed colors on ≥ 3 strands, colors ≠ 2 on 3–4 strands, ≥ 5 strands) | — | refused with a message (exit 1) |
+
+Use `--estimate` before a 3–4-strand run to see the number of evaluation points and an extrapolated time, `--checkpoint DIR` so that an interrupted run continues where it stopped, and `--reduced` to cut the cost of 4-strand runs about sixfold.
 
 The crate depends only on `num-bigint`, `num-integer`, `num-rational`, `num-traits` and `rand`.
 
 **Fetching libraries.** Run `tools/fetch_library.sh` from inside the clone. It needs bash, git, tar with gzip, `sha256sum` or `shasum`, and the usual awk, sed, grep, find and mktemp.
 - It fetches data commit `ee548d2` of the orphan branch `data-gl6` from the repository you cloned (`--repo URL` selects another source).
-  - The download is about 200 MB, because the branch history comes along. The commit's own tree is 168 MB.
+  - It downloads only the library chunks of that commit (a partial fetch of about 40 MB); if the server refuses partial fetches it falls back to a full fetch.
+  - `--url BASE` instead downloads release assets over HTTPS (prepared by `tools/dev/make_release_assets.sh`) and verifies them against `data/`.
   - The branch is named after the parked (3,3,3) gl_6 work it also stores. The two libraries krhom uses are for N ≤ 4.
 - It installs one directory per library and prime: 21 MB per prime for `l222_n4` and 68–75 MB per prime for `l2222_n4`.
   - The install root is `--root DIR`, else `KRHOM_LIB_DIR`, else `${XDG_CACHE_HOME:-$HOME/.cache}/krhom/lib`.
@@ -160,12 +174,18 @@ target/release/krhom 2,3,4 --braid "$w" --colors 2
 ## Usage
 
 ```
-krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS) [--colors c | c1,c2,...] [--reduced]
-               [--table] [--json OUT] [--csv OUT] [--no-simplify] [--check-library] [--lib-dir DIR]
+krhom N[,N...] (--braid WORD [--strands n] | --knot NAME | --link NAME | --pd PD | --file BRAIDS)
+               [--colors c | c1,c2,...] [--reduced [--mark K]] [--estimate] [--checkpoint DIR]
+               [--table] [--latex OUT] [--json OUT] [--csv OUT] [--no-simplify] [--check-library] [--lib-dir DIR]
                [--seed S] [--seed-retries K] [--mem-mb M] [--mem-cap-mb M]
                [--colored-method cable|cube|singular] [--cube] [--closure tower|exact] [--end right|left|alt]
 ```
 
+- **Knot and link names.** `--knot 6_1` and `--link L2a1{1}` take the braid from `data/knots_upto12.jsonl` / `data/links_upto11.jsonl` (KnotInfo/LinkInfo chirality and orientations). Unknown names list close matches.
+- **`--mark K`.** With `--reduced`, mark link component K (0-based, in the order of `--colors`) instead of the component at bottom position 0; krhom conjugates the braid, which does not change the link.
+- **`--estimate`.** On the 3–4-strand route, time one evaluation point per prime and print the number of points and an extrapolated time and memory; nothing is computed.
+- **`--checkpoint DIR`.** On the 3–4-strand route, save progress in DIR. Rerunning the same command after an interruption continues where it stopped and prints the same result as an uninterrupted run; a different input with the same DIR is refused.
+- **`--latex OUT`.** Write the bigraded tables as a standalone LaTeX document (one tabular per N).
 - **N list.** The first argument, for example `2,3,4`. Each value is an integer ≥ 1. The list is sorted and duplicates are removed.
 - **Braid words.**
   - Signed integers, for example `"1 -2 1 -2"`, separated by spaces or commas.
@@ -261,7 +281,7 @@ Progress and the per-prime checks go to stderr.
 | ∧² 6_1, 7_6, 7_7, 4 strands, reduced (sharded `sbox`, 4 shards × 1 thread, 4-thread finish), per prime | 216 box points at 26–40 s each; 0.70–1.01 h wall; 2.0–3.1 core-hours of shards (6_1: 2.2, 7_6: 3.0–3.1, 7_7: 2.0–2.9) | 2.7–2.9 GB per shard |
 | ∧², 4 strands, unreduced | Not run. Estimate: 1296 box points instead of 216, so about 26.4 s × 1296 ≈ 9.5 core-hours per prime, if unreduced points cost the same as reduced ones. | |
 
-krhom runs a word in a single process and cannot resume an interrupted run. For multi-hour 4-strand words, use `--reduced`, or use the resumable, sharded `sbox box` / `sbox finish` driver.
+For multi-hour 4-strand words, run `--estimate` first, then use `--reduced` and `--checkpoint DIR` (an interrupted run resumes). For several machines, the sharded `sbox box` / `sbox finish` driver splits the evaluation points.
 - The 6_1, 7_6 and 7_7 runs used `tools/dev/box.sh` (with `tools/dev/finish.sh`). It takes the library directory and cost table from the environment (`CACHE`, `COSTS`); see its header.
 - [docs/CALCULATOR.md](docs/CALCULATOR.md) §8 describes `sbox`.
 
@@ -429,15 +449,16 @@ Every other value listed here reproduces a known formula, a table or a duality.
 - **No integral coefficients.** There are no Z coefficients and no torsion. Results are over Q, cross-checked by two large primes. Small characteristic is not supported.
 - **Uncolored size.** About 5 strands is the practical limit, because idempotent memory grows quickly with the number of strands; a 6-strand scan reached 77 GB. The code stops at 10 strands and N = 32.
 - **Colored on 2 strands.** Colors are limited to 1..3, and color 3 is slow: T(2,9) takes over an hour per prime and about 3 GB. For ∧³ at larger N, raise the closure cap with `--mem-cap-mb`, for example `--mem-cap-mb 4096`.
-- **Long runs.** 4-strand words take hours, and krhom cannot resume an interrupted run. No knot of braid index 4 has been computed unreduced.
+- **Long runs.** 4-strand words take hours (use `--checkpoint`). No knot of braid index 4 has been computed unreduced.
 - **Unproven inputs.** The Foam_N kill rule is validated but not proven, and the random-point checks are probabilistic.
-- **Known issues:** inputs beyond the size limits are not all refused up front. Uncolored input with more than 10 strands or N > 32, and colored 2-strand input with an exact-oracle algebra above 5·10^7 dimensions (for example color 3 at N ≥ 36), stop inside the engine and are reported as an engine failure (exit 2) instead of an unsupported input (exit 1).
+- **Size limits** are checked before any computation: the uncolored tower closure supports ≤ 10 strands and N ≤ 32 (`--closure exact` has no N cap), and the exact 2-strand route needs ∏ C(N, a_i) ≤ 5·10^7 (unreduced color 3: N ≤ 35; color 2: N ≤ 119). Larger inputs exit with code 1 and a message.
 
 ## Repository map
 
 ```
 src/                  library crate `krhom` (module map in src/lib.rs)
   lib.rs, calc.rs     crate root; calculator support: library registry and checks, braid parser, prime comparison, JSON
+  calc_ckpt.rs        resumable --checkpoint runs of the 3-4-strand route
   input/              crossing (braid generators, colored Rickard complexes), pd (PD codes -> braids)
   algebra/            field, poly, mpoly, laurent, pmat, sparse, dense, linsys, symfun (Grassmannians)
   combinat/           web, moy (MOY oracle), hecke, schur (q-Schur oracle: Hom formula, decat_chi, kill rule), coset, dcoset
@@ -448,8 +469,10 @@ src/                  library crate `krhom` (module map in src/lib.rs)
   library/            homprov, sindec, smapio, leaves, leafgen, rexplan (Hom provider, certification, library, light leaves)
   reference/          cube (full cube), cabling (reference methods)
   legacy/             algebra, hom, untrunc (obsolete models, not used by the calculator)
-  bin/krhom.rs        the calculator; the other files in src/bin are developer tools (feature "dev")
-tools/                fetch_library.sh, randcheck.py, batch_check.py (table checks), wang.py (Wang's formulas)
+  bin/krhom.rs        the calculator (bin/krhom/cli_ext.rs: --knot/--link, --mark, --latex, --estimate, limit checks);
+                      the other files in src/bin are developer tools (feature "dev")
+tools/                fetch_library.sh, smoke.sh (quick known-value check), randcheck.py, batch_check.py (table checks),
+                      wang.py (Wang's formulas)
 tools/dev/            developer scripts: sharded box driver, library persistence and analysis (README.md)
 data/                 knot and link tables, libraries.tsv (library registry), libstatus/
 results/              uncolored/ table checks, colored_gl4/ colored gl_4 results (README.md)
@@ -457,6 +480,8 @@ docs/CALCULATOR.md    full calculator reference
 docs/dev/             PLAN.md (goals, model, conventions, milestone history), colored_design/ (design,
                       specifications, run reports and reviews; start with SYNTHESIS.md), README.md (index)
 tests/, examples/     integration tests (with Wang references and fixtures) and small developer programs
+.github/workflows/    CI: build, tests, dev build, smoke test
+CHANGELOG.md          release notes
 ```
 
 Old module paths (`krhom::sbim`, `krhom::xengine`, `krhom::colored::cable`, ...) still resolve through re-exports in `src/lib.rs`.
