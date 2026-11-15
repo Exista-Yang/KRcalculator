@@ -43,7 +43,7 @@ certification checks; do not edit src/leaves.rs except where stated.
 ## Opt-in output features (user-facing; default output unchanged)
 15. `--table`: after each N block print the bigraded table (rows t ascending, columns q ascending, entries = dims,
     blank for 0), KnotJob-style. Also accepted in --file mode.
-16. `--convention knotjob`: print the Poincare polynomial, table and Euler characteristic with q -> q^{-1} (t unchanged),
+16. DROPPED by the user (2026-11-14): do not ship `--convention knotjob`; remove it if implemented. The q -> q^{-1} relation to Bar-Natan/KnotJob is documented in the README instead. (Original text kept for the record:) `--convention knotjob`: print the Poincare polynomial, table and Euler characteristic with q -> q^{-1} (t unchanged),
     so that the right-handed trefoil (`aaa`) at N = 2 reads q + q^3 + t^2q^5 + t^3q^9 (Bar-Natan, KnotJob). VERIFY the
     map first against Bar-Natan's trefoil and against tools/batch_check.py's KnotInfo comparison (its `kh` check
     documents the table convention); if the map is not exactly q -> q^{-1}, implement the verified map or skip this item

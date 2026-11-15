@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "KRcalculator (krhom): a calculator for exterior-colored Khovanov-Rozansky gl_N link homology"
+abstract: >-
+  krhom computes uncolored and wedge^a-colored Khovanov-Rozansky gl_N homology of braid closures over Q,
+  using localized singular Soergel bimodules and the universal-construction closure. All code was written by
+  Claude (Anthropic); the author provided the mathematical direction.
+authors:
+  - family-names: Yang
+    given-names: Hongjian
+    affiliation: Stanford University
+version: 0.1.0
+license:
+  - MIT
+  - Apache-2.0
+repository-code: "https://github.com/Exista-Yang/KRcalculator"
+keywords:
+  - Khovanov-Rozansky homology
+  - link homology
+  - colored link homology
+  - singular Soergel bimodules
+  - knot theory

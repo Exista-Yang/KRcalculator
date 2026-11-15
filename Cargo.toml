@@ -2,6 +2,8 @@
 name = "krhom"
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["Hongjian Yang"]
 description = "Colored (exterior power) Khovanov-Rozansky gl_N link homology via singular Soergel bimodules and the universal-construction closure"
 
 [dependencies]
