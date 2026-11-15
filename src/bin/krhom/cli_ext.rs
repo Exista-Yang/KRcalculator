@@ -394,7 +394,7 @@ pub fn box_estimate(o: &Opts, out: &mut Outcome, a: (&RegEntry, &InstalledLib), 
         tot += wall;
         mem = mem.max(mb);
         eprintln!("[{}] estimate: library {:.1}s, record scan {:.1}s, one box point {:.1}s (determinant pass {:.2}s, peak {} MB), VmHWM {} MB", e.field, e.lib_build_secs, e.record_secs, e.point_secs, e.det_secs, e.point_peak_bytes >> 20, e.vmhwm_kb / 1024);
-        lines.push(format!("{}: {} box points ({}), library {:.0}s + record scan {:.0}s + {} x {:.1}s per point / {} threads + scaling check -> about {} wall, peak memory about {} MB", e.field, e.points, if o.reduced { "reduced grid" } else { "unreduced grid" }, e.lib_build_secs, e.record_secs, e.points, e.point_secs + e.det_secs, threads, hms(wall), mb));
+        lines.push(format!("{}: {} box points ({}), library {:.0}s + record scan {:.0}s + {} x {:.1}s per point (replay + determinant pass) / {} threads + scaling check -> about {} wall, peak memory about {} MB", e.field, e.points, if o.reduced { "reduced grid" } else { "unreduced grid" }, e.lib_build_secs, e.record_secs, e.points, e.point_secs + e.det_secs, threads, hms(wall), mb));
     }
     lines.push(format!(
         "total: about {} wall for {} prime{} at {} threads, peak memory about {} MB (an estimate from one timed point per prime; the closure phase is not included and adds minutes on 4 strands; nothing was computed)",
