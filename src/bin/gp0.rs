@@ -469,13 +469,27 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
             );
         }
         // C2-7 per-predecessor final words (joint mode)
-        let finals = leaves.final_pred_words(&mut s, &mut sc, &x, &plan, id);
+        leaves.detours = args.iter().any(|a| a == "--detours");
+        let allw = leaves.step_words(&mut s, &mut sc, &x, &plan, id, leaves.detours);
+        let mut kk: Vec<_> = allw.keys().cloned().collect();
+        kk.sort();
+        let mut wld = std::collections::HashMap::new();
+        // (level, to, from) of a replaced step -> the replacement word's own score sw (review
+        // leaves #1: the step is not free; its cost is that of the step into W')
+        let mut repl = std::collections::HashMap::new();
+        for (lv, tt, i) in kk.iter().cloned().filter(|k| k.0 < x.len()) {
+            let wa = &allw[&(lv, tt, i)];
+            let (tp, wp) = plan[lv - 1][i].clone();
+            let g = sc.step(&mut s, tp, &x[lv - 1]).into_iter().find(|e| e.0 == tt).map(|e| e.1).unwrap();
+            let sw = krhom::leaves::step_score_w(&mut wld, lam, &wp, &x[lv - 1], wa, &g);
+            println!("  detour L{}: {} -> {}: [{}]·{} -> [{}] score_w {}", lv, s.table(tp).fmt(), s.table(tt).fmt(), rungs_str(&wp), rungs_str(&[x[lv - 1]]), rungs_str(wa), sw);
+            let e = repl.entry((lv, tt, tp)).or_insert(0u128);
+            *e = (*e).max(sw);
+        }
+        let finals: std::collections::HashMap<(Tid, usize), Vec<Rung>> = allw.iter().filter(|(k, _)| k.0 == x.len()).map(|(k, v)| ((k.1, k.2), v.clone())).collect();
         let mut wlc = std::collections::HashMap::new();
         let mut keys: Vec<_> = finals.keys().cloned().collect();
         keys.sort();
-        // (to, from) of a replaced final step -> the replacement word's own score sw (review
-        // leaves #1: the step is not free; its cost is that of the step into W')
-        let mut repl = std::collections::HashMap::new();
         for (qq, i) in keys {
             let wa = &finals[&(qq, i)];
             let (tp, wp) = plan[x.len() - 1][i].clone();
@@ -486,12 +500,13 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
                 over -= (st.score_w > 100_000) as usize;
                 over += (sw > 100_000) as usize;
             }
-            let e = repl.entry((qq, tp)).or_insert(0u128);
+            let e = repl.entry((x.len(), qq, tp)).or_insert(0u128);
             *e = (*e).max(sw);
         }
-        // max over the steps actually built: a replaced final step counts with its replacement's
-        // score sw (not 0)
-        let mx = steps.iter().map(|st| if st.level == x.len() { repl.get(&(st.to, st.from)).copied().unwrap_or(st.score_w) } else { st.score_w }).max().unwrap_or(0).max(mx.min(0));
+        // max over the steps actually built: a replaced step (a detour at a lower level or a
+        // per-predecessor final word) counts with its replacement's score sw (not 0)
+        let eff = |st: &krhom::leaves::PlanStep| repl.get(&(st.level, st.to, st.from)).copied().unwrap_or(st.score_w);
+        let mx = steps.iter().map(|st| eff(st)).max().unwrap_or(0).max(mx.min(0));
         // exit chain dry run
         let wq = plan[x.len()].iter().find(|e| e.0 == q).map(|e| e.1.clone()).unwrap_or_default();
         let lq = canonical_ladder(&mut s, q);
@@ -504,6 +519,8 @@ fn steps_census(lam: &[u8], spec: &str, args: &[String]) {
                 Err(e) => format!("exit chain: {}", e),
             }
         };
-        println!("  max step {} ; steps > 1e5: {} ; W_q [{}] {}", mx, over, rungs_str(&wq), ex);
+        let over2 = steps.iter().filter(|st| eff(st) > 100_000).count();
+        let _ = over;
+        println!("  max step {} ; steps > 1e5: {} ; W_q [{}] {}", mx, over2, rungs_str(&wq), ex);
     }
 }

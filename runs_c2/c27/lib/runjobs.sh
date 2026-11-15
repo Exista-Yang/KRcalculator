@@ -13,10 +13,10 @@ one() {
   J="$1"
   grep -F "\"job\":\"$J\"" $OUT 2>/dev/null | grep -q '"ok":true' && return
   t0=$(date +%s)
-  R=$( (ulimit -v ${VLIM:-14000000}; KRHOM_LEAVES_C27=${C27:-1} KRHOM_COSTS_ANY_HOST=1 KRHOM_THREADS=${THR:-1} timeout ${WALL:-7200} ./target/release/libbuild one --lam 2,2,2,2 --n 4 --field $F --cache $CACHE --costs /home/user/work/costs_2222_c25.txt --provider m4c-lf --stamp-route $RF -- $J 2>>$D/${TAGP:-c27}_f${F}_${MODE}.stderr) | grep '^RESULT' | sed 's/^RESULT //')
+  R=$( (ulimit -v ${VLIM:-14000000}; KRHOM_LEAVES_C27=${C27:-1} KRHOM_COSTS_ANY_HOST=1 KRHOM_THREADS=${THR:-1} timeout ${WALL:-7200} ./target/release/libbuild one --lam 2,2,2,2 --n 4 --field $F --cache $CACHE --costs ${COSTS:-/home/user/work/costs_2222_c25.txt} --provider m4c-lf --stamp-route $RF -- $J 2>>$D/${TAGP:-c27}_f${F}_${MODE}.stderr) | grep '^RESULT' | sed 's/^RESULT //')
   [ -z "$R" ] && R="{\"ok\":false,\"errors\":[{\"what\":\"child\",\"kind\":\"Killed\",\"text\":\"no RESULT (timeout or memory)\"}]}"
   echo "{\"job\":\"$J\",\"exit_wall\":$(( $(date +%s) - t0 )),\"result\":$R}" >> $OUT
   echo "$(date +%T) $J $(echo $R | grep -o '"ok":[a-z]*' | head -1) $(( $(date +%s) - t0 ))s"
 }
-export -f one; export F D OUT CACHE RF MODE TAGP
+export -f one; export F D OUT CACHE RF MODE TAGP COSTS
 cat $JF | xargs -P ${PAR:-1} -I{} bash -c 'one "{}"'

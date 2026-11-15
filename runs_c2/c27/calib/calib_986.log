@@ -1,0 +1,5 @@
+[costs] warning: /home/user/work/costs_2222_c25.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
+[calib] 2 distinct unmeasured windows
+[calib] [2, 2, 2, 2] E1.2,E0.1,F1.2,F0.1,E2.1,E1.1 -> E1.2,F1.1,F0.1,E0.1,E2.1 d 0 (216x64, unknowns 271848): 85.009s 1271 MB dim 1
+[calib] [2, 2, 2, 2] E1.2,F1.1,F0.1,E0.1,E2.1 -> E1.2,E0.1,F1.2,F0.1,E2.1,E1.1 d 0 (64x216, unknowns 271848): 48.463s 1008 MB dim 1
+calibration (windows): 536 records in runs_c2/c27/calib/costs_2222_c27.txt ({[0, 0, 6]: 6, [0, 1, 5]: 20, [0, 2, 2, 4]: 1, [0, 2, 4]: 20, [0, 3]: 10, [0, 3, 3]: 13, [0, 4]: 20, [0, 6]: 20, [1, 1, 4]: 8, [1, 2]: 4, [1, 2, 3]: 20, [1, 2, 4]: 3, [1, 3]: 20, [1, 3, 4]: 8, [1, 4]: 8, [1, 5]: 20, [2, 2]: 10, [2, 2, 2]: 126, [2, 2, 2, 2]: 93, [2, 3]: 20, [2, 3, 3]: 6, [2, 4]: 20, [3, 3]: 60}); 0 calls skipped by the time budget
