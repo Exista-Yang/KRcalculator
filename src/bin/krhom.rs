@@ -35,7 +35,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 const USAGE: &str = "usage: krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS) [--colors c | c1,c2,...] [--reduced]
-             [--table] [--convention krhom|knotjob] [--json OUT] [--csv OUT] [--no-simplify] [--check-library] [--lib-dir DIR]
+             [--table] [--json OUT] [--csv OUT] [--no-simplify] [--check-library] [--lib-dir DIR]
              [--seed S] [--seed-retries K] [--mem-mb M] [--mem-cap-mb M]
              [--colored-method cable|cube|singular] [--cube] [--closure tower|exact] [--end right|left|alt]
   N        gl_N ranks, a comma-separated list (e.g. 2,3,4)
@@ -45,12 +45,11 @@ const USAGE: &str = "usage: krhom N[,N...] (--braid WORD [--strands n] | --pd PD
   --reduced  reduced homology (the strand at bottom position 0 is marked)
   --file   one braid per line, optional \"NAME;\" prefix, '#' comments; same N/colors/--reduced for all
   --table  also print the bigraded table of each N (rows t, columns q, blank = 0)
-  --convention knotjob  print with q -> q^-1 (Bar-Natan / KnotJob gradings: aaa at N=2 is q + q^3 + t^2q^5 + t^3q^9)
   --json OUT  machine-readable results (an array with --file); --csv OUT rows name,N,reduced,t,q,rank
   colored 3-4 strands (uniform color 2, N <= 4) need the prebuilt library: tools/fetch_library.sh l222_n4 l2222_n4
   results are over Q (two large primes must agree; the full cube is exact over Q); docs/CALCULATOR.md";
 
-const VALUE_OPTS: [&str; 19] = ["--convention", "--pd", "--braid", "--strands", "--colors", "--colored-method", "--field", "--closure", "--end", "--json", "--csv", "--file", "--lib-dir", "--seed", "--seed-f32b", "--seed-retries", "--mem-mb", "--mem-cap-mb", "--name"];
+const VALUE_OPTS: [&str; 18] = ["--pd", "--braid", "--strands", "--colors", "--colored-method", "--field", "--closure", "--end", "--json", "--csv", "--file", "--lib-dir", "--seed", "--seed-f32b", "--seed-retries", "--mem-mb", "--mem-cap-mb", "--name"];
 const FLAG_OPTS: [&str; 9] = ["--table", "--cube", "--reduced", "--single-prime", "--no-simplify", "--check-library", "--box-live", "--help", "-h"];
 
 #[derive(Clone, Debug)]
@@ -77,8 +76,6 @@ struct Opts {
     env_any_host: bool,
     /// --table: print the bigraded table after each N block
     table: bool,
-    /// --convention knotjob: print (and write) every result with q -> q^-1
-    knotjob: bool,
 }
 
 enum Input {
@@ -180,11 +177,6 @@ fn parse_args(args: &[String]) -> Result<(Opts, Vec<Item>, Option<String>, Optio
     let retries = num("--seed-retries", Some(2))?.unwrap();
     let mem_mb = num("--mem-mb", None)?;
     let mem_cap_mb = num("--mem-cap-mb", None)?;
-    let knotjob = match get("--convention").as_deref() {
-        None | Some("krhom") => false,
-        Some("knotjob") => true,
-        Some(c) => return Err(un(format!("--convention must be krhom or knotjob, not {}", c))),
-    };
     if get("--field").is_some() {
         eprintln!("krhom: note: --field is a developer option and has no effect; results are over Q");
     }
@@ -209,7 +201,6 @@ fn parse_args(args: &[String]) -> Result<(Opts, Vec<Item>, Option<String>, Optio
         env_mem_cap: std::env::var_os("KRHOM_MEM_CAP_MB").is_some(),
         env_any_host: std::env::var_os("KRHOM_COSTS_ANY_HOST").is_some(),
         table: flag("--table"),
-        knotjob,
     };
     let nin = ["--braid", "--pd", "--file"].iter().filter(|k| get(k).is_some()).count();
     if nin != 1 {
@@ -509,15 +500,6 @@ fn exact2_err(e: String) -> CalcErr {
     }
 }
 
-/// Mirror the q-grading (q -> q^-1, t unchanged): krhom's convention to Bar-Natan / KnotJob.
-fn to_knotjob(p: &Poincare) -> Poincare {
-    let mut r = Poincare::default();
-    for (&(t, q), &k) in &p.c {
-        r.add_term(t, -q, k);
-    }
-    r
-}
-
 /// The bigraded table: rows t ascending, columns q ascending (step 2 when every q has the same
 /// parity), entries = dimensions, blank for 0.
 fn table_lines(p: &Poincare) -> Vec<String> {
@@ -739,7 +721,7 @@ fn item_json(item: &Item, o: &Opts, r: &Result<Outcome, CalcErr>, secs: f64) -> 
             let st = |b: &Option<BraidWord>| b.as_ref().map_or(0, |b| b.strands);
             let res: Vec<String> = out.results.iter().map(|(n, p)| format!("{{\"N\":{},\"P\":{},\"euler\":{}}}", n, poly_json(p), jstr(&p.euler().to_string()))).collect();
             format!(
-                "{{{},\"braid\":{},\"strands\":{},\"colors\":{:?},\"labels\":{:?},\"used_braid\":{},\"used_strands\":{}}},\"route\":{},\"convention\":{},\"coefficients\":{},\"library\":{},\"seeds\":{:?},\"mem_mb\":{},\"mem_cap_mb\":{},\"primes\":[{}],\"agree\":{},\"zero_N\":{:?},\"check_library\":{},\"results\":[{}],\"secs\":{:.2},\"env\":{{{}}},\"error\":null}}",
+                "{{{},\"braid\":{},\"strands\":{},\"colors\":{:?},\"labels\":{:?},\"used_braid\":{},\"used_strands\":{}}},\"route\":{},\"coefficients\":{},\"library\":{},\"seeds\":{:?},\"mem_mb\":{},\"mem_cap_mb\":{},\"primes\":[{}],\"agree\":{},\"zero_N\":{:?},\"check_library\":{},\"results\":[{}],\"secs\":{:.2},\"env\":{{{}}},\"error\":null}}",
                 common,
                 bw(&out.orig),
                 st(&out.orig),
@@ -748,7 +730,6 @@ fn item_json(item: &Item, o: &Opts, r: &Result<Outcome, CalcErr>, secs: f64) -> 
                 bw(&out.used),
                 st(&out.used),
                 jstr(out.route),
-                jstr(if o.knotjob { "knotjob (q -> q^-1)" } else { "krhom" }),
                 jstr(&out.coefficients),
                 out.library.clone().unwrap_or("null".into()),
                 out.seeds,
@@ -820,13 +801,8 @@ fn main() {
     let mut jsons = vec![];
     for item in &items {
         let t0 = Instant::now();
-        let mut r = run_item(item, &o);
+        let r = run_item(item, &o);
         let secs = t0.elapsed().as_secs_f64();
-        if o.knotjob {
-            if let Ok(out) = r.as_mut() {
-                out.results = out.results.iter().map(|(&n, p)| (n, to_knotjob(p))).collect();
-            }
-        }
         let mut csv_rows = vec![];
         match &r {
             Ok(out) => {
@@ -834,9 +810,6 @@ fn main() {
                     println!("check-library: {}", c);
                 } else {
                     println!("coefficients: {}", out.coefficients);
-                    if o.knotjob {
-                        println!("convention: knotjob (q -> q^-1)");
-                    }
                     println!("time {:.2}s", secs);
                     let nm = csv_field(item.name.as_deref().unwrap_or_default());
                     for (nn, p) in &out.results {

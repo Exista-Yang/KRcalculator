@@ -325,52 +325,32 @@ fn batch_outputs_survive_a_kill() {
     assert!(sc.starts_with("name,N,reduced,t,q,rank\nfirst,5,false,"), "{}", sc);
 }
 
-/// CALC-2 items 15, 16: --table and --convention knotjob (Bar-Natan / KnotInfo: the right-handed
-/// trefoil aaa at N = 2 is q + q^3 + t^2q^5 + t^3q^9; reduced q^2 + t^2q^6 + t^3q^8).
+/// CALC-2 item 15: --table. CALC-3: --convention was removed (the user decided not to ship it);
+/// krhom's q-grading stays the inverse of Bar-Natan / KnotJob / KnotInfo (aaa at N = 2 is
+/// t^0q^-3 + t^0q^-1 + t^2q^-5 + t^3q^-9 here, q + q^3 + t^2q^5 + t^3q^9 there).
 #[test]
-fn table_and_knotjob_convention() {
-    let r = krhom(&["2", "--braid", "aaa", "--convention", "knotjob", "--table"]);
-    ok(&r, "knotjob");
-    assert!(r.out.contains("convention: knotjob (q -> q^-1)"), "{}", r.out);
-    assert!(r.out.contains("Poincare polynomial: t^0q^1 + t^0q^3 + t^2q^5 + t^3q^9"), "{}", r.out);
-    assert!(r.out.contains("Euler characteristic: -q^9 + q^5 + q^3 + q^1"), "{}", r.out);
-    assert!(r.out.contains("  table (rows t, columns q):\n  t\\q  1  3  5  7  9\n    0  1  1\n    1\n    2        1\n    3              1\n"), "{}", r.out);
-    let r = krhom(&["2", "--braid", "aaa", "--convention", "knotjob", "--reduced"]);
-    ok(&r, "knotjob reduced");
-    assert!(r.out.contains("Poincare polynomial: t^0q^2 + t^2q^6 + t^3q^8"), "{}", r.out);
-    // default output unchanged (no convention line, krhom gradings), JSON records the convention
+fn table_and_no_convention_option() {
+    let r = krhom(&["2", "--braid", "aaa", "--table"]);
+    ok(&r, "table");
+    assert!(!r.out.contains("convention"), "{}", r.out);
+    assert!(r.out.contains("Poincare polynomial: t^0q^-9"), "{}", r.out);
+    assert!(r.out.contains("  table (rows t, columns q):\n  t\\q  -9  -7  -5  -3  -1\n    0               1   1\n    1\n    2           1\n    3   1\n"), "{}", r.out);
+    // JSON has no convention field; default output has no table
     let d = empty_lib();
-    let (j1, j2) = (d.join("a.json"), d.join("b.json"));
+    let j1 = d.join("a.json");
     let a = krhom(&["2,3", "--braid", "1 1 1", "--strands", "2", "--colors", "2", "--json", j1.to_str().unwrap()]);
-    let b = krhom(&["2,3", "--braid", "1 1 1", "--strands", "2", "--colors", "2", "--convention", "knotjob", "--table", "--json", j2.to_str().unwrap()]);
     ok(&a, "default");
-    ok(&b, "knotjob colored");
-    assert!(!a.out.contains("convention:") && !a.out.contains("table"), "{}", a.out);
-    assert!(std::fs::read_to_string(&j1).unwrap().contains("\"convention\":\"krhom\""));
-    assert!(std::fs::read_to_string(&j2).unwrap().contains("\"convention\":\"knotjob (q -> q^-1)\""));
-    // the knotjob polynomial is the default one with q -> q^-1, term by term
-    let poly = |s: &str, n: usize| -> Vec<(i32, i32, i64)> {
-        let l = s.lines().skip_while(|l| *l != format!("N = {}", n)).nth(1).unwrap();
-        let mut v: Vec<(i32, i32, i64)> = l.trim().trim_start_matches("Poincare polynomial: ").split(" + ").filter(|x| *x != "0").map(|x| {
-            let (c, r) = x.split_once('t').unwrap();
-            let (t, q) = r.trim_start_matches('^').split_once("q^").unwrap();
-            (t.parse().unwrap(), q.parse().unwrap(), if c.is_empty() { 1 } else { c.parse().unwrap() })
-        }).collect();
-        v.sort();
-        v
-    };
-    for n in [2, 3] {
-        let mut flipped: Vec<_> = poly(&a.out, n).into_iter().map(|(t, q, k)| (t, -q, k)).collect();
-        flipped.sort();
-        assert_eq!(flipped, poly(&b.out, n), "N = {}", n);
-    }
+    assert!(!a.out.contains("convention") && !a.out.contains("table"), "{}", a.out);
+    assert!(!std::fs::read_to_string(&j1).unwrap().contains("\"convention\""));
     // --table in --file mode, zero table
     let f = d.join("t.txt");
     std::fs::write(&f, "u; 1\nz; aaa\n").unwrap();
     let r = krhom(&["1,2", "--file", f.to_str().unwrap(), "--colors", "2", "--table"]);
     ok(&r, "file table");
     assert!(r.out.contains("name: z") && r.out.contains("  table: 0") && r.out.contains("  table (rows t, columns q):"), "{}", r.out);
-    refused(&["2", "--braid", "aaa", "--convention", "rolfsen"], 1, "--convention must be krhom or knotjob");
+    // --convention is now an unknown option
+    refused(&["2", "--braid", "aaa", "--convention", "knotjob"], 1, "unknown argument \"--convention\"");
+    refused(&["2", "--braid", "aaa", "--convention", "krhom"], 1, "unknown argument \"--convention\"");
 }
 
 // ------------------------------------------------------------------ with the libraries (F3)
