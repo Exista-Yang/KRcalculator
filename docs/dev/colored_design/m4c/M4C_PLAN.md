@@ -3,7 +3,7 @@
 Date 2026-11-11. Read-only synthesis; nothing in the repository was compiled or run.
 Inputs (this folder): L1_eklp.md (paper extraction), L2_alt.md (alternatives), L3_code.md (code map), D1_eklp.md
 (design: Lemma A, rung-level), D2_light.md (design: padded cell-local EKLP), C_m4c.md (adversarial critique).
-Code: dev 277a21c. M5b data: origin/colored-m5 docs/colored_design/gl6/M5b_report.md, m4c/data/costs_333.txt.
+Code: dev 277a21c. M5b data: origin/colored-m5 docs/dev/colored_design/gl6/M5b_report.md, m4c/data/costs_333.txt.
 Paper keys as in L1: SLL = EKLP arXiv 2401.03053 (JEMS 2025); CORE = arXiv 2402.08673v2; EKo = arXiv 2105.08563;
 QR = arXiv 1405.5920; W = Williamson IMRN 2011.
 Tags: [V] verified for this synthesis (code read, paper text via L1/C, or the laptop-safe replica m4c/c_tools/hu.py,

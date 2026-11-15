@@ -1,4 +1,4 @@
-//! M4c B2: singlestep forms and the rex-chain planner (src/rexplan.rs), realized chains
+//! M4c B2: singlestep forms and the rex-chain planner (src/library/rexplan.rs), realized chains
 //! (`leafgen::realize_chain`) checked against exact windows at small λ.
 use krhom::combinat::dcoset::{reduced_for, top_labels};
 use krhom::algebra::field::{Field, F31};

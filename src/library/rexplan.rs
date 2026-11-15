@@ -3,7 +3,7 @@
 //! Pure combinatorics (no bimodule maps). Given two krhom words A, B that are both reduced
 //! expressions of the same double coset q (`dcoset::reduced_for`), the planner finds a chain
 //! A = Y_0 → Y_1 → … → Y_k = B of **local rex moves**, each realizable as a certified closed form
-//! of B1 (src/leafgen.rs) or as a theorem-level Assoc (B2):
+//! of B1 (src/library/leafgen.rs) or as a theorem-level Assoc (B2):
 //!
 //! | move | window | map (forward) | trust |
 //! |---|---|---|---|

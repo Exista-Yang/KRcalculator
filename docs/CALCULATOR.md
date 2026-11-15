@@ -215,7 +215,7 @@ Measured on the 4-core cloud machine (`KRHOM_THREADS=4`, both primes, this branc
 - Loading the 4-strand library takes 20–34 s per prime for short words and about 220 s for 6_1-sized words (1119 layer-A loads); 3 strands 0.1–6 s.
 - From earlier production runs (2 threads, per prime, both modes): 8-letter 3-strand knots
   100–1151 s, 10-letter 247–2564 s. F32b is about 1× F31 at 3 strands and 1–3× at 4 strands.
-- 4-strand class-A knots, measured reduced runs (C2-7, docs/colored_design/c2/C2_7_report.md §6;
+- 4-strand class-A knots, measured reduced runs (C2-7, docs/dev/colored_design/c2/C2_7_report.md §6;
   results/colored_gl4/gl4_2222_c27_compare.json, per-shard logs in runs_c2/c27/k4/out/ on branch archive-pre-restructure): `sbox box` with 4 shards of
   1 thread over the 216 reduced box points (54 per shard) + `sbox finish` (4 threads), per prime:
 

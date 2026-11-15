@@ -1,7 +1,7 @@
 # L3: M4c code map and failure analysis (read-only study, 2026-11-11)
 
 Sources: dev 277a21c (src identical to colored-m5 except libbuild/xscan/xengine and a small sindec delta);
-origin/colored-m5 docs/colored_design/gl6/M5b_report.md and M5b_measure.md; origin/data-gl6 m5b/f31 run logs
+origin/colored-m5 docs/dev/colored_design/gl6/M5b_report.md and M5b_measure.md; origin/data-gl6 m5b/f31 run logs
 (run_n6.jsonl, .targets, costs_333.txt) and the 1 469 layer-A key lines (canonical ladders L_p); tests/data/schur/cb_ref.txt
 (canonical basis, c_diag). Nothing was compiled or run. Tags: [C] read in the code, [L] from the run logs, [D] derived here
 by arithmetic on cb_ref / logs, [?] not verified.

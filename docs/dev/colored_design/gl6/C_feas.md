@@ -4,7 +4,7 @@ Date 2026-11-10/11. Read-only: nothing compiled or run (one < 1 s Python summary
 tests/data/homprov/g1a_cloud.json). Sources checked: dev = origin/dev f2d8be9 (M4b merged as d49ee31;
 PLAN.md last section), src/xengine.rs, src/pmat.rs, src/mpoly.rs, src/linsys.rs, src/homprov.rs,
 src/tmpl.rs, src/cclose.rs, src/cube.rs, src/bin/g1.rs, tests/xengine.rs, tests/cclose.rs,
-docs/colored_design/{SPEC_M4_M6a.md, HANDOFF_M4b.md, review_m4b/*.md}, the four gl6 notes.
+docs/dev/colored_design/{SPEC_M4_M6a.md, HANDOFF_M4b.md, review_m4b/*.md}, the four gl6 notes.
 Tags: [V] verified in code or data, [E] estimate.
 
 ## 0. Bottom line

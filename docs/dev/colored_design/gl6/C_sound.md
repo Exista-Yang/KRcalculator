@@ -54,7 +54,7 @@ that passes the planned checks. Several of them pass two-prime agreement as well
   - The weight of a P entry is computed from bookkeeping: w = (outs_y[b] + ins_x[a] + t_x − t_y)/2.
   - The object shifts t come from the summand records s, which are copied from `term_mult` and checked only in
     K_0.
-  - The map degrees come from `ar.info`. The M4b review (`docs/colored_design/review_m4b/certify.md`, F3) shows
+  - The map degrees come from `ar.info`. The M4b review (`docs/dev/colored_design/review_m4b/certify.md`, F3) shows
     that `certify_pairs` does not check ends or degrees. It also says: "the form check cannot catch a degree
     error", and a cross-Arena TmplId reuse can return ι/π of degree s' ≠ s labelled s.
   - In xengine, `check_degrees` catches this exactly. In sengine no value is ever compared with the bookkeeping.

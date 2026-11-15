@@ -1,4 +1,4 @@
-//! M4c A1, Stage 0 (src/leaves.rs): the 5 product closure types of (3,3,3) at N = 6 through
+//! M4c A1, Stage 0 (src/library/leaves.rs): the 5 product closure types of (3,3,3) at N = 6 through
 //! `ProductClosure` (product rule first, inner = the production chain), certified by
 //! `certify_closure` inside the provider and again here; non-product types are refused by the
 //! product rule.

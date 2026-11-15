@@ -1,5 +1,5 @@
 //! M6.0: the exact small colored engine (SYNTHESIS §9.2; design note
-//! `colored_design/M6_0_design.md`).
+//! `docs/dev/colored_design/M6_0_design.md`).
 //!
 //! Colored (∧^a per strand) gl_N homology of 2-strand braid closures through the singular Soergel
 //! path, exactly over a prime field:

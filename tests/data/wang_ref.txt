@@ -1,5 +1,5 @@
 # Reference Poincare polynomials of T(2,2m+1) colored wedge^k at gl_N in krhom conventions
-# (positive braid sigma_1^(2m+1)): output of colored_design/r3scripts/wang.py k N m
+# (positive braid sigma_1^(2m+1)): output of docs/dev/colored_design/r3scripts/wang.py k N m
 # (J. Wang arXiv:2604.25174 Thm 1.2 / arXiv:2211.08409 Prop 1.5, ours(t,q) = Wang(1/t,1/q); R3 V5).
 # Blocks: "k N m = ..", the Poincare polynomial, "rank ..", "chi ..".
 k N m = 2 2 1

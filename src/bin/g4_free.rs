@@ -1,5 +1,5 @@
 //! Gate G4 (SYNTHESIS §3.1; C2 M1(b), U3): freeness of Δ_a R_N over A = H*(Gr(a, N)), the
-//! hypothesis of the (Δ_λ G, F) adapter in src/cclose.rs.
+//! hypothesis of the (Δ_λ G, F) adapter in src/colored/cclose.rs.
 //!
 //! Command-line front end of the library check `krhom::colored::cclose::g4::check`, whose module doc
 //! states the certificate (A), (B) (exact, for every (a, N)) and the cross-checks (C), (D)

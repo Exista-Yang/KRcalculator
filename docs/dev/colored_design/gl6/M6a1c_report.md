@@ -7,7 +7,7 @@ Date 2026-11-12. Branch colored-m6a (merged colored-m5 f2fcb1d first). Machine: 
 
 | item | result |
 |---|---|
-| profile of the per-point scan (σ^4..σ^7 on (3,3)) | done: docs/colored_design/gl6/M6a1c_profile.md |
+| profile of the per-point scan (σ^4..σ^7 on (3,3)) | done: docs/dev/colored_design/gl6/M6a1c_profile.md |
 | result-preserving speedups | replay point **3.6-3.9×**, record point **5-8×** (σ^4..σ^7); identical closure values (value digests), identical pivot traces, tests pass |
 | G2B σ^6 at N = 6 by box, unreduced + reduced | **PASS** both primes (T(2,6) link unreduced 1568, reduced 252 at N = 6; all 48 closures of stages 2..6 = m2s, Wang, χ, scaling) |
 | G2B σ^8 reduced | **PASS** both primes (T(2,8) reduced 1/10/82/**560** at N' = 3..6; stages 2..8 = m2s) |
@@ -69,7 +69,7 @@ Box runs (3 threads + one 1-thread job alongside): σ^5 399 points 977 s → 383
 now 3.5 GB). Memory is unchanged by these changes (the per-point peak is the dense unsimplified step):
 48 / 131 / 323 / 758 / 1 682 MB at σ^4..σ^8.
 
-## 3. G2B at N = 6 (runs_m6a1c/g2b, `tools/g2b_compare.py` against docs/colored_design/gl6/m2s/sigma9_33_*.json)
+## 3. G2B at N = 6 (runs_m6a1c/g2b, `tools/g2b_compare.py` against docs/dev/colored_design/gl6/m2s/sigma9_33_*.json)
 
 | run | points | per point | record | result |
 |---|---|---|---|---|
@@ -98,7 +98,7 @@ per prime — beyond one session; reduced σ^9 (20 points) ≈ 1 h. At σ^7, eli
 updates, memory-latency bound: ≈ 0.6 µs each on a 2.5 M-component complex) and d_C ⊗ id 40 %
 (5e9 multiply-adds class, mod-p bound).
 
-## 5. (3,3,3) at N = 3, 4 (runs_m6a1c/k3, docs/colored_design/gl6/gl4_333.json, runs_m6a1c/k3_summary.md)
+## 5. (3,3,3) at N = 3, 4 (runs_m6a1c/k3, docs/dev/colored_design/gl6/gl4_333.json, runs_m6a1c/k3_summary.md)
 
 Library: data-gl6/m5c layer A (sha256 of both chunks = MANIFEST), `--replay --stamp-route`,
 `KRHOM_COSTS_ANY_HOST=1`, costs_333_m5c.txt; 0 provider calls. Prune 4, box N = 4 (64 points unreduced,

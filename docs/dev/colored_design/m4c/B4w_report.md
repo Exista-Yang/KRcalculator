@@ -4,7 +4,7 @@ Date 2026-11-13. Branch `m4c-rexplan` (4e886f6 + merge origin/dev f4c865a). Data
 4 cores (Xeon @ 2.10 GHz), 15 GiB; every run with `KRHOM_COSTS_ANY_HOST=1`. Frozen files (smap.rs, homprov.rs,
 sbim.rs, linsys.rs, tmpl.rs, sindec.rs) and the colored-m6a files (sengine.rs, swire.rs, boxclose.rs, boxrun.rs,
 sbox.rs, libbuild.rs, smapio.rs) were not edited. Changed: src/leafgen.rs, src/leaves.rs. New: src/bin/b4wstamp.rs,
-tests/b4w.rs, docs/colored_design/m4c/b4w/.
+tests/b4w.rs, docs/dev/colored_design/m4c/b4w/.
 
 ## 0. Summary
 
@@ -247,8 +247,8 @@ b4wstamp + costs_b4w; level-5 / level-6 logs, probes, coverage; this report. dat
 ```
 cargo test --release --test leafgen interp_gate; cargo test --release --test b4w
 cat data-gl6/m5c/f31/layerA_tmpl.tar.gz.part-* | tar -C C31 -xzf -
-b4wstamp --cache C31 --costs docs/colored_design/m4c/b4w/costs_b4w.txt --provider m4c-lf
+b4wstamp --cache C31 --costs docs/dev/colored_design/m4c/b4w/costs_b4w.txt --provider m4c-lf
 KRHOM_COSTS_ANY_HOST=1 libbuild run|replay --lam 3,3,3 --n 5|6 --field 31 --cache C31 \
-    --costs docs/colored_design/m4c/b4w/costs_b4w.txt --stamp-route --provider m4c-lf --jobs 4 --rss 3300 --json OUT
+    --costs docs/dev/colored_design/m4c/b4w/costs_b4w.txt --stamp-route --provider m4c-lf --jobs 4 --rss 3300 --json OUT
 libbuild cover --lam 3,3,3 --n 6 --knots tools/dev/ntrunc_t1/data/knots3_all.txt --runs RUN31.jsonl,RUN32b.jsonl --md OUT
 ```

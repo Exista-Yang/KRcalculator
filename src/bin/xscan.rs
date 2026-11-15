@@ -1,4 +1,4 @@
-//! xscan: run the exact singular colored engine (src/xengine.rs) on a 2-strand braid and print
+//! xscan: run the exact singular colored engine (src/colored/xengine.rs) on a 2-strand braid and print
 //! statistics and Poincaré polynomials.
 //!
 //! usage: xscan LABELS WORD NS [--reduced] [--both] [--prime 31|32b] [--no-d2] [--prune N]

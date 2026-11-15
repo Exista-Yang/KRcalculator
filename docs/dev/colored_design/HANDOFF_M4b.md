@@ -125,7 +125,7 @@ failed with stuck branches.
 
 ## Hardening session 2026-11-11
 
-This session works through the independent review (docs/colored_design/review_m4b/certify.md,
+This session works through the independent review (docs/dev/colored_design/review_m4b/certify.md,
 solver.md, tests.md). The review found no defect that gives a wrong result today. The items
 below are preconditions and hardening, so that M5 cannot misuse the provider without noticing.
 Machine: 4 cores (Xeon 2.10 GHz), 15 GiB.

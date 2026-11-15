@@ -1,5 +1,5 @@
-//! OBSOLETE MODEL — kept only for the experiments documented in PLAN.md.
-//! Truncated edge algebras do NOT model gl_N foams (see PLAN.md v2); use
+//! OBSOLETE MODEL — kept only for the experiments documented in docs/dev/PLAN.md.
+//! Truncated edge algebras do NOT model gl_N foams (see docs/dev/PLAN.md v2); use
 //! `sbim` (untruncated singular Bott–Samelson bimodules + universal construction).
 //!
 //! Edge algebras of ladder webs (truncated singular Bott–Samelson bimodules).

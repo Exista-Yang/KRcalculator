@@ -1,7 +1,7 @@
 # C2-2 report: (2,2,2,2) library and the first 4-strand 2-colored gl_4 values (branch colored-2c4)
 
 Date 2026-11-13. Machine: 4 cores, 15 GB. Base: colored-2c4 + origin/dev 202b371 (merge 572255b). Tags: [M]
-measured, [E] estimate. Outputs: runs_c2/k4/, docs/colored_design/c2/C2_2_*, results/colored_gl4/gl4_2222.json;
+measured, [E] estimate. Outputs: runs_c2/k4/, docs/dev/colored_design/c2/C2_2_*, results/colored_gl4/gl4_2222.json;
 library data on data-gl6 under c2/l2222_n4/.
 
 ## Summary

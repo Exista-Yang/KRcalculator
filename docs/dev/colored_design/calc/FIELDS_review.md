@@ -98,7 +98,7 @@ Bottom line: the code facts are almost all CONFIRMED, apart from a few loose lin
 
 ## (5) Characteristic caveats
 
-- All quotes are CONFIRMED: PLAN.md:100-101; docs/colored_design/SYNTHESIS.md:412 and 456; NTRUNC_STUDY.md:78; m4c/L1_eklp.md:156 and 305-310; schur.rs:1405-1411; hecke.rs:3-5; data/README.md:111 ("Only Z/2 occurs").
+- All quotes are CONFIRMED: PLAN.md:100-101; docs/dev/colored_design/SYNTHESIS.md:412 and 456; NTRUNC_STUDY.md:78; m4c/L1_eklp.md:156 and 305-310; schur.rs:1405-1411; hecke.rs:3-5; data/README.md:111 ("Only Z/2 occurs").
 - The list of KL-hard-wired data (term_mult, pairs mult, check_idempotent ranks, M5i, c_diag, kill rule): CONFIRMED.
 - WRONG: "By the repo's own stated assumption (p > K!) … K=8 gives 40320". L1_eklp.md:309 is a passing remark that the two primes exceed 9!; it is not a derived threshold.
   - The standard condition for invariant theory to behave as in characteristic 0 for S_K is p ∤ K!, i.e. p > K.

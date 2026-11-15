@@ -7,7 +7,7 @@ sbim.rs, linsys.rs, tmpl.rs, sindec.rs) was edited. Fields F31 (2³¹−1) and F
 Changed/new files: `src/symfun.rs` (persistence), `src/bin/grwarm.rs`, `src/leafgen.rs` (theorem certificate, light
 localization, spot check, `braid_dag_thm`, `realize_chain`), `src/smapio.rs` (`thm-assoc` record), `src/rexplan.rs`
 (new: singlestep forms, planner), `src/leaves.rs` (`rex_class_pairs`, `pairs_leaves`), `src/bin/gp0.rs` (census and B4
-driver), `tests/thmassoc.rs`, `tests/rexplan.rs`, data in `docs/colored_design/m4c/b2/`, `tools/gp0_summary.py`.
+driver), `tests/thmassoc.rs`, `tests/rexplan.rs`, data in `docs/dev/colored_design/m4c/b2/`, `tools/gp0_summary.py`.
 
 ## 0. Summary
 
@@ -210,7 +210,7 @@ cargo test --release --test thmassoc                     # (i), (ii), (iv) defau
 cargo test --release --test thmassoc -- --ignored braid_middle_313_232 spot_check_333
 cargo test --release --test rexplan
 gp0 --n 5|6 --costs tests/data/homprov/costs_333_m5c.txt --out FILE.jsonl
-python3 docs/colored_design/m4c/tools/gp0_summary.py FILE.jsonl
+python3 docs/dev/colored_design/m4c/tools/gp0_summary.py FILE.jsonl
 gp0 --b4 31|32b --n 6 --pairs 159,71,323,322,334,419
-m4c measure --base tests/data/homprov/costs_333_m5c.txt --out docs/colored_design/m4c/b2/costs_b2.txt "5,4,0;F1.2,F0.2,F1.1;F1.3,F0.2;2"
+m4c measure --base tests/data/homprov/costs_333_m5c.txt --out docs/dev/colored_design/m4c/b2/costs_b2.txt "5,4,0;F1.2,F0.2,F1.1;F1.3,F0.2;2"
 ```

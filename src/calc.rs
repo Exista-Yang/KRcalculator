@@ -1,7 +1,7 @@
 //! calc: the one-command calculator's library registry, installed-library checks, the per-prime
 //! box run through the localized engine with a prebuilt layer-A library (3 and 4 strands), error
 //! classification, library diagnostics, prime comparison, KnotJob-style braid parsing and JSON
-//! helpers (CALC-1; docs/colored_design/calc/CALC_SPEC_v1.md as amended by CALC_DECISIONS.md and
+//! helpers (CALC-1; docs/dev/colored_design/calc/CALC_SPEC_v1.md as amended by CALC_DECISIONS.md and
 //! the review's required corrections).
 //!
 //! Certification is exactly that of `swire::box_word` with `BoxOpts::new` production defaults

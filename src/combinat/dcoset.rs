@@ -1,11 +1,11 @@
-//! src/dcoset.rs — double-coset combinatorics for the M4c light-leaves backend (milestone A1).
+//! src/combinat/dcoset.rs — double-coset combinatorics for the M4c light-leaves backend (milestone A1).
 //!
 //! Pure combinatorics (no bimodule maps): it runs in seconds and is the input of the G-L0 census
 //! (src/bin/m4c.rs) and of the later `leaves` provider. Conventions as in schur.rs: a (λ, μ)
 //! double coset is a contingency `Table` (rows = bottom blocks λ, columns = top blocks μ, zero
 //! labels allowed); a rung E_i^(r) / F_i^(r) is split-then-merge of columns (schur.rs).
 //!
-//! Paper keys (docs/colored_design/m4c/L1_eklp.md): SLL = Elias-Ko-Libedinsky-Patimo, singular
+//! Paper keys (docs/dev/colored_design/m4c/L1_eklp.md): SLL = Elias-Ko-Libedinsky-Patimo, singular
 //! light leaves, arXiv 2401.03053; CORE = arXiv 2402.08673 (reduced expressions of core double
 //! cosets); SUB = Bruhat order on double cosets (cited in SLL, Def 2.4).
 //!

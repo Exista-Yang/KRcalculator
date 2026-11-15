@@ -126,7 +126,7 @@ The script is runs_m6a2a/demo_s5.sh, with the M6a-1c G2B parameters: `--n 6 --ns
   - 40 closures (stages 1..5, N' = 3..6, unreduced and reduced), all with χ = decat_chi;
   - scaling: 3 724 entries checked, 3 808 zero at both points, 0 declared 0;
   - every closure equals runs_m6a1c/g2b/s5_f31_seed101.json (the M6a-1c result: 40/40 identical);
-  - `tools/g2b_compare.py` against docs/colored_design/gl6/m2s/sigma9_33_F31.json and Wang: 0 differences
+  - `tools/g2b_compare.py` against docs/dev/colored_design/gl6/m2s/sigma9_33_F31.json and Wang: 0 differences
     (stage 5 at N = 6: rank 396 unreduced, 125 reduced).
 - **Uninterrupted control.** One shard, 4 threads, 280 s: every accumulator digest is identical to the merged
   sharded and killed run, and the finish JSON is byte-identical apart from the `shards` field (and the commit

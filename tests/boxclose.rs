@@ -1,5 +1,5 @@
-//! MBOX: the box closure layer at fixed N (src/boxclose.rs, the staged rank stage of
-//! src/cclose.rs). SPEC_3C_GL6 rev1 §2 MBOX tests (a)-(d); (e) is tests/boxclose_mem.rs.
+//! MBOX: the box closure layer at fixed N (src/colored/boxclose.rs, the staged rank stage of
+//! src/colored/cclose.rs). SPEC_3C_GL6 rev1 §2 MBOX tests (a)-(d); (e) is tests/boxclose_mem.rs.
 //!
 //! * (a) Synthetic sparse homogeneous R^λ polynomials for (3,3), (2,2,2), (3,3,3), weights 0..top+1,
 //!   N = 4..6, both modes, both primes: box extraction = `GrAlg::nf`, also restricted to every

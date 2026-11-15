@@ -1,4 +1,4 @@
-//! M6a-2a: the checkpointed, resumable, shardable box driver (src/boxrun.rs) and the hardening
+//! M6a-2a: the checkpointed, resumable, shardable box driver (src/colored/boxrun.rs) and the hardening
 //! of the localized path (SPEC_3C_GL6 rev1 D14; review wave 3 box F1/F2, sengine F1/F2/F4/F6).
 //!
 //! * a run killed (simulated: unsaved work lost) and resumed = an uninterrupted run, byte for

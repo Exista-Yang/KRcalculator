@@ -4,7 +4,7 @@ Date 2026-11-11. Read-only design study: nothing was compiled or run in the repo
 
 **Inputs:**
 - L1_eklp.md, L2_alt.md, L3_code.md (this folder);
-- origin/colored-m5 docs/colored_design/gl6/M5b_report.md;
+- origin/colored-m5 docs/dev/colored_design/gl6/M5b_report.md;
 - HANDOFF_M4b.md, SPEC_M4_M6a.md §4, SPEC_3C_GL6_rev1.md (D11, D14), SYNTHESIS.md §2.4 and §3;
 - code on dev 277a21c.
 

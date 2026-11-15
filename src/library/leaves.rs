@@ -1,4 +1,4 @@
-//! src/leaves.rs — M4c light-leaves provider. Milestone A1: Stage 0 only (M4C_PLAN §3.2, D2 §2.1,
+//! src/library/leaves.rs — M4c light-leaves provider. Milestone A1: Stage 0 only (M4C_PLAN §3.2, D2 §2.1,
 //! C_m4c "do it first").
 //!
 //! **Stage 0 (product closure).** Let p be a (λ, λ) type whose canonical ladder L_p is,
@@ -1675,7 +1675,7 @@ pub struct RexPairReport {
     pub secs: f64,
 }
 
-/// π: X → L_q and ι: L_q → X as realized rex chains (src/rexplan.rs, `leafgen::realize_chain`),
+/// π: X → L_q and ι: L_q → X as realized rex chains (src/library/rexplan.rs, `leafgen::realize_chain`),
 /// certified by `certify_pairs` (form rank 1 at rep(q) at two points, genuine) and checked:
 /// π∘ι = id_{L_q} at every coset of the support of L_q (End⁰(B_q) = k and the top scalar is 1).
 /// Every map that uses the theorem-level Assoc certificate is listed in `theorem_assoc`.
@@ -1739,7 +1739,7 @@ pub fn rex_class_pairs_opts<F: Field>(ar: &mut Arena<F>, s: &mut Schur, x: ExprI
 /// (Out leaves X → W_q of degree −s, then the chain W_q → L_q), ι = LL^∨_q ∘ entry (the chain
 /// L_q → W_q, then In leaves W_q → X of degree s); `certify_pairs` selects `mult` pairs with an
 /// invertible form at rep(q) (two points, genuine). W_q is the final junction word of
-/// `plan_words`; when it differs from L_q the chains come from src/rexplan.rs.
+/// `plan_words`; when it differs from L_q the chains come from src/library/rexplan.rs.
 #[allow(clippy::too_many_arguments)]
 pub fn pairs_leaves<F: Field>(lv: &Leaves, ar: &mut Arena<F>, s: &mut Schur, x: ExprId, q: Tid, lq: ExprId, sdeg: i32, mult: usize, opts: &crate::library::rexplan::PlanOpts, st: &mut LeafStats) -> Result<(Pairs<F>, Vec<MapId>), String> {
     pairs_leaves_opts(lv, ar, s, x, q, lq, sdeg, mult, opts, st, false)

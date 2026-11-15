@@ -1,7 +1,7 @@
 # B5 census analysis: the worst Lemma A step of every non-rex (3,3,3) pair target, N = 5 and N = 6
 
 Date 2026-11-12. Read-only analysis of branch `m4c-rexplan` (4e886f6) in `.claude/worktrees/revrex`. No cargo, no
-binaries. Inputs: `docs/colored_design/m4c/b2/gp0_n5b.jsonl`, `gp0_n6.jsonl` (field `worst_step`), `gp0_n6.log`,
+binaries. Inputs: `docs/dev/colored_design/m4c/b2/gp0_n5b.jsonl`, `gp0_n6.jsonl` (field `worst_step`), `gp0_n6.log`,
 M4C_PLAN §3.1/§3.3, D1 §1.7-1.8, A1/A2/B1/B2 reports, `src/leaves.rs` (`step_score`, `step_family`, `plan_words`),
 `src/dcoset.rs` (`step_terms`, `grass`, `reduced_for`, `reduced_words`), `src/homprov.rs` (`win_split`,
 `hom_unknowns`), `src/bin/gp0.rs`, `tools/c_tools/hu.py`.

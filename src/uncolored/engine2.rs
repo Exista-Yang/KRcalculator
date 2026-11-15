@@ -238,7 +238,7 @@ pub struct Engine2Result {
 pub enum Closure {
     /// `close_exact`: one pairing matrix per (h, q) block of the whole closed complex (the oracle).
     Exact,
-    /// Restriction tower (src/tower.rs), closing end variables in the given order.
+    /// Restriction tower (src/uncolored/tower.rs), closing end variables in the given order.
     Tower(EndPolicy),
 }
 

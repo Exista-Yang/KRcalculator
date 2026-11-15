@@ -1,9 +1,9 @@
-//! M4c B1: closed-form generators (src/leafgen.rs) against exact `sbim::hom_space` windows,
+//! M4c B1: closed-form generators (src/library/leafgen.rs) against exact `sbim::hom_space` windows,
 //! `certify_added` on every template, switchback ψ∘φ = id, braid composites (CORE Lemma 3.12)
 //! and far commutation (Lemma 3.13).
 //!
 //! Default suite: small blocks and cells ((1,1,1), (1,2,1), (2,1,2), (2,2,2)). Ignored (run once,
-//! reported in docs/colored_design/m4c/B1_report.md): `certify_all_to_333` (every template up to
+//! reported in docs/dev/colored_design/m4c/B1_report.md): `certify_all_to_333` (every template up to
 //! blocks (3,3,3)) and `braid_large`.
 use krhom::combinat::coset::CosetSpace;
 use krhom::algebra::dense::rank;

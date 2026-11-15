@@ -1179,7 +1179,7 @@ impl<F: Field> SIndec<F> {
     /// the sizes match; when they match, the downstream checks (Π∘Ι = δ, Σιπ = E) certify it.
     /// (Review engine #1. Returning None for a decomposable `a` was tried in CALC-2 and reverted:
     /// the certified l2222_n4 jobs 1812, 2052, 2086 and 2298 use such reroutes; see
-    /// docs/colored_design/calc/CALC_2_report.md.) None if R does not commute past the last rung
+    /// docs/dev/colored_design/calc/CALC_2_report.md.) None if R does not commute past the last rung
     /// of w or w[..j] is not a canonical ladder.
     #[allow(clippy::type_complexity)]
     fn reroute_family(&mut self, p: Tid, r: Rung) -> Result<Option<BTreeMap<(Tid, i32), (Vec<MapId>, Vec<MapId>)>>, DecErr> {

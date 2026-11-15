@@ -1,4 +1,4 @@
-//! src/schur.rs — Hecke algebroid (q-Schur algebroid) of type A in the contingency-table model.
+//! src/combinat/schur.rs — Hecke algebroid (q-Schur algebroid) of type A in the contingency-table model.
 //! Conventions: EKLP arXiv:2401.03053 §3 (eqs. (44), (45)), Williamson arXiv:1010.1283v3 §2.3,
 //! R1_singular_theory.md §1 and Appendix B. Rows = bottom blocks (lambda), columns = top blocks (mu).
 //!

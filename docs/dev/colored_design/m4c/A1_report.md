@@ -19,8 +19,8 @@ plus two `pub mod` lines in lib.rs. libbuild.rs is unchanged: the Stage 0 run us
 | src/leaves.rs (new) | `product_factorization`, `ProductClosure<F>`: a `HomProvider` wrapper around the production chain |
 | tests/dcoset.rs (new) | gate G-L1: 6 tests |
 | tests/leaves.rs (new) | Stage 0: factorizations, and certified product closure of the 5 types, F31 |
-| docs/colored_design/m4c/a1/census_closure.txt | full census output: summary table plus every level, junction word and step call |
-| docs/colored_design/m4c/a1/stage0_data/{f31,f32b} | Stage 0 layer A and templates (300 KB in all), with the run and replay logs |
+| docs/dev/colored_design/m4c/a1/census_closure.txt | full census output: summary table plus every level, junction word and step call |
+| docs/dev/colored_design/m4c/a1/stage0_data/{f31,f32b} | Stage 0 layer A and templates (300 KB in all), with the run and replay logs |
 
 Contents of src/dcoset.rs:
 - `conf_type` and `rep_rank`.
@@ -89,7 +89,7 @@ Contents of src/dcoset.rs:
 
 ## 3. Gate G-L0: census of the closure failure list
 
-**Command.** `m4c census` takes 0.8 s and writes docs/colored_design/m4c/a1/census_closure.txt.
+**Command.** `m4c census` takes 0.8 s and writes docs/dev/colored_design/m4c/a1/census_closure.txt.
 
 **Failure list.** It is the M5b list: N = 6, 12 types; N = 5, 1,1,1/1,1,1/1,1,1. The M5b runs fail identically
 for both primes. colored-m5 has no "after M5c" refresh of the list yet, so it is unchanged.
@@ -200,7 +200,7 @@ the A3 wiring, put product closure before Exact for product types, or skip the c
 The maps are certified either way.
 
 **Persistence.** data-gl6 is not written to in A1. The Stage 0 layer A plus templates (both primes, with the run and
-replay logs) are committed in docs/colored_design/m4c/a1/stage0_data. They must be merged into the data-gl6 layer A
+replay logs) are committed in docs/dev/colored_design/m4c/a1/stage0_data. They must be merged into the data-gl6 layer A
 with the A3 stamp change.
 
 ## 5. Implications for A2/A3
@@ -249,7 +249,7 @@ with the A3 stamp change.
 ## 7. Reproduce
 ```
 cargo build --release --bin m4c
-./target/release/m4c census --out docs/colored_design/m4c/a1/census_closure.txt
+./target/release/m4c census --out docs/dev/colored_design/m4c/a1/census_closure.txt
 ./target/release/m4c stage0 --field 31  --product-first --cache C31 --costs tests/data/homprov/costs_333_m5c.txt
 ./target/release/m4c stage0 --field 31  --product-first --cache C31 --costs tests/data/homprov/costs_333_m5c.txt --replay
 (same for --field 32b)

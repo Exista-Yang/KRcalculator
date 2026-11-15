@@ -48,7 +48,7 @@ Tags:
 ## 1. What M4c must produce (from the M5b report and the code)
 
 Failing level-6 targets of the (3,3,3) library: 38 Refused, 23 Exhausted, 7 Memory, identical for both primes.
-Source: origin/colored-m5 docs/colored_design/gl6/M5b_report.md, "Level 6".
+Source: origin/colored-m5 docs/dev/colored_design/gl6/M5b_report.md, "Level 6".
 
 | kind | Hom space | provider entry | what certification needs |
 |---|---|---|---|

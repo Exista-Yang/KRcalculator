@@ -29,7 +29,7 @@ KnotInfo (q → q⁻¹, t unchanged; `aaa` at N = 2 is `t^0q^-3 + t^0q^-1 + t^2q
 "engine panicked ... please report this" — not a clean refusal, see §5).
 
 (b) The 4-strand projection paragraph ("0.2–1.3 core-hours reduced, 1.2–8 unreduced, never run to
-completion") is replaced by the measured C2-7 reduced runs. Sources: docs/colored_design/c2/C2_7_report.md
+completion") is replaced by the measured C2-7 reduced runs. Sources: docs/dev/colored_design/c2/C2_7_report.md
 §6, results/colored_gl4/gl4_2222_c27_compare.json (status PASS, ranks 81/361/441, F31 = F32b) and the per-shard and
 finish logs runs_c2/c27/k4/out/{knot}_r_{prime}_s{0..3}/box.out and {knot}_r_{prime}.err (s per
 point, shard seconds, VmHWM, finish total). 4 shards × 1 thread × 54 points + finish (4 threads):

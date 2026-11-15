@@ -1,6 +1,6 @@
 //! M4c B2 census G-P0 (M4C_PLAN §4 B2): per remaining (3,3,3) pair target, the Lemma A plan
 //! (junction words, step unknowns), the exit word W_q, and the rex chain W_q → L_q
-//! (src/rexplan.rs), with the budget verdict. Pure combinatorics.
+//! (src/library/rexplan.rs), with the budget verdict. Pure combinatorics.
 //!
 //! usage: gp0 [--lam 3,3,3] --n 5|6 [--pairs 313,322,...] [--out FILE.jsonl] [--costs PATH]
 //!            [--visit N] [--maxlen N] [--exact-budget N] [--no-pad] [--alt-len N]

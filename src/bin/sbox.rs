@@ -1,4 +1,4 @@
-//! sbox: the box loop through the localized path (src/swire.rs, src/boxrun.rs): sindec library →
+//! sbox: the box loop through the localized path (src/colored/swire.rs, src/colored/boxrun.rs): sindec library →
 //! sengine scans at the box points → BoxAcc → close_box. Gate G2B of M6a-1b, the first 3-strand
 //! runs, and (M6a-2a) the checkpointed, resumable, shardable driver.
 //!

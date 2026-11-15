@@ -88,7 +88,7 @@ sengine's own suite still passes after the engine changes (11 + 1 ignored), incl
 
 Runs: `runs_g2b/runw.sh M FIELD SEED` = `sbox --lam 3,3 --word σ^M --n 6 --ns 3,4,5,6 --modes u,r
 --scaling` (unreduced extraction at all 399-400 points of L(18), reduced from the μ^0 = ∅ subset);
-comparison `tools/g2b_compare.py docs/colored_design/gl6/m2s/sigma9_33_F31.json runs_g2b/*.json`.
+comparison `tools/g2b_compare.py docs/dev/colored_design/gl6/m2s/sigma9_33_F31.json runs_g2b/*.json`.
 Node sequences: seeds 101/103 (F31), 102/104 (F32b).
 
 | stage | link | unreduced N'=3/4/5/6 | reduced N'=3/4/5/6 | reference | result |

@@ -1,4 +1,4 @@
-//! M6a-1b: sengine wired to sindec and boxclose (src/swire.rs). SPEC_3C_GL6 rev1 §2 "M6a-1b".
+//! M6a-1b: sengine wired to sindec and boxclose (src/colored/swire.rs). SPEC_3C_GL6 rev1 §2 "M6a-1b".
 //!
 //! * sengine against xengine at 2 points: final object multisets, K_0 = decategorified scan,
 //!   d∘d = 0, identical structure at independent records and under replay; (2,2) and (3,2) by

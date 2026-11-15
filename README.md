@@ -342,7 +342,7 @@ For uncolored links, the results agree with the Khovanov tables at N = 2 and wit
   - `"1 1 1 2"` and `"1 1 1 2 3"` (with `--no-simplify`) equal the 2-strand trefoil.
   - `"1 2 3"` gives [N choose 2]_q.
 - **Random checker.** `tools/randcheck.py` draws random color-2 braids on 2–4 strands and checks fixed relations: the two primes, seed independence, χ, isotopy, Markov moves, mirror, the N = 3 duality, N = 2 = `t^0q^0`, Wang's closed forms, unknots and cross-engine agreement. Its recorded runs passed every case, and an injected fault is caught.
-- **Test suite.** `cargo test --release` runs the test suite. The tests that need the libraries are `#[ignore]`d by default and pass with the libraries installed.
+- **Test suite.** `cargo test --release` runs the test suite; `cargo test --release --features dev` adds the tests that run developer binaries. The tests that need the libraries are `#[ignore]`d by default and pass with the libraries installed.
 
 ## Results
 
@@ -380,8 +380,9 @@ For ∧³, the reduced ranks of the knots T(2,3), T(2,5), T(2,7) and T(2,9) stab
 **Where the data are.**
 - **∧² gl_4 of the three-strand knots** (N′ = 2, 3, 4, unreduced and reduced): `results/colored_gl4/gl4_222.json` and `gl4_222_s{0,1,2}.json`.
 - **6_1, 7_6 and 7_7:** `results/colored_gl4/gl4_2222_c27_compare.json`.
-- **∧³ σ^9 closures:** `docs/colored_design/gl6/m2s/sigma9_33_F31.json` and `sigma9_33_F32b.json`.
+- **∧³ σ^9 closures:** `docs/dev/colored_design/gl6/m2s/sigma9_33_F31.json` and `sigma9_33_F32b.json`.
 - **Uncolored table runs:** `results/uncolored/`.
+- [results/README.md](results/README.md) describes every results file.
 
 **Values not found in the references below.** The following values are not found there and do not follow from a ↔ N−a duality:
 - ∧² gl_4 (N = 4) of the 101 three-strand knots, and of 6_1, 7_6 and 7_7;
@@ -435,30 +436,37 @@ Every other value listed here reproduces a known formula, a table or a duality.
 ## Repository map
 
 ```
-src/                  library crate `krhom`
-  calc.rs             calculator support: library registry and checks, braid parser, prime comparison, JSON
-  engine2, tower, indec, hecke, soergel, local     uncolored localized Soergel engine, restriction tower
-  xengine, cclose                                  exact 2-strand colored engine; colored closure
-  sengine, swire, smap, coset, sexpr, tmpl         localized multi-strand engine
-  boxclose, boxrun                                 fixed-N box closure, sharded driver
-  homprov, sindec, smapio, leaves, leafgen, rexplan, dcoset   Hom provider, certification, library, light leaves
-  schur, symfun, moy, web, sbim, crossing, pd      q-Schur oracle (Hom formula, decat_chi, kill rule), Grassmannians,
-                                                   MOY, webs, bimodules, Rickard complexes, PD codes and braids
-  cube, colored                                    full cube and cabling (reference methods)
-src/bin/              krhom (the calculator) and 31 developer and diagnostic tools
+src/                  library crate `krhom` (module map in src/lib.rs)
+  lib.rs, calc.rs     crate root; calculator support: library registry and checks, braid parser, prime comparison, JSON
+  input/              crossing (braid generators, colored Rickard complexes), pd (PD codes -> braids)
+  algebra/            field, poly, mpoly, laurent, pmat, sparse, dense, linsys, symfun (Grassmannians)
+  combinat/           web, moy (MOY oracle), hecke, schur (q-Schur oracle: Hom formula, decat_chi, kill rule), coset, dcoset
+  soergel/            sbim (singular Bott-Samelson bimodules), local (localization), soergel, indec
+  uncolored/          engine, engine2 (uncolored route), tower (restriction-tower closure)
+  colored/            xengine, cclose (exact 2-strand route); sengine, swire, smap, sexpr, tmpl (localized
+                      multi-strand engine); boxclose, boxrun (fixed-N box closure, sharded driver)
+  library/            homprov, sindec, smapio, leaves, leafgen, rexplan (Hom provider, certification, library, light leaves)
+  reference/          cube (full cube), cabling (reference methods)
+  legacy/             algebra, hom, untrunc (obsolete models, not used by the calculator)
+  bin/krhom.rs        the calculator; the other files in src/bin are developer tools (feature "dev")
 tools/                fetch_library.sh, randcheck.py, batch_check.py (table checks), wang.py (Wang's formulas)
+tools/dev/            developer scripts: sharded box driver, library persistence and analysis (README.md)
 data/                 knot and link tables, libraries.tsv (library registry), libstatus/
+results/              uncolored/ table checks, colored_gl4/ colored gl_4 results (README.md)
 docs/CALCULATOR.md    full calculator reference
-docs/colored_design/  design, specifications, run reports and independent reviews (start with SYNTHESIS.md)
-tests/, examples/     integration tests (with Wang references and fixtures) and small programs
-runs_*/               scripts, queues and logs of the acceptance and result runs
-PLAN.md               goals, model, fixed conventions, milestone history
+docs/dev/             PLAN.md (goals, model, conventions, milestone history), colored_design/ (design,
+                      specifications, run reports and reviews; start with SYNTHESIS.md), README.md (index)
+tests/, examples/     integration tests (with Wang references and fixtures) and small developer programs
 ```
 
-Developer tools, all built by `cargo build --release`:
-- **`sbox`** is the box engine behind krhom's 3–4-strand route, with checkpointed, resumable and sharded runs: `sbox box --dir D --shard k/K`, then `sbox finish`.
+Old module paths (`krhom::sbim`, `krhom::xengine`, `krhom::colored::cable`, ...) still resolve through re-exports in `src/lib.rs`.
+
+Developer tools are built with `cargo build --release --features dev` (`cargo build --release` builds only `krhom`):
+- **`sbox`** is the box engine behind krhom's 3–4-strand route, with checkpointed, resumable and sharded runs: `sbox box --dir D --shard k/K`, then `sbox finish` (driver script `tools/dev/box.sh`).
 - **`xscan`** is the exact 2-strand colored engine, one prime per call: `xscan LABELS WORD NS [--reduced] [--both] [--prime 31|32b]`.
 - **`libbuild`** builds, replays, calibrates and checks the coverage of the per-(colors, N, prime) libraries.
+- **`engine2`** is the uncolored engine (used by `tools/batch_check.py`); further tools: `twoprime`, `pd2braid`, `g1` (cost calibration), `gp0`, `m4c`, `sprof`, `schur_scan`, `g4_free`, `cube`, `engine`, `colored_cable`, `grwarm`, `b4wstamp`.
+- **Development history.** The development logs (the former `runs_*` directories: scripts, queues and logs of the acceptance and result runs), one-off exploration binaries and archived scripts live on branch `archive-pre-restructure`.
 - **Other branches.** `data-gl6` holds the libraries (an orphan branch with no code; `tools/fetch_library.sh` reads it).
 
 ## Data

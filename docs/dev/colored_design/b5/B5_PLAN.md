@@ -7,7 +7,7 @@ Date 2026-11-12. Synthesis of four read-only documents in this folder:
 - `C_B5.md`: the adversarial critique, findings F1-F10.
 
 It is checked against branch `m4c-rexplan` 4e886f6 (worktree `revrex`): `b2/gp0_n5b.jsonl`, `gp0_n6.jsonl`, B2 §4-6,
-M4C_PLAN §3.1/§3.3/§8, and `docs/colored_design/gl6/M5c_coverage.md`. No cargo was run.
+M4C_PLAN §3.1/§3.3/§8, and `docs/dev/colored_design/gl6/M5c_coverage.md`. No cargo was run.
 
 **Tags:**
 - [V] computed (Python replica or jsonl);

@@ -53,4 +53,4 @@ certification checks; do not edit src/leaves.rs except where stated.
 - KRHOM_THREADS=4 cargo test --release: 0 failed (new tests for 1-7, 15, 16).
 - Re-run H3-H8 of CALC_1_report.md quickly (outputs identical to runs_calc/), and randcheck --quick (seed 20261115) PASS.
 - Demonstrate items 1, 2, 3, 5 with small commands (record stdout/stderr/exit in runs_calc2/).
-- Write docs/colored_design/calc/CALC_2_report.md.
+- Write docs/dev/colored_design/calc/CALC_2_report.md.

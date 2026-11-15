@@ -6,7 +6,7 @@ Date 2026-11-12. Branch `m4c-closure` (from origin/m4c-census 595068c). Scope: M
 **Frozen files.** No edit to smap.rs, homprov.rs, sbim.rs, linsys.rs, tmpl.rs or sindec.rs (including
 `provider_for_stamped`: the A3 wiring is a separate constructor in leaves.rs, see §5). src/leafgen.rs was not
 created. Changed: src/leaves.rs, src/bin/m4c.rs, src/bin/libbuild.rs, tests/leaves.rs; new data in
-docs/colored_design/m4c/a2/.
+docs/dev/colored_design/m4c/a2/.
 
 ## 1. What was built (src/leaves.rs)
 
@@ -122,11 +122,11 @@ Notes:
 
   These are uncensored exact-shape records, so the call falls into the 10⁵-4·10⁵ band of the budget rule. The
   101 507 step of 1,1,1/0,2,1/2,0,1 was avoided by the differing window (2 401 unknowns), as A1 §5 (a) proposed.
-- **Persistence.** docs/colored_design/m4c/a2/data/f31 and f32b hold layer A (100 KB per prime) plus the template
+- **Persistence.** docs/dev/colored_design/m4c/a2/data/f31 and f32b hold layer A (100 KB per prime) plus the template
   cache (13 MB per prime, 9.8 MB of it the 74-dimensional Hom^9 basis). They are stored as `data_f31.tar.gz` /
   `data_f32b.tar.gz` (2.4 MB each), with the run and replay logs as text. The N = 5 job (prune 5, the same
   type) was run and replayed in the same cache: 1/1 for each prime. The cost records are in
-  docs/colored_design/m4c/a2/costs_333_m4c_a2.txt (costs_333_m5c.txt + 14 records). This is not merged into
+  docs/dev/colored_design/m4c/a2/costs_333_m4c_a2.txt (costs_333_m5c.txt + 14 records). This is not merged into
   data-gl6: that needs the coordinated stamp change (§5).
 
 ## 4. A3: (3,3,3) closure regression, every type of (λ, λ), Leaves alone
@@ -223,7 +223,7 @@ Unknown counts alone are therefore not a reliable time budget; the per-call cost
 ```
 cargo build --release --bin m4c
 KRHOM_THREADS=4 cargo test --release --test leaves         # V0, Ex 7.39-7.41, validate_elem, G1(a) closure, wiring
-C=docs/colored_design/m4c/a2/costs_333_m4c_a2.txt
+C=docs/dev/colored_design/m4c/a2/costs_333_m4c_a2.txt
 ./target/release/m4c leaves --field 31 --types fails --cache D31 --costs $C            # layer A, 12/12
 ./target/release/m4c leaves --field 31 --types fails --cache D31 --replay              # 12/12 from layer A
 ./target/release/m4c leaves --field 31 --types all --direct --cache R31 --costs $C     # regression + G-L5

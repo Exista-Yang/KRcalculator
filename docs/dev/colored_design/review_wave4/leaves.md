@@ -91,7 +91,7 @@ mismatches (F2, F3, minor).
 
 **Scenario:**
 - Use `--provider m4c-lf`, which the report recommends (A2_report §5), with the a2 cost table, which the report
-  says should be merged. The records are docs/colored_design/m4c/a2/costs_333_m4c_a2.txt:363-366: 139 371 u at
+  says should be merged. The records are docs/dev/colored_design/m4c/a2/costs_333_m4c_a2.txt:363-366: 139 371 u at
   474-494 s and 213 148 u at 440-500 s, up to 1.96 GB.
 - Take type 0,1,2/0,2,1/3,0,0, which M5c's chain certifies. Its whole-word step Hom^d(E0.3 E1.3, F0.2 E1.3 E0.5)
   has no common prefix or suffix, so only the Whole kind runs.

@@ -1,5 +1,5 @@
 //! M4b: Hom provider, stacked-point certification and the G1 target enumerator
-//! (SPEC_M4_M6a §4; design note `colored_design/M4b_design.md`).
+//! (SPEC_M4_M6a §4; design note `docs/dev/colored_design/M4b_design.md`).
 use crate::combinat::coset::CosetSpace;
 use crate::algebra::field::Field;
 use crate::algebra::pmat::PMat;

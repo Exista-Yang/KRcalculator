@@ -1,7 +1,7 @@
 # C2-1 report: 2-colored (∧² on every component) gl_4 homology, 2-, 3- and 4-strand (branch colored-2c4)
 
 Date 2026-11-13. Machine: 4 cores, 15 GB. Base origin/dev 7c64a78; **no source file of the crate was changed**
-(frozen files untouched); new: run scripts (runs_c2/), analysis tools (tools/c2/), docs (docs/colored_design/c2/),
+(frozen files untouched); new: run scripts (runs_c2/), analysis tools (tools/c2/), docs (docs/dev/colored_design/c2/),
 library data (data-gl6/c2/). Tags: [M] measured, [E] estimate.
 
 ## Summary
@@ -15,7 +15,7 @@ library data (data-gl6/c2/). Tags: [M] measured, [E] estimate.
   (F32b) with 4 workers, max X 432, peak child RSS 125 MB, no retries. The unpruned (level 6) library was built
   too: 146 / 146 + 21 / 21, both primes (104 s / 148 s). Persisted: data-gl6/c2/ (98e79b8).
 - **3-strand 2-colored gl_4** (step 3): see section 3 (numbers filled at the end of the session).
-- **4-strand census** (step 4): docs/colored_design/c2/C2_1_census.md. The (2,2,2,2) level-4 library is
+- **4-strand census** (step 4): docs/dev/colored_design/c2/C2_1_census.md. The (2,2,2,2) level-4 library is
   1 032 pairs (869 provider pairs) + 125 closure types, max X 15 552; every 4-strand knot needs 450-846 pairs and
   93-125 closure types of it. The truncated envelope keeps Gram entries tiny (≤ 196 unknowns), so the costs
   are the library build (unknown certification rate) and the scan (projected 8-210 core-h unreduced per knot).
@@ -115,7 +115,7 @@ that need the staged-rank memory cap raised (KRHOM_MEM_CAP_MB, --mem-mb; set to 
 The queue was ordered by the truncated envelope's peak Hom dimension (runs_c2/k3/order.txt), a good cost proxy
 (section 4 fit). The remaining 151 of 185 knots are the longer braids; the projection is 150 core-h for all of them.
 
-## 4. 4-strand census (docs/colored_design/c2/C2_1_census.md) [M + E]
+## 4. 4-strand census (docs/dev/colored_design/c2/C2_1_census.md) [M + E]
 
 See the census for the tables. Measured: `libbuild plan` (2,2,2,2) at N = 4 and 8; `libbuild cover` for the 22
 knots of knots4_cloud.txt (labels 2,2,2,2); the truncated decategorified envelope (tools/dev/ntrunc_t1) for the 22

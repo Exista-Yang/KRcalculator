@@ -1,4 +1,4 @@
-//! M4c A1, gate G-L1 (combinatorics of src/dcoset.rs): singular Deodhar sums of the independent
+//! M4c A1, gate G-L1 (combinatorics of src/combinat/dcoset.rs): singular Deodhar sums of the independent
 //! rung-step generating functions against `Schur::ladder_char` on every canonical ladder of the
 //! blocks (λ, μ) (every μ) of (3,3), (2,1,2), (2,2,2), (3,3,3) and on every one-rung extension; flows per
 //! coset (`sexpr::deodhar_check`); Lemma 8.7 sums (identity paths = c_diag, extensions =

@@ -1,7 +1,7 @@
 """Small, dependency-free knot utilities used to normalise and cross-check the
 KnotInfo / LinkInfo tables.
 
-Conventions (same as krhom's src/pd.rs and tests/pd.rs):
+Conventions (same as krhom's src/input/pd.rs and tests/pd.rs):
   * PD X[i,j,k,l]: labels counterclockwise from the incoming under-strand (i -> k is the
     under-strand).  With i=S, j=E, k=N, l=W the crossing is positive iff the over-strand
     runs l -> j.  Orientation is found by walking along components; the direction of a

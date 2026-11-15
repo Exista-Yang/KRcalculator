@@ -1,4 +1,4 @@
-//! Tests for PD codes -> braid words (src/pd.rs).
+//! Tests for PD codes -> braid words (src/input/pd.rs).
 //!
 //! The checks use an independent implementation (in this file) of
 //!   * orientation / crossing signs of a PD code (walk along components), and

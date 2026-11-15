@@ -1252,7 +1252,7 @@ pub struct ChainReport {
     pub lines: Vec<String>,
 }
 
-/// Realize a rex chain (src/rexplan.rs) as a DAG words[0] → words.last() of degree 0:
+/// Realize a rex chain (src/library/rexplan.rs) as a DAG words[0] → words.last() of degree 0:
 /// Collapse = Local(Rex ψ template), Expand = Local(Pull φ template), Swap = Local(Swap
 /// template), each certified by `build_in` (`certify_added`); Assoc = Elem Assoc, validated
 /// numerically (`validate_assoc`) when its window has ≤ `ASSOC_CERT_FLOWS` flows, otherwise by

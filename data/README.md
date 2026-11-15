@@ -129,7 +129,7 @@ invariants refer to the same object; *Validation* explains how this was checked.
 
 ### PD codes and crossing signs
 
-PD codes use the KnotTheory / Knot Atlas convention, which `src/pd.rs` also uses.
+PD codes use the KnotTheory / Knot Atlas convention, which `src/input/pd.rs` also uses.
 `X[i,j,k,l]` lists the edges counterclockwise, starting from the incoming under-strand,
 so the under-strand runs i → k.
 
@@ -197,9 +197,9 @@ because the differential raises h. For example, the trefoil over F_2 has F_2 in 
 * For links, LinkInfo's s is normalised so that the positive Hopf link has s = +1. In
   every record the listed s satisfies Kh^{0, s±1} ≠ 0.
 
-### Relation to krhom's gl_N gradings (PLAN.md)
+### Relation to krhom's gl_N gradings (docs/dev/PLAN.md)
 
-PLAN.md puts positive knots in **negative** q-degrees: krhom's N = 2 result is Khovanov
+docs/dev/PLAN.md puts positive knots in **negative** q-degrees: krhom's N = 2 result is Khovanov
 homology with q ↦ q^(-1), and homological degrees are unchanged. So:
 
 * **Comparing with `kh`.** krhom's N = 2 homology in bidegree (h, q) corresponds to the
@@ -211,7 +211,7 @@ homology with q ↦ q^(-1), and homological degrees are unchanged. So:
   (−1)^(c−1)·P(v = q^N, z = q − q^(-1)).
 * **Checks on the right trefoil.** In krhom's convention the reduced value is
   q^(-2(N-1)) + q^(-2(N+1)) − q^(-4N). At N = 2 the unreduced value is
-  q^(-1) + q^(-3) + q^(-5) − q^(-9), which matches PLAN.md.
+  q^(-1) + q^(-3) + q^(-5) − q^(-9), which matches docs/dev/PLAN.md.
 * **Rasmussen s.** In krhom's convention, s is read off at q-degrees −s ± 1.
 
 ## Chirality and the Knot Atlas
