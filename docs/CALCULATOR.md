@@ -24,7 +24,7 @@ Contents:
 
 ```
 krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS) [--colors c | c1,c2,...] [--reduced]
-               [--table] [--convention krhom|knotjob]
+               [--table]
                [--json OUT] [--csv OUT] [--no-simplify] [--check-library] [--lib-dir DIR]
                [--seed S] [--seed-retries K] [--mem-mb M] [--mem-cap-mb M]
                [--colored-method cable|cube|singular] [--cube] [--closure tower|exact] [--end right|left|alt]
@@ -39,10 +39,9 @@ krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS) [--colors 
 | `--colors` | A single color applies to every component (`--colors 2`); a list gives one color per link component, numbered by the smallest bottom strand position. Default: all 1 (uncolored). |
 | `--reduced` | Reduced homology: the strand at bottom position 0 is marked; the reduced unknot is `t^0q^0`. |
 | `--file BRAIDS` | Batch: one braid per line, optional `NAME;` prefix, blank lines and `#` comments ignored. N, colors, `--strands` and `--reduced` apply to every line. One output block per line, headed `name: NAME` (printed first, also for a line that fails to parse). An error on one line is reported (stdout: `error: NAME: exit C (kind)`; stderr: `krhom: NAME: message`) and the batch continues; the exit code is that of the first failing line. |
-| `--json OUT` | Machine-readable results (an array with `--file`): input (`kind`, the input string as `text`, N, mode, the parsed `braid` array, ...), route, convention, library, per-prime provenance (seeds, timings, χ and scaling checks, layer-A loads, VmHWM), results with terms `[t,q,k]`, and the error if any. With `--file` the array is rewritten after every finished line (atomically: temporary file + rename), so an abort (out of memory under `ulimit -v`, SIGKILL, a timeout) keeps the finished records. |
+| `--json OUT` | Machine-readable results (an array with `--file`): input (`kind`, the input string as `text`, N, mode, the parsed `braid` array, ...), route, library, per-prime provenance (seeds, timings, χ and scaling checks, layer-A loads, VmHWM), results with terms `[t,q,k]`, and the error if any. With `--file` the array is rewritten after every finished line (atomically: temporary file + rename), so an abort (out of memory under `ulimit -v`, SIGKILL, a timeout) keeps the finished records. |
 | `--csv OUT` | Rows `name,N,reduced,t,q,rank` (a zero polynomial is one row with empty t, q and rank 0). The name is quoted per RFC 4180 when it contains a comma, a quote or a line break (`"L6a5{0,1}"`). The header is written at start and each line's rows are appended and flushed when it finishes. |
 | `--table` | After each N block, the bigraded table: rows t ascending, columns q ascending (step 2 when all q have one parity), entries = dimensions, blank for 0 (KnotJob-style). Also in `--file` mode. |
-| `--convention knotjob` | Print (and write to `--json`/`--csv`) every result with q → q⁻¹, t unchanged: Bar-Natan / KnotJob / KnotInfo gradings. The right-handed trefoil `aaa` at N = 2 then reads `q + q^3 + t^2q^5 + t^3q^9`. A line `convention: knotjob (q -> q^-1)` follows `coefficients:`, and the JSON field `convention` records it (`"krhom"` by default). `--convention krhom` is the default. |
 
 Examples:
 
@@ -79,11 +78,9 @@ N = 4
 
 Terms are sorted by t, then q; `2t^-2q^8` means rank 2 in homological degree −2 and q-degree 8.
 The convention is that of the repository (ours(t,q) = Wang(1/t,1/q), see tools/wang.py): positive
-knots sit in negative q-degrees. `--convention knotjob` maps q → q⁻¹ (verified: krhom's N = 2
-uncolored homology in bidegree (t, q) is KnotInfo's / KnotJob's Khovanov table entry (t, −q), as
-`tools/batch_check.py`'s `kh` check uses; `aaa` gives `t^0q^-3 + t^0q^-1 + t^2q^-5 + t^3q^-9` by
-default and Bar-Natan's `q + q^3 + t^2q^5 + t^3q^9` with the option; reduced `q^2 + t^2q^6 +
-t^3q^8` = KnotInfo `kh_reduced` of 3_1). On the
+knots sit in negative q-degrees. krhom's q-grading is the inverse of Bar-Natan / KnotJob / KnotInfo
+(q → q⁻¹, t unchanged): the right-handed trefoil `aaa` at N = 2 is `t^0q^-3 + t^0q^-1 + t^2q^-5 +
+t^3q^-9` here and `q + q^3 + t^2q^5 + t^3q^9` there. On the
 2-strand and Soergel routes the method line reads `method: singular (exact 2-strand singular
 Soergel engine)` or `closure: tower (Right end first)`. If simplification removed strands, a line
 `simplified braid: WORD  (strands k)` follows the braid. Progress and the per-prime certification
@@ -93,7 +90,7 @@ lines go to stderr.
 
 | Input | Route (automatic) | N | Strands |
 |---|---|---|---|
-| all colors 1 | localized Soergel engine (engine2), two primes | any N ≥ 1 | any |
+| all colors 1 | localized Soergel engine (engine2), two primes | 1 ≤ N ≤ 32 (tower closure) | ≤ 10 (tower closure); about 5 in practice |
 | colored, ≤ 2 strands after simplification | exact singular Soergel engine (xengine), two primes | a(N − a) ≤ 255 for every color a (N ≤ 256 for color 1, N ≤ 129 for color 2, N ≤ 88 for color 3), and the closure's memory estimate under `--mem-cap-mb` (default 768 MB; e.g. color 3 at N = 30 needs about 1.5 TB and is refused with exit 5) | 1–2, colors 1..3 |
 | colored, uniform color 2, 3 strands | localized box engine + library `l222_n4` (labels 2,2,2), two primes | N ≤ 4 | 3 |
 | colored, uniform color 2, 4 strands | localized box engine + library `l2222_n4` (labels 2,2,2,2), two primes | N ≤ 4 | 4 |
@@ -218,9 +215,26 @@ Measured on the 4-core cloud machine (`KRHOM_THREADS=4`, both primes, this branc
 - Loading the 4-strand library takes 20–34 s per prime for short words and about 220 s for 6_1-sized words (1119 layer-A loads); 3 strands 0.1–6 s.
 - From earlier production runs (2 threads, per prime, both modes): 8-letter 3-strand knots
   100–1151 s, 10-letter 247–2564 s. F32b is about 1× F31 at 3 strands and 1–3× at 4 strands.
-- 4-strand class-A knots (6_1 and the other 17) are expected to take 0.2–1.3 core-hours reduced
-  and 1.2–8 core-hours unreduced per prime (projection, never run to completion). Use `--reduced`
-  for speed. Runs are not resumable yet (the production `sbox box/finish` driver is).
+- 4-strand class-A knots, measured reduced runs (C2-7, docs/colored_design/c2/C2_7_report.md §6;
+  runs_c2/c27/k4/compare.json, per-shard logs in runs_c2/c27/k4/out/): `sbox box` with 4 shards of
+  1 thread over the 216 reduced box points (54 per shard) + `sbox finish` (4 threads), per prime:
+
+  | knot | prime | s per point | shard wall (s) | finish (s) | wall | shard core-hours | VmHWM per shard |
+  |---|---|---|---|---|---|---|---|
+  | 6_1 | F31 | 26.3–26.5 | 1983–1992 | 704 | 0.75 h | 2.21 | 2681–2682 MB |
+  | 6_1 | F32b | 26.8–27.1 | 1928–1946 | 758 | 0.75 h | 2.15 | 2758–2768 MB |
+  | 7_6 | F31 | 36.5–36.8 | 2639–2661 | 847 | 0.97 h | 2.95 | 2811 MB |
+  | 7_6 | F32b | 39.5–39.9 | 2821–2832 | 822 | 1.01 h | 3.14 | 2898 MB |
+  | 7_7 | F31 | 35.9–36.3 | 2597–2626 | 706 | 0.93 h | 2.90 | 2764 MB |
+  | 7_7 | F32b | 25.7–25.9 | 1825–1840 | 672 | 0.70 h | 2.04 | 2850–2854 MB |
+
+  (wall = slowest shard + finish; shard core-hours = sum of the 4 single-thread shards, without the
+  4-thread finish; library build 168–196 s per process in finish.) All PASS: reduced N = 4 ranks
+  81, 361, 441, F31 = F32b, χ and scaling checks. Unreduced runs were not done: they need all 1 296
+  box points instead of 216, i.e. at least 1 296 × 26.3 s ≈ 9.5 core-hours of scanning per prime
+  for 6_1 (a lower bound: determinant passes and finish come on top; the C2-7 report estimates about
+  4 h wall per (knot, prime) with 4 shards). Use `--reduced` for speed. Runs are not resumable yet
+  (the production `sbox box/finish` driver is).
 - Memory: `--mem-mb` is the per-point budget (default 3200 at 3 strands, 3000 at 4 strands); the
   closure estimate cap `KRHOM_MEM_CAP_MB` is set from `--mem-cap-mb` before any engine work, on
   every route. Without the flag: the environment variable if set; else on the box route 4500 ×
