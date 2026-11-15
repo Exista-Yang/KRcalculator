@@ -1,7 +1,7 @@
 # R3: closure Φ_N at fixed N = 6 for 3-colored 2-, 3- and 4-strand braids
 
 Design note, 2026-11-10. Read-only study (no builds, no runs of compiled code).
-Inputs: dev `src/cclose.rs` (contract v2, exact oracle, reduced mode, Δ-tower adapter, G4), `src/xengine.rs` (closure_data, pruning, `closure_kills_map`), `src/schur.rs` (GramRow, c_diag), `tools/ntrunc_t1/src/main.rs`, SPEC_M4_M6a rev 2 §6.5-6.6, SYNTHESIS §1.4 / CL2 / CL3, NTRUNC_STUDY §3-4, sibling notes gl6/R4_m6a.md (§1.2 box points, §2-3 cost model) and gl6/R1_2strand.md.
+Inputs: dev `src/cclose.rs` (contract v2, exact oracle, reduced mode, Δ-tower adapter, G4), `src/xengine.rs` (closure_data, pruning, `closure_kills_map`), `src/schur.rs` (GramRow, c_diag), `tools/dev/ntrunc_t1/src/main.rs`, SPEC_M4_M6a rev 2 §6.5-6.6, SYNTHESIS §1.4 / CL2 / CL3, NTRUNC_STUDY §3-4, sibling notes gl6/R4_m6a.md (§1.2 box points, §2-3 cost model) and gl6/R1_2strand.md.
 Tags: [code] read in the source; [C] computed for this note (`gl6/py/r3_*.py`, < 1 s each, from `scripts/cb.pkl` and the ntrunc scan files); [M] measured earlier; [E] estimate.
 Notation: k = number of strands (blocks, all labelled 3); box_k[w] = coefficient of t^w in [6 choose 3]_t^k; L_k(w) = Σ_{w' ≤ w} box_k[w']; "weight" = q-degree / 2.
 

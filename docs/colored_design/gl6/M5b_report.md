@@ -59,7 +59,7 @@ kept-multiset assert, rank bookkeeping). Replay = run for every set and both pri
   [1,4,4], [1,2,6], [4,5], [3,5]).
 - **tests/libbuild.rs** (2 tests, 5.4 s): plan counts of the three (3,3,3) sets; a (3,3) N = 5 run → resume (skips
   all) → replay 100 % with no new layer-A file → replay with an emptied layer A fails.
-- tools/libbuild_report.py (tables of this report), tools/persist_layer_a.sh (data-gl6 chunks).
+- tools/dev/libbuild_report.py (tables of this report), tools/dev/persist_layer_a.sh (data-gl6 chunks).
 
 Tests: `KRHOM_THREADS=4 cargo test --release --test sindec --test homprov --test libbuild`:
 13 + 17 + 2 passed, 0 failed (6 ignored, as before).

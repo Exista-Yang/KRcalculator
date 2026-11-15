@@ -245,7 +245,7 @@ Progress and the per-prime checks go to stderr.
 | any other colored input | refused, exit 1 | mixed colors or colors ≠ 2 on 3–4 strands, including (3,3,3); ≥ 5 strands; N > 4 on 3–4 strands; colors > 3 on 2 strands; split braids on 3–4 strands | fallback: `--colored-method cube` |
 
 **4-strand coverage.**
-- The library covers these 18 knots in the braids of `tools/ntrunc_t1/data/knots4_cloud.txt`: 6_1, 7_2, 7_4, 7_6, 7_7, 8_4, 8_6, 8_8, 8_11, 8_13, 8_14, 9_10, 9_11, 9_13, 9_17, 9_18, 9_20 and 9_23.
+- The library covers these 18 knots in the braids of `tools/dev/ntrunc_t1/data/knots4_cloud.txt`: 6_1, 7_2, 7_4, 7_6, 7_7, 8_4, 8_6, 8_8, 8_11, 8_13, 8_14, 9_10, 9_11, 9_13, 9_17, 9_18, 9_20 and 9_23.
 - It does not cover 8_15, 9_22, 11n_42 or the Conway knot; these exit with code 4.
 - `--check-library` answers the question for any word.
 

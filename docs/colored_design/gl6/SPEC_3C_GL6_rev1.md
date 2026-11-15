@@ -587,7 +587,7 @@ into dev: hardening, then M2S′ / M5a / MBOX / M6a-1a in any order.
 **Brief M6a-2a** (colored-m6a; needs M6a-1b, MBOX and M5b)
 - `box_run` and `box_finish` with all of D14 (checkpoint headers, bitmaps, down-set check, generator-only
   determinant pass, frozen structure); `sscan box|finish|point`.
-- Gate GP3: (1,1,1) prune 2, 3 on the 185 knots (tools/ntrunc_t1/data/knots3_all.txt) against engine2
+- Gate GP3: (1,1,1) prune 2, 3 on the 185 knots (tools/dev/ntrunc_t1/data/knots3_all.txt) against engine2
   gl_2 / gl_3; (2,2,2) prune 3, 4 against unpruned on 4_1, 5_2 and 6_2.
 - T0 uncapped at N = 4.
 - Report: per oracle, the types and pairs it touched; the T0 table.

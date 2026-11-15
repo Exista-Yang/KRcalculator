@@ -23,7 +23,7 @@ library data (data-gl6/c2/). Tags: [M] measured, [E] estimate.
   (6_1, 7_6, 7_7) are one session per prime with the box driver, reduced-only for the rest; Conway no-go this round.
 - Full suite `KRHOM_THREADS=4 cargo test --release`: **282 passed, 0 failed, 36 ignored** (runs_c2/full_suite.log).
 
-## 1. 2-strand sanity (runs_c2/xscan/, tools/c2/xscan_vs_wang.py) [M]
+## 1. 2-strand sanity (runs_c2/xscan/, tools/dev/xscan_vs_wang.py) [M]
 
 `xscan 2,2 "σ^m" 2,3,4 --both --prime P [--prune 4]` for m = 3, 5 (P = 31, 32b), plus m = 2, 4 at prune 4 for the
 Markov check. All 24 (m = 3, 5) unreduced closures equal Wang (k = 2): ranks 1 / 7 / 22 (σ^3) and 1 / 11 / 46 (σ^5)
@@ -100,7 +100,7 @@ are 8_19 (29 vs 121), 10_124 (61 vs 289), 10_125 (125 vs 169), 10_139 (133 vs 44
 of every amphichiral knot in the set is mirror-symmetric P(t,q) = P(1/t,1/q) (e.g. 4_1).
 
 **Checks against the library.** Pruned (prune 4) = unpruned (level-6 library) on 4_1, 5_2, 6_2, 6_3, 7_3, both
-closure-by-closure, all six closures each (runs_c2/k3/unpruned/, tools/c2/same.py). Markov words σ_1^m σ_2^{±1}
+closure-by-closure, all six closures each (runs_c2/k3/unpruned/, tools/dev/same.py). Markov words σ_1^m σ_2^{±1}
 (m = 2, 3, 4, 5) on (2,2,2) equal the 2-strand σ^m xscan of (2,2) at N' = 2, 3, 4 (reduced and unreduced), both
 primes, all 12 words (tools/c2/markov.py): this is the destabilization invariance of the σ_2 strand.
 
@@ -118,7 +118,7 @@ The queue was ordered by the truncated envelope's peak Hom dimension (runs_c2/k3
 ## 4. 4-strand census (docs/colored_design/c2/C2_1_census.md) [M + E]
 
 See the census for the tables. Measured: `libbuild plan` (2,2,2,2) at N = 4 and 8; `libbuild cover` for the 22
-knots of knots4_cloud.txt (labels 2,2,2,2); the truncated decategorified envelope (tools/ntrunc_t1) for the 22
+knots of knots4_cloud.txt (labels 2,2,2,2); the truncated decategorified envelope (tools/dev/ntrunc_t1) for the 22
 knots (χ truncated = untruncated for all 22, and for all 185 3-strand knots); per-X-bucket outcomes of the (3,3,3)
 level-6 build for the library projection; the 3-strand per-point scan cost fit for the scan projection.
 

@@ -202,7 +202,7 @@ Per prime; both primes double it. Memory per point: ≤ 0.4 GB measured at peak 
 fit in 15 GB unless the engine peak grows faster than linearly (unmeasured above 71 k).
 
 **Order of work.** (1) M5i (section 2): two sessions. (2) The 8 Refused + 3 Exhausted non-M5i jobs of class A:
-trace their Search windows (`KRHOM_TRACE`, tools/trace_windows.py) and calibrate (`calib --windows`); pairs 958, 1235
+trace their Search windows (`KRHOM_TRACE`, tools/dev/trace_windows.py) and calibrate (`calib --windows`); pairs 958, 1235
 (Refused) and 1444, 1470, 1894 (Exhausted) plus 6 closure types (Refused at the calibrated table: censored calls of
 degree 8-9, 1 296 x 1 fibres). (3) Scans: 6_1, 7_6, 7_7 unreduced + reduced, both primes (≈ 1-14 core-h each,
 `sbox box --shard k/4 --ckpt-secs 600`, runs_c2/k4/scan/box.sh is ready), then reduced-only for the rest of A.

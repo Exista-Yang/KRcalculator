@@ -250,5 +250,5 @@ cat data-gl6/m5c/f31/layerA_tmpl.tar.gz.part-* | tar -C C31 -xzf -
 b4wstamp --cache C31 --costs docs/colored_design/m4c/b4w/costs_b4w.txt --provider m4c-lf
 KRHOM_COSTS_ANY_HOST=1 libbuild run|replay --lam 3,3,3 --n 5|6 --field 31 --cache C31 \
     --costs docs/colored_design/m4c/b4w/costs_b4w.txt --stamp-route --provider m4c-lf --jobs 4 --rss 3300 --json OUT
-libbuild cover --lam 3,3,3 --n 6 --knots tools/ntrunc_t1/data/knots3_all.txt --runs RUN31.jsonl,RUN32b.jsonl --md OUT
+libbuild cover --lam 3,3,3 --n 6 --knots tools/dev/ntrunc_t1/data/knots3_all.txt --runs RUN31.jsonl,RUN32b.jsonl --md OUT
 ```

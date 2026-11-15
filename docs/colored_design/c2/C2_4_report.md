@@ -2,7 +2,7 @@
 
 Date 2026-11-14. Machine: 4 cores, 15 GB. Base: origin/dev 710c102, merged with origin/colored-2c4-fix 4553f23
 (C2-5: Leaves routes, `sbox --provider`, calibrated table costs_2222_c25.txt, repaired layer A). Tags: [M] measured,
-[E] estimate. Outputs: runs_c2/k4m/, tests/m5i.rs, examples/m5i_*.rs, tools/c2/k4m_status.py; library delta on
+[E] estimate. Outputs: runs_c2/k4m/, tests/m5i.rs, examples/m5i_*.rs, tools/dev/k4m_status.py; library delta on
 data-gl6 under c2/l2222_n4_c24/.
 
 ## Summary

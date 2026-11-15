@@ -27,7 +27,7 @@ restored per MANIFEST. Tags: [M] measured here, [E] estimate.
 | 35db8e2 | 2 | Exact cost buckets by call kind, exact-shape record first (`predict_call`), test |
 | c5da2d5 | 3 | optional layer-A route stamp (`--stamp-route`), test |
 | a31c6f8 | 4 | window SBims shared between templates (Memory pairs), test |
-| 431e48a | 5 | leaf-iso admission refusals are Refused, `[leaf_iso]` trace, tools/trace_windows.py, `KRHOM_HS_TIMING`, test |
+| 431e48a | 5 | leaf-iso admission refusals are Refused, `[leaf_iso]` trace, tools/dev/trace_windows.py, `KRHOM_HS_TIMING`, test |
 | 0312b5f | 5 | solver: equation dedup + heap sparse sweep in `kernel_lazy` (identical results), hom_lazy test |
 | f21e6e6 | 3 | cost table tests/data/homprov/costs_333_m5c.txt (351 records) |
 | (this) | 6 | M5c_report.md, coverage after M5c |
@@ -77,7 +77,7 @@ template stamps and the key must still match; files are written with the full st
 admissible decomposable windows of the commutation class); refusals happen only when *no* window is admissible. The
 lever is therefore the table (and the solver speed), not the order.
 
-**Rounds** (`tools/trace_windows.py` turns `KRHOM_TRACE` refusals — `choose_window` and the new `leaf_iso` lines — into
+**Rounds** (`tools/dev/trace_windows.py` turns `KRHOM_TRACE` refusals — `choose_window` and the new `leaf_iso` lines — into
 `calib --windows` input; limit 125 s ≥ `max_window_s` = 120 s, 3 jobs, `--retry-censored`):
 
 | round | input | calls | completed | censored (125 s) | pairs certified afterwards (trace) |

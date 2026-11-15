@@ -1,4 +1,4 @@
-Review of tools/fetch_library.sh, data/libraries.tsv, data/libstatus/*, tools/randcheck.py, tools/c2/k4m_status.py and docs/CALCULATOR.md at origin/colored-calc 1a9c8de. This was a read-only review: I ran nothing from the repo, used only read-only git, and parsed one JSON file once with `python3 -I`.
+Review of tools/fetch_library.sh, data/libraries.tsv, data/libstatus/*, tools/randcheck.py, tools/dev/k4m_status.py and docs/CALCULATOR.md at origin/colored-calc 1a9c8de. This was a read-only review: I ran nothing from the repo, used only read-only git, and parsed one JSON file once with `python3 -I`.
 
 ## Findings (most severe first)
 
@@ -100,4 +100,4 @@ Files reviewed:
 - /Users/existair/Documents/KRcalculator/.claude/worktrees/calc/docs/CALCULATOR.md
 - /Users/existair/Documents/KRcalculator/.claude/worktrees/calc/data/libraries.tsv
 - /Users/existair/Documents/KRcalculator/.claude/worktrees/calc/data/libstatus/
-- /Users/existair/Documents/KRcalculator/.claude/worktrees/calc/tools/c2/k4m_status.py
+- /Users/existair/Documents/KRcalculator/.claude/worktrees/calc/tools/dev/k4m_status.py

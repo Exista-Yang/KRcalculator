@@ -105,7 +105,7 @@ Library: data-gl6/m5c layer A (sha256 of both chunks = MANIFEST), `--replay --st
 16 reduced), closures N' = 3, 4, both modes, the final stage, scaling check at 2 points; F31 and F32b,
 node seed 201.
 
-- **185 of 185 knots** of tools/ntrunc_t1/data/knots3_all.txt (braid lengths 4 … 12): every closure
+- **185 of 185 knots** of tools/dev/ntrunc_t1/data/knots3_all.txt (braid lengths 4 … 12): every closure
   computed for both primes, the primes identical, χ = `schur::decat_chi` on every closure (740).
 - **N = 4: equal, as full polynomials and with zero shift, to the uncolored gl_4 homology of the
   reversed braid (engine2, examples/e2ref) — unreduced and reduced, all 185 knots** ("via duality

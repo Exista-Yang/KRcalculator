@@ -185,7 +185,7 @@ memory work in scope. On 3 strands the order is mostly right, but there are four
   - (3,3,3) synthetic polynomials of weight 27 are dense (≥ 88 233 e-monomials at w = 22).
   - Fix: `#[ignore]` or cached fixtures, and sparse random polynomials.
 - **m4.** Paths:
-  - the knot list is tools/ntrunc_t1/data/knots3_all.txt (185 lines), not tests/data;
+  - the knot list is tools/dev/ntrunc_t1/data/knots3_all.txt (185 lines), not tests/data;
   - wang.py exists only in the laptop scratchpad (r3scripts/wang.py). Commit it to tools/ so cloud
     sessions can extend the references;
   - `hopf_formula` is private in tests/xengine.rs:156 and must move to a shared test module.

@@ -109,7 +109,7 @@ Columns: jobs = pairs + closure types, UB (LB); certified UB (LB); failures in t
 
 ```
 R=data-gl6/m5b   # worktree of origin/data-gl6
-libbuild cover --lam 3,3,3 --n 5 --knots tools/ntrunc_t1/data/knots3_all.txt \
+libbuild cover --lam 3,3,3 --n 5 --knots tools/dev/ntrunc_t1/data/knots3_all.txt \
     --runs $R/f31/runs/run_n5.jsonl,$R/f32b/runs/run_n5.jsonl [--max-cross 8] [--names 4_1,5_2] [--list] [--md OUT]
 ```
 (0.4 s per N for all 185 knots.)

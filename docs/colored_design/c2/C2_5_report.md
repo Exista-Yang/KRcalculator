@@ -21,7 +21,7 @@ were not touched; src/sindec.rs, src/sengine.rs, src/swire.rs were not edited.
    2 575 layer-A files each, plus templates.
 2. **Traces and calibration of the refused pair windows (default chain).** Each failing job was rerun alone
    (`libbuild one`, `KRHOM_TRACE=1`, runs_c2/k4/fix/trace.sh), the refused Search windows / leaf isomorphisms were
-   turned into `calib --windows` input by tools/trace_windows.py (≤ 600 k unknowns) and measured with limit 125 s
+   turned into `calib --windows` input by tools/dev/trace_windows.py (≤ 600 k unknowns) and measured with limit 125 s
    (≥ `max_window_s` = 120 s, the admission ceiling of Search windows), rss 3-4 GB (runs_c2/k4/fix/calib.sh):
 
    | round | input | calls measured | range | censored | certified afterwards (F31) |

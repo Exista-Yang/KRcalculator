@@ -17,7 +17,7 @@ the 3-strand (2,2,2) measurements of this session and the (3,3,3) level-6 build 
 Pruning at N = 4 keeps 41 % of the (2,2,2,2) pairs (1 032 / 2 520), 29 % of the targets by count, 44 % of the
 closure types (125 / 281) and cuts max X from 51 840 to 15 552 flows (runs_c2/census/plan_2222_n{4,8}.{out,json}).
 
-X distribution (provider pairs / closure jobs, flows; tools/c2/xdist.py):
+X distribution (provider pairs / closure jobs, flows; tools/dev/xdist.py):
 
 | set | (0,100] | (100,500] | (500,1k] | (1k,2k] | (2k,5k] | (5k,10k] | (10k,20k] | max |
 |---|---|---|---|---|---|---|---|---|
@@ -41,7 +41,7 @@ As for (3,3,3) (M5c), a knot visits almost the whole level set of its class afte
 coverage is all-or-nothing in the library's failure list: one knot of a class needs essentially the same
 library as every other knot of that class. Even 6_1 needs the X = 15 552 pairs.
 
-## 3. Truncated decategorified envelope (tools/ntrunc_t1 `files ... nodecat`, labels 2,2,2,2) [M]
+## 3. Truncated decategorified envelope (tools/dev/ntrunc_t1 `files ... nodecat`, labels 2,2,2,2) [M]
 
 runs_c2/census/env4_2222.txt (all 22 knots of knots4_cloud.txt; 1.6-6.5 s each). Per knot, the maximum over
 the stages of the K_0 lower bound on objects (LB obj) and types, the peak object count, the peak Hom
@@ -84,7 +84,7 @@ Gram solve.
 ## 4. Projections [E]
 
 **Library build (2,2,2,2) level 4, per prime.** With the (3,3,3) level-6 per-X-bucket outcomes and walls
-(M5c F31 run, tools/c2/xfail.py: 100 / 99 / 92 / 91 / 73 / 62 / 75 % certified in the buckets above; mean
+(M5c F31 run, tools/dev/xfail.py: 100 / 99 / 92 / 91 / 73 / 62 / 75 % certified in the buckets above; mean
 certified wall 0.6-22 s), the 869 provider pairs cost about 5 000 s of job wall, i.e. **about 25 min with 4
 workers**, plus the G1(c) 2x retries of the failures (up to 20 min each) → **0.5-5 h per prime**. The same
 rates predict **about 57 pair failures** (A: 14, B: 23, C: 41 of the needed ones) and closure failures in the
