@@ -333,3 +333,6 @@ sharded runs (`sbox box --dir D --shard k/K`, then `sbox finish`), any stage lis
 one grid, and the library build options (`--provider default|m4c|m4c-lf`, `--replay`,
 `--stamp-route`, `--cache`, `--costs`). Use it for multi-hour 4-strand words; krhom runs a word
 in one process.
+`sbox` and the other developer binaries are built only with the `dev` feature
+(`cargo build --release --features dev`); `tools/dev/box.sh` and `tools/dev/finish.sh` drive a
+sharded 4-strand run.

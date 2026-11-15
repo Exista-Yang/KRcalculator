@@ -6,6 +6,12 @@ license = "MIT OR Apache-2.0"
 authors = ["Hongjian Yang"]
 description = "Colored (exterior power) Khovanov-Rozansky gl_N link homology via singular Soergel bimodules and the universal-construction closure"
 
+[features]
+# Developer and diagnostic binaries and examples (library builds, sharded box runs, scans,
+# calibration, censuses). `cargo build --release` builds only the calculator `krhom`;
+# `cargo build --release --features dev` builds everything.
+dev = []
+
 [dependencies]
 num-bigint = "0.4"
 num-integer = "0.1"
@@ -19,3 +25,136 @@ opt-level = 2
 [profile.release]
 opt-level = 3
 debug = true
+
+# ---- calculator (default) ----
+[[bin]]
+name = "krhom"
+path = "src/bin/krhom.rs"
+
+# ---- developer binaries (feature "dev") ----
+[[bin]]
+name = "b4wstamp"
+path = "src/bin/b4wstamp.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "colored_cable"
+path = "src/bin/colored_cable.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "cube"
+path = "src/bin/cube.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "engine"
+path = "src/bin/engine.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "engine2"
+path = "src/bin/engine2.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "g1"
+path = "src/bin/g1.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "g4_free"
+path = "src/bin/g4_free.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "gp0"
+path = "src/bin/gp0.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "grwarm"
+path = "src/bin/grwarm.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "libbuild"
+path = "src/bin/libbuild.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "m4c"
+path = "src/bin/m4c.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "pd2braid"
+path = "src/bin/pd2braid.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "sbox"
+path = "src/bin/sbox.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "schur_scan"
+path = "src/bin/schur_scan.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "sprof"
+path = "src/bin/sprof.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "twoprime"
+path = "src/bin/twoprime.rs"
+required-features = ["dev"]
+
+[[bin]]
+name = "xscan"
+path = "src/bin/xscan.rs"
+required-features = ["dev"]
+
+# ---- examples (feature "dev") ----
+[[example]]
+name = "e2ref"
+path = "examples/e2ref.rs"
+required-features = ["dev"]
+
+[[example]]
+name = "idem_end0"
+path = "examples/idem_end0.rs"
+required-features = ["dev"]
+
+[[example]]
+name = "idem_list"
+path = "examples/idem_list.rs"
+required-features = ["dev"]
+
+[[example]]
+name = "ladder_search"
+path = "examples/ladder_search.rs"
+required-features = ["dev"]
+
+[[example]]
+name = "m5i_check"
+path = "examples/m5i_check.rs"
+required-features = ["dev"]
+
+[[example]]
+name = "m5i_cover"
+path = "examples/m5i_cover.rs"
+required-features = ["dev"]
+
+[[example]]
+name = "probe_final_d2"
+path = "examples/probe_final_d2.rs"
+required-features = ["dev"]
+
+# ---- tests that run developer binaries ----
+[[test]]
+name = "libbuild"
+path = "tests/libbuild.rs"
+required-features = ["dev"]

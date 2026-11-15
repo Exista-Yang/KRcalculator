@@ -668,10 +668,13 @@ fn g4_certificate_holds_for_every_listed_pair() {
         let e = g4::check(a, nn, false, false).unwrap_err();
         assert!(e.contains("N <= 20"), "({}, {}): {}", a, nn, e);
     }
-    // the front end reports it as a usage error
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_g4_free")).arg("2:21").output().expect("cannot run g4_free");
-    assert_eq!(out.status.code(), Some(2), "stdout: {}", String::from_utf8_lossy(&out.stdout));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("N <= 20"));
+    // the front end reports it as a usage error (developer binary: cargo test --features dev)
+    #[cfg(feature = "dev")]
+    {
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_g4_free")).arg("2:21").output().expect("cannot run g4_free");
+        assert_eq!(out.status.code(), Some(2), "stdout: {}", String::from_utf8_lossy(&out.stdout));
+        assert!(String::from_utf8_lossy(&out.stderr).contains("N <= 20"));
+    }
 }
 
 #[test]

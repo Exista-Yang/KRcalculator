@@ -216,6 +216,7 @@ fn chi_mismatch_is_an_error() {
     }
 }
 
+#[cfg(feature = "dev")] // runs a developer binary (cargo test --features dev)
 /// Review 2s_close F2/F4, 2s_core m2: the xscan JSON records the certification switches and the
 /// commit of the binary, and its peak RSS is the process peak.
 #[test]

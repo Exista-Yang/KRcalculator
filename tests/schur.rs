@@ -1173,10 +1173,12 @@ fn t_o_cache_round_trip() {
 // ---------------------------------------------------------------------------------------------
 // input validation, cache files and JSON records (review of M3a)
 
+#[cfg(feature = "dev")] // runs a developer binary (cargo test --features dev)
 fn schur_scan(args: &[&str]) -> std::process::Output {
     std::process::Command::new(env!("CARGO_BIN_EXE_schur_scan")).args(args).output().expect("cannot run schur_scan")
 }
 
+#[cfg(feature = "dev")] // runs a developer binary (cargo test --features dev)
 #[test]
 fn marked_block_out_of_range_is_an_error() {
     let lam = [2u8, 2];
@@ -1205,6 +1207,7 @@ fn decat_scan_refuses_marked_block_out_of_range() {
     let _ = decat_scan(&mut s, &word("1 1 1"), &ScanOpts { peak: false, every_stage: false, marked_block: Some(5) });
 }
 
+#[cfg(feature = "dev")] // runs a developer binary (cargo test --features dev)
 #[test]
 fn unreachable_blocks_are_refused_early() {
     assert!(check_block(&[2, 1], &[1, 2]).is_ok());
@@ -1225,6 +1228,7 @@ fn canonical_basis_refuses_mu_of_other_length_before_searching() {
     let _ = s.canonical_basis(&[1, 1, 1]);
 }
 
+#[cfg(feature = "dev")] // runs a developer binary (cargo test --features dev)
 #[test]
 fn load_basis_rejects_malformed_or_corrupted_files() {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
@@ -1307,6 +1311,7 @@ fn json_field<'a>(line: &'a str, key: &str) -> &'a str {
     }
 }
 
+#[cfg(feature = "dev")] // runs a developer binary (cargo test --features dev)
 #[test]
 fn cli_json_has_gram_rows() {
     let out = schur_scan(&["scan", "--labels", "2,2", "--word", "1 1 1", "--marked", "0", "--json"]);

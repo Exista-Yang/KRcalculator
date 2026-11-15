@@ -625,9 +625,9 @@ def t4_coverage(ctx, cand_words):
 def t4_coverage_inner(ctx, cand_words):
     exe = os.path.join(ROOT, "target/release/examples/m5i_cover")
     if not os.path.exists(exe):
-        p = subprocess.run(["cargo", "build", "--release", "--example", "m5i_cover"], cwd=ROOT, capture_output=True, text=True)
+        p = subprocess.run(["cargo", "build", "--release", "--features", "dev", "--example", "m5i_cover"], cwd=ROOT, capture_output=True, text=True)
         if p.returncode != 0:
-            raise HarnessError("cargo build --release --example m5i_cover failed: %s" % p.stderr.strip()[-400:])
+            raise HarnessError("cargo build --release --features dev --example m5i_cover failed: %s" % p.stderr.strip()[-400:])
     st = [open(os.path.join(ROOT, "data/libstatus/l2222_n4_%s.txt" % f)).read().splitlines() for f in ("f31", "f32b")]
     ok = set(l for l in st[0] if l.endswith(" ok")) & set(st[1])
     both = os.path.join(ctx.tmp, "both.txt")

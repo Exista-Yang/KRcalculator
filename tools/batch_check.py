@@ -17,6 +17,7 @@ braid_vs_invariants == "conflict" are skipped.
 
 Output: one TSV line per record (appended, so a run can be resumed), and a summary at the end.
 
+(engine2 is a developer binary: cargo build --release --features dev)
 usage: python3 tools/batch_check.py --table data/knots_upto12.jsonl --binary target/release/engine2
          --out results.tsv [--ns 2,3,4] [--reduced] [--min-strands 2] [--max-strands 4]
          [--max-crossings 12] [--threads 1] [--timeout 1800] [--shard 0/1] [--nice 19]
