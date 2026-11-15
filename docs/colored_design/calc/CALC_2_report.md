@@ -247,7 +247,17 @@ New tests in tests/calc.rs: `exact2_memory_cap_and_shape_refusals` (1),
 CSV keep the first), `table_and_knotjob_convention` (15, 16). tests/c27_joint.rs `plan_max`
 (13).
 
-TESTS_PLACEHOLDER
+Results:
+- `KRHOM_THREADS=4 cargo test --release` (runs_calc2/full_suite.log): **311 passed, 0 failed, 41
+  ignored** (CALC-1: 306 / 0 / 41; +5 new tests in tests/calc.rs). tests/calc.rs alone: 13 passed,
+  4 ignored.
+- `cargo test --release --test calc -- --ignored` with both libraries installed
+  (runs_calc2/f3_ignored.log): 4 passed (H3-H6 via the library), 520 s.
+- `cargo test --release --test c27_joint`: 3 passed (item 13).
+
+Not in the fix list and therefore not changed: review cli #5 (an empty braid is accepted as the
+1-strand unknot) and review engine #2's suggested key fingerprint (only its comment was requested).
+
 
 ## Acceptance runs
 
@@ -296,4 +306,14 @@ has writhe 2 and is now checked against the Hopf closed form.)
 
 ## Commits
 
-COMMITS_PLACEHOLDER
+All on `colored-calc2` (pushed; nothing pushed elsewhere):
+
+- c3ea279 Merge origin/dev (1914bad, CALC-2 fix list) into colored-calc2
+- b8ac891 fixes 1-13, item 14 (first version), --table, --convention knotjob, tests, docs
+- 7193751 item 14: revert the fail-closed reroute, keep corrected comments; demo and H scripts
+- cf2f19a item 14 replay of the reroute jobs (reverted code: 14/14 ok), report draft
+- 94fc7fa H3-H8 re-run, demonstrations
+- 2895068 randcheck --quick PASS 10
+- 4174c93 full suite 311 / 0 / 41
+- (this report's final commit)
+
