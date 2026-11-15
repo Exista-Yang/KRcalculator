@@ -234,7 +234,7 @@ pair 1038 ok
 pair 104 ok
 pair 1042 ok
 pair 105 ok
-pair 1054 fail
+pair 1054 ok
 pair 1066 ok
 pair 109 ok
 pair 11 ok
@@ -441,7 +441,7 @@ pair 1464 ok
 pair 1466 ok
 pair 1467 ok
 pair 1470 ok
-pair 1471 fail
+pair 1471 ok
 pair 1472 fail
 pair 1474 ok
 pair 1475 ok
@@ -463,7 +463,7 @@ pair 151 ok
 pair 1524 ok
 pair 1528 ok
 pair 154 ok
-pair 1540 fail
+pair 1540 ok
 pair 1552 ok
 pair 157 ok
 pair 159 ok
@@ -1211,7 +1211,7 @@ pair 922 ok
 pair 923 ok
 pair 924 ok
 pair 925 ok
-pair 926 fail
+pair 926 ok
 pair 927 ok
 pair 928 ok
 pair 929 ok
@@ -1226,7 +1226,7 @@ pair 941 ok
 pair 942 fail
 pair 944 ok
 pair 945 ok
-pair 949 fail
+pair 949 ok
 pair 951 ok
 pair 953 ok
 pair 958 ok
@@ -1243,12 +1243,12 @@ pair 980 ok
 pair 981 ok
 pair 984 ok
 pair 985 ok
-pair 986 fail
+pair 986 ok
 pair 988 ok
 pair 989 ok
 pair 99 ok
 pair 990 ok
 pair 991 ok
 pair 994 ok
-pair 997 fail
+pair 997 ok
 pair 999 ok
