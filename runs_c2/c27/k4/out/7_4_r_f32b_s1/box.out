@@ -1,0 +1,1 @@
+box run shard 1/3: 72 points, 72 pending at start, 72 scanned (mean 41.183s/point), complete true, determinant pass 13536 checks at 72 points, 6 checkpoint files written, 3630.7s, VmHWM 3677 MB

@@ -1,0 +1,20 @@
+krhom-boxrun v1
+stamp=boxrun-v1
+field=F_4294967291
+prime=4294967291
+lam=2,2,2,2
+words=1 1 2 -1 2 2 3 -2 3
+stages=9
+n_box=4
+seed=201
+prune_n=4
+modes=r0
+n_close=2,3,4
+freivalds_k=3
+d2_all_points=false
+check_d2=false
+library_hash=e49911dc488ea297
+engine_stamp=swire-v1+sengine-v2:order=Heap:streaming=true
+box_code_stamp=boxclose-v2
+bind w0 s9: skeleton=81f42d423f6999fe trace=f052602ee1e087d3 record=49141065ecddcdfa entries=1047220
+shard=0/3
