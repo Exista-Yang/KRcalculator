@@ -1,5 +1,3 @@
-library: 16 types, 16 closable, build 5.1s (0 provider calls, 233 layer-A loads), hash 5a2b2f58a8a8ae31, commit b5d579279cb51ad0657ef6b537fefa2ba8f2b96c
-memory allocation of 33554432 bytes failed
-stack backtrace:
-note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
-exit 134
+library: 16 types, 16 closable, build 5.5s (0 provider calls, 233 layer-A loads), hash 5a2b2f58a8a8ae31, commit b5d579279cb51ad0657ef6b537fefa2ba8f2b96c
+FATAL: box: staged rank stage for [2, 2, 2] at N = 4 needs about 194713 MB, above the memory cap of 120000 MB (set KRHOM_MEM_CAP_MB to raise it)
+exit 2

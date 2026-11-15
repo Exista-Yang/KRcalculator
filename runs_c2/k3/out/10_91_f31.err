@@ -1,5 +1,1 @@
-library: 16 types, 16 closable, build 6.2s (0 provider calls, 233 layer-A loads), hash 5944480c88254f94, commit b5d579279cb51ad0657ef6b537fefa2ba8f2b96c
-memory allocation of 16777216 bytes failed
-stack backtrace:
-note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
-exit 134
+library: 16 types, 16 closable, build 4.7s (0 provider calls, 233 layer-A loads), hash 5944480c88254f94, commit b5d579279cb51ad0657ef6b537fefa2ba8f2b96c
