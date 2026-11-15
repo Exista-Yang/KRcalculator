@@ -34,6 +34,10 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Instant;
 
+#[path = "krhom/cli_ext.rs"]
+mod cli_ext;
+use cli_ext::TableBraid;
+
 const USAGE: &str = "usage: krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS) [--colors c | c1,c2,...] [--reduced]
              [--table] [--json OUT] [--csv OUT] [--no-simplify] [--check-library] [--lib-dir DIR]
              [--seed S] [--seed-retries K] [--mem-mb M] [--mem-cap-mb M]
@@ -47,10 +51,17 @@ const USAGE: &str = "usage: krhom N[,N...] (--braid WORD [--strands n] | --pd PD
   --table  also print the bigraded table of each N (rows t, columns q, blank = 0)
   --json OUT  machine-readable results (an array with --file); --csv OUT rows name,N,reduced,t,q,rank
   colored 3-4 strands (uniform color 2, N <= 4) need the prebuilt library: tools/fetch_library.sh l222_n4 l2222_n4
+  --knot NAME / --link NAME  braid from data/knots_upto12.jsonl (e.g. 4_1) / data/links_upto11.jsonl (e.g. L2a1{1})
+  --mark K  with --reduced: mark link component K (0-based, the order of --colors)
+  --latex OUT  LaTeX tables (one tabular per N; standalone document)
+  --estimate  3-4 strand box route: time one box point per prime and extrapolate; computes nothing
   results are over Q (two large primes must agree; the full cube is exact over Q); docs/CALCULATOR.md";
 
 const VALUE_OPTS: [&str; 18] = ["--pd", "--braid", "--strands", "--colors", "--colored-method", "--field", "--closure", "--end", "--json", "--csv", "--file", "--lib-dir", "--seed", "--seed-f32b", "--seed-retries", "--mem-mb", "--mem-cap-mb", "--name"];
 const FLAG_OPTS: [&str; 9] = ["--table", "--cube", "--reduced", "--single-prime", "--no-simplify", "--check-library", "--box-live", "--help", "-h"];
+/// F-CLI options (kept apart from the arrays above to ease merging): see `cli_ext`.
+const CLI_VALUE_OPTS: [&str; 4] = ["--knot", "--link", "--mark", "--latex"];
+const CLI_FLAG_OPTS: [&str; 1] = ["--estimate"];
 
 #[derive(Clone, Debug)]
 struct Opts {
@@ -76,11 +87,19 @@ struct Opts {
     env_any_host: bool,
     /// --table: print the bigraded table after each N block
     table: bool,
+    /// --mark K: with --reduced, mark link component K (krhom's numbering)
+    mark: Option<usize>,
+    /// --estimate: box route: time one box point per prime and extrapolate, no computation
+    estimate: bool,
+    /// --latex OUT
+    latex: Option<String>,
 }
 
 enum Input {
     Braid(String),
     Pd(String),
+    /// --knot / --link NAME: a braid from the shipped tables (see `cli_ext::lookup_table`)
+    Table(TableBraid),
 }
 struct Item {
     name: Option<String>,
@@ -105,6 +124,8 @@ struct Outcome {
     check_library: Option<String>,
     mem_cap_mb: Option<u64>,
     mem_mb: Option<u64>,
+    /// --estimate: the estimate text (nothing was computed)
+    estimate: Option<String>,
 }
 
 fn fail(code: i32, msg: &str) -> ! {
@@ -119,7 +140,7 @@ fn parse_args(args: &[String]) -> Result<(Opts, Vec<Item>, Option<String>, Optio
     let mut seen: Vec<&str> = vec![];
     while i < args.len() {
         let a = args[i].as_str();
-        if VALUE_OPTS.contains(&a) {
+        if VALUE_OPTS.contains(&a) || CLI_VALUE_OPTS.contains(&a) {
             if i + 1 >= args.len() {
                 return Err(un(format!("{} needs a value", a)));
             }
@@ -128,7 +149,7 @@ fn parse_args(args: &[String]) -> Result<(Opts, Vec<Item>, Option<String>, Optio
             }
             seen.push(a);
             i += 2;
-        } else if FLAG_OPTS.contains(&a) {
+        } else if FLAG_OPTS.contains(&a) || CLI_FLAG_OPTS.contains(&a) {
             i += 1;
         } else {
             return Err(un(format!("unknown argument {:?}\n{}", a, USAGE)));
@@ -201,16 +222,25 @@ fn parse_args(args: &[String]) -> Result<(Opts, Vec<Item>, Option<String>, Optio
         env_mem_cap: std::env::var_os("KRHOM_MEM_CAP_MB").is_some(),
         env_any_host: std::env::var_os("KRHOM_COSTS_ANY_HOST").is_some(),
         table: flag("--table"),
+        mark: cli_ext::parse_mark(get("--mark"), flag("--reduced"))?,
+        estimate: flag("--estimate"),
+        latex: get("--latex"),
     };
-    let nin = ["--braid", "--pd", "--file"].iter().filter(|k| get(k).is_some()).count();
+    let nin = ["--braid", "--pd", "--file", "--knot", "--link"].iter().filter(|k| get(k).is_some()).count();
     if nin != 1 {
-        return Err(un(format!("give exactly one of --braid, --pd, --file\n{}", USAGE)));
+        return Err(un(format!("give exactly one of --braid, --pd, --file, --knot, --link\n{}", USAGE)));
+    }
+    if opts.estimate && opts.check_library {
+        return Err(un("--estimate and --check-library are exclusive".into()));
     }
     let mut items = vec![];
     if let Some(b) = get("--braid") {
         items.push(Item { name: get("--name"), input: Input::Braid(b) });
     } else if let Some(p) = get("--pd") {
         items.push(Item { name: get("--name"), input: Input::Pd(p) });
+    } else if let Some((kind, nm)) = get("--knot").map(|n| ("knot", n)).or_else(|| get("--link").map(|n| ("link", n))) {
+        let tb = cli_ext::lookup_table(kind, &nm)?;
+        items.push(Item { name: Some(get("--name").unwrap_or(tb.name.clone())), input: Input::Table(tb) });
     } else if let Some(f) = get("--file") {
         let text = std::fs::read_to_string(&f).map_err(|e| un(format!("--file {}: {}", f, e)))?;
         for (ln, line) in text.lines().enumerate() {
@@ -255,6 +285,10 @@ fn guard<T>(what: &str, f: impl FnOnce() -> Result<T, CalcErr>) -> Result<T, Cal
 /// Two-prime certification of an F_p computation: run F31 (seed a) and, unless --single-prime,
 /// F32b (seed b), and compare.
 fn two_primes(o: &Opts, out: &mut Outcome, ns: &[usize], f31: impl FnOnce() -> Result<BTreeMap<usize, Poincare>, CalcErr>, f32b: impl FnOnce() -> Result<BTreeMap<usize, Poincare>, CalcErr>) -> Result<BTreeMap<usize, Poincare>, CalcErr> {
+    if o.estimate {
+        out.estimate = Some(format!("fast route ({}), no estimate needed: run without --estimate", out.route));
+        return Ok(BTreeMap::new());
+    }
     let t = Instant::now();
     let a = guard("engine (F_2147483647)", f31)?;
     eprintln!("[F_2147483647] {:.2}s", t.elapsed().as_secs_f64());
@@ -298,6 +332,7 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
             };
             (BraidWord::from_signed(strands, &w), true)
         }
+        Input::Table(tb) => (cli_ext::table_braid(tb, o.strands)?, true),
         Input::Pd(s) => {
             let pd = parse_pd(s).map_err(|e| un(format!("invalid PD code: {}", e)))?;
             let r = std::panic::catch_unwind(|| pd_to_braid(&pd)).map_err(|_| un("invalid PD code (cannot convert it to a braid)".into()))?;
@@ -312,9 +347,10 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
         Some(c) => return Err(un(format!("{} colors given, but the link has {} components (give one color for all, or one per component)", c.len(), ncomp))),
     };
     let lab = |b: &BraidWord| -> Vec<usize> { b.components.iter().map(|&c| colors[c]).collect() };
-    let mut labels = lab(&bw);
     out.colors = colors.clone();
     out.orig = Some(bw.clone());
+    let marked_from = cli_ext::apply_mark(&mut bw, o)?;
+    let mut labels = lab(&bw);
     let uncolored = labels.iter().all(|&l| l == 1);
     let method = if o.cube { Some("cube") } else { o.method.as_deref() };
     let route_kind = match (method, uncolored) {
@@ -333,7 +369,10 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
         return Err(un("--reduced is only supported for uncolored links with the Soergel engine and with the singular route".into()));
     }
     println!("gl_N for N in {:?}  strands {}  crossings {}  components {}  colors {:?}", o.ns, bw.strands, bw.word.len(), ncomp, colors);
-    println!("braid: {}", sigstr(&bw.signed()));
+    println!("braid: {}", sigstr(&out.orig.as_ref().unwrap().signed()));
+    if let Some(p) = marked_from {
+        println!("conjugated braid: {}  (component {} moved from bottom position {} to 0; same closure)", sigstr(&bw.signed()), o.mark.unwrap_or(0), p);
+    }
     // ---- N below a color: wedge^a C^N = 0 (review K14 / Q5), on every route
     let amax = *labels.iter().max().unwrap_or(&1);
     out.zero_ns = o.ns.iter().copied().filter(|&n| n < amax).collect();
@@ -357,7 +396,8 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
     let results: BTreeMap<usize, Poincare> = match route_kind {
         "soergel" => {
             out.route = "soergel";
-            println!("closure: {}{}", match o.closure { Closure::Exact => "exact".to_string(), Closure::Tower(e) => format!("tower ({:?} end first)", e) }, if o.reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
+            cli_ext::tower_limits(o, bw.strands, &run_ns)?;
+            println!("closure: {}{}", match o.closure { Closure::Exact => "exact".to_string(), Closure::Tower(e) => format!("tower ({:?} end first)", e) }, cli_ext::red_note(o));
             out.seeds = vec![7, 11];
             let (n, cl, red) = (bw.strands, o.closure, o.reduced);
             let (w1, w2, ns1, ns2) = (word.clone(), word.clone(), run_ns.clone(), run_ns.clone());
@@ -366,6 +406,7 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
         "cable" => {
             out.route = "cable";
             let cable_strands: usize = labels.iter().sum();
+            cli_ext::tower_limits(o, cable_strands, &run_ns)?;
             println!("colored method: cable ({} strands)", cable_strands);
             if !cable_default(&labels) {
                 eprintln!("warning: a cable of this size ({} strands, colors {:?}) used 0.4-6 GB within seconds in tests", cable_strands, colors);
@@ -383,6 +424,10 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
         "cube" => {
             out.route = "cube";
             println!("{}method: full cube (exact over Q)", if uncolored { "" } else { "colored " });
+            if o.estimate {
+                out.estimate = Some("the full cube is exponential; no estimate is available for this route".into());
+                return Ok(out);
+            }
             let mut r = BTreeMap::new();
             for &nn in &run_ns {
                 let link = BraidLink { n: nn, labels: labels.clone(), word: word.clone() };
@@ -411,8 +456,9 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
                     return Err(un(format!("colors {:?}: the exact 2-strand engine handles colors 1..=3; --colored-method cube is exact over Q (tiny inputs only)", colors)));
                 }
                 exact2_shape(&labels, &run_ns, o.reduced).map_err(un)?;
+                cli_ext::exact2_dim(&labels, &run_ns, o.reduced).map_err(un)?;
                 out.mem_cap_mb = Some(std::env::var("KRHOM_MEM_CAP_MB").ok().and_then(|v| v.trim().parse().ok()).unwrap_or(krhom::colored::cclose::DEFAULT_MEM_CAP_MB));
-                println!("method: singular (exact 2-strand singular Soergel engine){}", if o.reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
+                println!("method: singular (exact 2-strand singular Soergel engine){}", cli_ext::red_note(o));
                 let red = o.reduced;
                 let (l1, l2, w1, w2, ns1, ns2) = (labels.clone(), labels.clone(), word.clone(), word.clone(), run_ns.clone(), run_ns.clone());
                 let em = exact2_err;
@@ -423,7 +469,7 @@ fn run_item(item: &Item, o: &Opts) -> Result<Outcome, CalcErr> {
                     return Err(un("--box-live (tests only) handles nonempty braids on exactly 2 strands".into()));
                 }
                 let lam: Vec<u8> = labels.iter().map(|&a| a as u8).collect();
-                println!("method: singular (localized box engine, live provider, in-memory unpruned library, box N {}, seed {}){}", run_ns.iter().max().copied().unwrap_or(0), o.seed, if o.reduced { ", reduced (strand at bottom position 0 marked)" } else { "" });
+                println!("method: singular (localized box engine, live provider, in-memory unpruned library, box N {}, seed {}){}", run_ns.iter().max().copied().unwrap_or(0), o.seed, cli_ext::red_note(o));
                 let costs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/homprov/costs_cloud.txt");
                 if run_ns.is_empty() {
                     BTreeMap::new()
@@ -493,7 +539,7 @@ fn exact2_shape(labels: &[usize], run_ns: &[usize], reduced: bool) -> Result<(),
 fn exact2_err(e: String) -> CalcErr {
     if e.contains("above the memory cap") {
         CalcErr::Resource(format!("{}; with krhom use --mem-cap-mb M to raise it (the run then needs about that much memory)", e))
-    } else if e.contains("top weight") || e.contains("labels above 16") {
+    } else if e.contains("top weight") || e.contains("labels above 16") || e.contains("too large for the exact oracle") {
         CalcErr::Unsupported(format!("singular method: {}", e))
     } else {
         CalcErr::Engine(format!("singular method failed: {}", e))
@@ -616,9 +662,12 @@ fn box_route(o: &Opts, out: &mut Outcome, bw: &BraidWord, labels: &[usize], wi: 
         reg31.n,
         reg31.n,
         seeds,
-        if o.reduced { ", reduced (strand at bottom position 0 marked)" } else { "" }
+        cli_ext::red_note(o)
     );
     out.seeds = vec![o.seed, o.seed2];
+    if o.estimate {
+        return cli_ext::box_estimate(o, out, (&reg31, &inst31), (&reg32, inst32.as_ref()), wi, run_ns, mem_mb);
+    }
     let mk = |seed: u64, replay_only: bool| BoxParams { word: wi.to_vec(), ns: run_ns.to_vec(), reduced: o.reduced, seed, retries: o.retries, mem_mb, check_only: o.check_library, replay_only };
     // one prime with the library diagnosis of review K2 and the template-recompute retry (Q3)
     let status_files: Vec<PathBuf> = [Some(&inst31), inst32.as_ref()].into_iter().flatten().filter_map(|i| i.status.clone()).collect();
@@ -712,6 +761,7 @@ fn item_json(item: &Item, o: &Opts, r: &Result<Outcome, CalcErr>, secs: f64) -> 
     let (inp, inkind) = match &item.input {
         Input::Braid(s) => (s.clone(), "braid"),
         Input::Pd(s) => (s.clone(), "pd"),
+        Input::Table(tb) => (tb.name.clone(), tb.kind),
     };
     let env: Vec<String> = krhom_env().iter().map(|(k, v)| format!("{}:{}", jstr(k), jstr(v))).collect();
     let common = format!("\"tool\":\"krhom\",\"commit\":{},\"name\":{},\"input\":{{\"kind\":\"{}\",\"text\":{},\"N\":{:?},\"reduced\":{}", jstr(krhom::colored::boxrun::build_commit()), name, inkind, jstr(&inp), o.ns, o.reduced);
@@ -799,6 +849,13 @@ fn main() {
     }
     let mut code = 0;
     let mut jsons = vec![];
+    let mut latex_secs: Vec<String> = vec![];
+    if let Some(p) = &o.latex {
+        // a bad path fails before any work
+        if let Err(e) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+            fail(1, &format!("--latex {}: {}", p, e));
+        }
+    }
     for item in &items {
         let t0 = Instant::now();
         let r = run_item(item, &o);
@@ -808,6 +865,10 @@ fn main() {
             Ok(out) => {
                 if let Some(c) = &out.check_library {
                     println!("check-library: {}", c);
+                } else if let Some(e) = &out.estimate {
+                    for l in e.lines() {
+                        println!("estimate: {}", l);
+                    }
                 } else {
                     println!("coefficients: {}", out.coefficients);
                     println!("time {:.2}s", secs);
@@ -852,6 +913,12 @@ fn main() {
         csv_write(&mut csv_file, &csv_rows);
         jsons.push(item_json(item, &o, &r, secs));
         json_write(&jsons);
+        if let Some(p) = &o.latex {
+            latex_secs.push(cli_ext::latex_section(item, &o, &r));
+            if let Err(e) = write_atomic(p, &cli_ext::latex_doc(&latex_secs)) {
+                fail(1, &format!("--latex {}: {}", p, e));
+            }
+        }
     }
     std::process::exit(code);
 }

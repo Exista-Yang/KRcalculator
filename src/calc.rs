@@ -491,6 +491,74 @@ pub fn run_prime_live<F: PrimeField>(lam: &[u8], costs: &Path, word: &[i32], ns:
     Ok(out)
 }
 
+/// `--estimate` (F-CLI): what one timed box point says about a full box run of one prime.
+#[derive(Clone, Debug, Default)]
+pub struct EstOut {
+    pub field: String,
+    pub lib_build_secs: f64,
+    pub record_secs: f64,
+    /// box points the full run scans (needed points of the grid, `needed_points`)
+    pub points: usize,
+    /// the timed point: replay seconds, its determinant pass seconds, engine peak bytes
+    pub point_secs: f64,
+    pub det_secs: f64,
+    pub point_peak_bytes: u64,
+    pub point_eval_bytes: usize,
+    pub vmhwm_kb: usize,
+}
+impl EstOut {
+    /// (wall seconds, peak MB) of the full run of this prime at `threads` threads: library +
+    /// record scan + points x (point + determinant pass) / threads + the scaling check (4 point
+    /// scans); memory: the VmHWM so far plus one point's engine memory per further thread. The
+    /// closure phase is not included.
+    pub fn extrapolate(&self, threads: usize) -> (f64, u64) {
+        let th = threads.max(1) as f64;
+        let per = self.point_secs + self.det_secs;
+        let scan = (self.points as f64 / th).ceil() * per;
+        let scaling = 4.0 * self.point_secs / th.min(4.0);
+        let wall = self.lib_build_secs + self.record_secs + scan + scaling;
+        let point_mb = (self.point_peak_bytes + self.point_eval_bytes as u64) >> 20;
+        (wall, (self.vmhwm_kb as u64 / 1024) + point_mb * (threads.max(1) as u64 - 1))
+    }
+}
+
+/// `--estimate` (F-CLI): one prime of the box route up to ONE box point: the library build as in
+/// [`run_prime`] (replay-only, stamp preflight), the record scan, the box grid and its needed
+/// points as in `swire::box_word`, then the determinant pass and the replay
+/// (`swire::scan_box_point`, as `sbox point`) of the middle needed point, timed.
+pub fn estimate_prime<F: PrimeField>(reg: &RegEntry, inst: &InstalledLib, p: &BoxParams) -> Result<EstOut, CalcErr> {
+    use crate::colored::boxclose::{BoxGrid, BoxNodes};
+    use crate::colored::swire::{generator_pass, needed_points, replay_opts, scan_box_point};
+    let lam = reg.lambda.clone();
+    let (_, stamp) = match reg.provider.as_str() {
+        "default" => crate::library::sindec::provider_for_stamped::<F>(&lam, Some(&inst.costs), 1.0),
+        "m4c-lf" => crate::library::leaves::provider_for_stamped_m4c::<F>(&lam, Some(&inst.costs), 1.0, true),
+        pv => return Err(CalcErr::Library(format!("unknown provider {} in the registry", pv))),
+    };
+    crate::library::smapio::set_replay_only(p.replay_only);
+    let sd: SIndec<F> = SIndec::with_stamp(&lam, Box::new(NoProvider), stamp, SIndecOpts { cache_dir: Some(inst.dir.clone()), prune_n: Some(reg.n), layer_a_route_stamp: true, ..Default::default() });
+    stamp_preflight(reg, inst, &sd.layer_a_stamps())?;
+    let lib = build_wlib(sd, &[p.word.clone()], true).map_err(|e| map_engine(&F::name(), format!("library: {}", e)))?;
+    let eng = EngOpts { check_d2: false, mem_point_bytes: p.mem_mb << 20, ..Default::default() };
+    let mode = if p.reduced { Some(0) } else { None };
+    let o = BoxOpts::new(reg.n as usize, p.seed, p.ns.clone(), vec![mode], vec![p.word.len()], eng);
+    let t = Instant::now();
+    let rec = record_scan(&lib, &p.word, &o).map_err(|e| map_engine(&F::name(), e))?;
+    let record_secs = t.elapsed().as_secs_f64();
+    let nodes = BoxNodes::<F>::new(&lib.lam, o.n_box, o.seed);
+    let ug = BoxGrid::new(nodes.clone(), None);
+    let grids: Vec<BoxGrid<F>> = o.modes.iter().map(|&m| BoxGrid::new(nodes.clone(), m)).collect();
+    // the largest |mu| any accumulator needs (BoxAcc::needed_size over stages and modes)
+    let maxsize = rec.stages.iter().flat_map(|so| grids.iter().map(move |g| so.weights.iter().flatten().filter(|&&w| w <= g.top).map(|&w| (w + 1).min(g.top)).max().unwrap_or(0))).max().unwrap_or(0);
+    let pts = needed_points(&ug, maxsize, &o.modes);
+    let id = *pts.get(pts.len() / 2).ok_or_else(|| CalcErr::Engine("estimate: no box points".into()))?;
+    let t = Instant::now();
+    generator_pass(&lib, &nodes, &ug, &[id]).map_err(|e| map_engine(&F::name(), e))?;
+    let det_secs = t.elapsed().as_secs_f64();
+    let (_, cost) = scan_box_point(&lib, &p.word, &nodes, &ug, id, &rec, &replay_opts(&lib, &o)).map_err(|e| map_engine(&F::name(), e))?;
+    Ok(EstOut { field: F::name().to_string(), lib_build_secs: lib.build_secs, record_secs, points: pts.len(), point_secs: cost.secs, det_secs, point_peak_bytes: cost.peak_bytes, point_eval_bytes: cost.eval_bytes, vmhwm_kb: crate::colored::xengine::rss_kb().1 })
+}
+
 /// Library jobs the word needs that are not `ok` in both primes' status files (spec C4
 /// `diagnose_missing`; logic of examples/m5i_cover.rs). Keys `pair K (p=TYPE, rung=R)` /
 /// `closure TABLE`.
