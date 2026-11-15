@@ -1,0 +1,2 @@
+FATAL: box finish: staged rank stage for [2, 2, 2] at N = 4 needs about 46850 MB, above the memory cap of 40000 MB (set KRHOM_MEM_CAP_MB to raise it)
+finish exit 2
