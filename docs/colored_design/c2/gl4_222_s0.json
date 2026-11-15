@@ -633,7 +633,7 @@
    "primes": [],
    "status": "FAIL",
    "run_tail": {
-    "31": "exit 137",
+    "31": "library: 16 types, 16 closable, build 4.7s (0 provider calls, 233 layer-A loads), hash 594b79c28485ff73, commit 8fe55b54ca36401577893edd5ece587c0264bd45",
     "32b": "exit 137"
    },
    "detail": "sbox run(s) killed (exit 137 = kernel OOM kill at > 6 GB RSS, concurrent jobs); rerun alone scheduled (runs_c2/k3/s0/heavy.sh)"
@@ -706,7 +706,7 @@
    "status": "FAIL",
    "run_tail": {
     "31": "exit 137",
-    "32b": "exit 137"
+    "32b": "exit 2"
    },
    "detail": "sbox run(s) killed (exit 137 = kernel OOM kill at > 6 GB RSS, concurrent jobs); rerun alone scheduled (runs_c2/k3/s0/heavy.sh)"
   },
@@ -849,7 +849,7 @@
    "primes": [],
    "status": "FAIL",
    "run_tail": {
-    "31": "library: 16 types, 16 closable, build 4.5s (0 provider calls, 233 layer-A loads), hash c1f5b428fc66f5df, commit 8fe55b54ca36401577893edd5ece587c0264bd45",
+    "31": "exit 2",
     "32b": "exit 2"
    },
    "detail": "sbox run(s) killed (exit 137 = kernel OOM kill at > 6 GB RSS, concurrent jobs); rerun alone scheduled (runs_c2/k3/s0/heavy.sh)"
