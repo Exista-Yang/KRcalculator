@@ -1,0 +1,13 @@
+randcheck: self-tests passed (convention, 4_1 anchor, libraries) in 162s
+T3-02 PASS           A      -1 -2  markov+rotate+rotate (2s)
+T3-03 PASS           A      -2 1 1 -1 -1 2 2  markov+conjugate (23s)
+T3-01 PASS           A      2 1 1 1 -1 -1  markov+cancel+cancel (29s)
+T3-05 PASS           B      -1 -1 -2 -1  conjugate (187s)
+T3-04 PASS           B      2 1 2 2  cancel (258s)
+T2-01 PASS           T2     1 1 1 -1 1 -1 1 -1   (2s)
+T2-02 PASS           T2     1 1 -1 1 -1 1   (1s)
+T2-03 PASS           T2     1 1 1 -1 -1 -1   (1s)
+T2-04 PASS           T2     1   (0s)
+T3-06 PASS           B      1 1 2 2  conjugate (76s)
+seed=20261115 n=10 PASS 10 FAIL 0 WARN 0 SKIP 0 TIMEOUT 0 ERROR 0; checks: primes 21, seeds 13, chi 42, isotopy 6, markov 5, mirror 8, duality-N3 18, reversal 0, N2 21, lewark 10, unknot 4, closed-form 45, cross-engine 8; 454s
+RC_EXIT 0

@@ -1,0 +1,813 @@
+   Compiling krhom v0.1.0 (/home/user/KRcalculator)
+warning: unused import: `fixed_points`
+  --> src/soergel.rs:12:20
+   |
+12 | use crate::local::{fixed_points, localize_map, FixedPoint};
+   |                    ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `tf`
+    --> src/sengine.rs:1476:13
+     |
+1476 |         let tf = Instant::now();
+     |             ^^ help: if this is intentional, prefix it with an underscore: `_tf`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `t_build` is never read
+   --> src/swire.rs:477:10
+    |
+477 |     let (mut t_build, mut t_engine) = (0.0f64, 0.0f64);
+    |          ^^^^^^^^^^^ this value is reassigned later and never used
+...
+706 |     t_build = t0s.elapsed().as_secs_f64() - t_engine;
+    |     ------------------------------------------------ `t_build` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `shift` is never used
+   --> src/leafgen.rs:180:4
+    |
+180 | fn shift(w: &Window) -> i32 {
+    |    ^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `krhom` (lib test) generated 4 warnings (4 duplicates)
+warning: `krhom` (lib) generated 4 warnings (run `cargo fix --lib -p krhom` to apply 2 suggestions)
+warning: unused import: `Schur`
+  --> examples/m5i_check.rs:11:27
+   |
+11 | use krhom::schur::{flows, Schur, Tid};
+   |                           ^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `rec` is never read
+   --> src/bin/libbuild.rs:524:5
+    |
+520 | struct Attempt {
+    |        ------- field in this struct
+...
+524 |     rec: String,
+    |     ^^^
+    |
+    = note: `Attempt` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Field`
+  --> tests/m5i.rs:10:20
+   |
+10 | use krhom::field::{Field, F31};
+   |                    ^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `krhom` (example "m5i_check") generated 1 warning (run `cargo fix --example "m5i_check" -p krhom` to apply 1 suggestion)
+warning: `krhom` (test "m5i") generated 1 warning
+warning: `krhom` (bin "libbuild") generated 1 warning
+warning: variable does not need to be mutable
+ --> examples/m5i_words.rs:9:9
+  |
+9 |     let mut find = |s: &mut Schur, t: &str| {
+  |         ----^^^^
+  |         |
+  |         help: remove this `mut`
+  |
+  = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `krhom` (example "m5i_words") generated 1 warning (run `cargo fix --example "m5i_words" -p krhom` to apply 1 suggestion)
+warning: unused import: `krhom::hom::closure_graded_dim`
+ --> src/bin/explore.rs:3:5
+  |
+3 | use krhom::hom::closure_graded_dim;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `krhom` (bin "explore") generated 1 warning (run `cargo fix --bin "explore" -p krhom` to apply 1 suggestion)
+warning: `krhom` (bin "explore" test) generated 1 warning (1 duplicate)
+warning: `krhom` (bin "libbuild" test) generated 1 warning (1 duplicate)
+    Finished `release` profile [optimized + debuginfo] target(s) in 10m 27s
+     Running unittests src/lib.rs (target/release/deps/krhom-5e0b76428292cfe3)
+
+running 35 tests
+test calc::tests::braid_parsing ... ok
+test calc::tests::json_escaping ... ok
+test calc::tests::classify_table ... ok
+test calc::tests::compare_primes_agree_and_disagree ... ok
+test calc::tests::reduced_link_simplify_guard ... ok
+test calc::tests::library_txt_parse_and_mismatch ... ok
+test dense::tests::kernel_small ... ok
+test field::tests::fp_basic ... ok
+test field::tests::q_basic ... ok
+test laurent::tests::qbinom_values ... ok
+test calc::tests::registry_parses ... ok
+test moy::tests::circles_and_thetas ... ok
+test schur::tests::cell_weight_hand_checked ... ok
+test hecke::tests::s3_s4_kl ... ok
+test moy::tests::ef_relation ... ok
+test schur::tests::kernel_of_gl_n_quotient_2222 ... ignored
+test schur::tests::rung_codes_order_like_python_tuples ... ok
+test calc::tests::locate_reports_missing_install_and_damage ... ok
+test sengine::tests::scalar_of_detects_non_scalar ... ok
+test sparse::tests::matmul_identity ... ok
+test schur::tests::killed_at_examples ... ok
+test symfun::tests::projective_line ... ok
+test symfun::tests::persist_roundtrip_and_corruption ... ok
+test schur::tests::stage_counts_are_checked ... ok
+test tower::tests::bs_dimension ... ok
+test tower::tests::caps_fast_test ... ok
+test tower::tests::dense_products_match_sorted ... ok
+test tower::tests::division_and_products ... ok
+test tower::tests::end_orders ... ok
+test tower::tests::inverse_over_a_random ... ok
+test tower::tests::norm_and_fused_products ... ok
+test xengine::tests::sort_product_equals_matmul ... ok
+test symfun::tests::table_sizes ... ok
+test tmpl::m5c_tests::hom_basis_templates_share_window_sides ... ok
+test schur::tests::kernel_of_gl_n_quotient ... ok
+
+test result: ok. 34 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 5.82s
+
+     Running unittests src/bin/b4wstamp.rs (target/release/deps/b4wstamp-cf16198791903c44)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/bench_hom.rs (target/release/deps/bench_hom-38d8c91e99d6b23f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check_indec.rs (target/release/deps/check_indec-63bf74df8efec210)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check_leaves.rs (target/release/deps/check_leaves-befa968a2e993bbd)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check_local.rs (target/release/deps/check_local-3a644d53ce2b9671)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/check_soergel.rs (target/release/deps/check_soergel-694359b360478773)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/colored_cable.rs (target/release/deps/colored_cable-354b6de03c74fd21)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/colored_check.rs (target/release/deps/colored_check-11ff5191e0c239b4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/cube.rs (target/release/deps/cube-c3b13c4c5bf7748d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/debug_dec.rs (target/release/deps/debug_dec-687de2dfaa283274)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/engine.rs (target/release/deps/engine-d2b119c58e02bdde)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/engine2.rs (target/release/deps/engine2-3ad83ac4550e9d47)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/explore.rs (target/release/deps/explore-dfa7cff69e9dea51)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/explore2.rs (target/release/deps/explore2-318fe7d2019bb55e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/explore3.rs (target/release/deps/explore3-17e31fe988c3b69b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/explore4.rs (target/release/deps/explore4-223c73708f2fb7cc)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/explore5.rs (target/release/deps/explore5-b6230bdc912cee5f)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/explore6.rs (target/release/deps/explore6-94000675907e1cb9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/explore7.rs (target/release/deps/explore7-1bce5c5ae1cf1dfe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/g1.rs (target/release/deps/g1-821e6f569706a6c1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/g4_free.rs (target/release/deps/g4_free-1bc199a0bad6359b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/gp0.rs (target/release/deps/gp0-6ea7a2869a78bd54)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/grwarm.rs (target/release/deps/grwarm-0edfc3175b254934)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/krhom.rs (target/release/deps/krhom-c3443cafce6c2271)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/libbuild.rs (target/release/deps/libbuild-f0dc57a81a60da1b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/m4c.rs (target/release/deps/m4c-45034857468bd3a8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/pd2braid.rs (target/release/deps/pd2braid-a9c5788ddfe0afb8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/sbox.rs (target/release/deps/sbox-fab2a0f236c5f154)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/schur_scan.rs (target/release/deps/schur_scan-f088f7f888c7c64e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/sprof.rs (target/release/deps/sprof-0258b37b0ad7eee9)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/twoprime.rs (target/release/deps/twoprime-076a8d32ccef2400)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/xscan.rs (target/release/deps/xscan-74bfb7c73e4a6f7d)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/acceptance.rs (target/release/deps/acceptance-41bae5fe7fe11cd6)
+
+running 25 tests
+test closure_data_save_load_roundtrip ... ok
+test colored_unknot_stabilization ... ok
+test exact_closure_degree_range_when_outs_below_ins ... ok
+test cable_colored_unknot_trefoil_and_uncolored ... ok
+test cable_two_colored_t25_and_three_colored_t24_euler ... ok
+test khovanov_trefoil_and_figure_eight ... ok
+test rickard_differentials_unique ... ok
+test exact_closure_large_n_no_packed_overflow ... ok
+test exact_closure_large_n_braids ... ok
+test state_space_equals_moy_known_counterexamples ... ok
+test state_space_over_q ... ok
+test tower_adds_parallel_edges ... ok
+test tower_chain_dims ... ok
+test state_space_equals_moy_random ... ok
+test tower_conway_reduced_and_lewark ... ok
+test tower_correct_without_splitting ... ok
+test tower_matches_exact_on_small_braids_and_links ... ok
+test tower_reduced_trefoil_formula ... ok
+test cable_matches_cube_tiny_colored ... ok
+test tower_second_prime ... ok
+test tower_synthetic_noncyclic_elimination ... ok
+test trefoil_kr_formula_and_markov_invariance ... ok
+test tower_six_strand_nonsplit_right_end ... ok
+test tower_conway_unreduced_matches_exact ... ok
+test soergel_engine_matches_full_cube ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 61.73s
+
+     Running tests/b4w.rs (target/release/deps/b4w-619eb82f3984cc93)
+
+running 2 tests
+test m4c_stamp ... ok
+test leaf_pairs_through_sindec_212 ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 41.18s
+
+     Running tests/boxclose.rs (target/release/deps/boxclose-d8d41b08827753c0)
+
+running 15 tests
+test a_grid_basics ... ok
+test b_end_to_end_32_s2_f32b ... ignored, MBOX (b): (3,2) sigma^2 over the second prime
+test b_end_to_end_33 ... ignored, MBOX (b): (3,3) sigma^1..sigma^3, N = 3..6 (cloud, minutes)
+test c_entry_declared_at_w_plus_1_fails_scaling ... ok
+test c_freivalds_detects_perturbed_p_entry ... ok
+test c_freivalds_detects_reinserted_d2_component ... ok
+test c_point_added_twice_overlap_header_downset ... ok
+test c_valid_n_and_d2_cert_guards ... ok
+test b_end_to_end_22_s3 ... ok
+test d_shuffled_order_and_shards_agree ... ok
+test moy_convention_matches_single_type_closure ... ok
+test staged_equals_oracle_on_exact_data ... ok
+test b_end_to_end_32_s2 ... ok
+test extraction_cost_per_entry ... ok
+test a_synthetic_extraction_equals_nf ... ok
+
+test result: ok. 13 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 1.91s
+
+     Running tests/boxclose_mem.rs (target/release/deps/boxclose_mem-5cb2aa13fd1ee99c)
+
+running 2 tests
+test e_staged_rank_stage_41_size_unreduced_refused_before_allocating ... ignored, MBOX (e): unreduced N = 6 at 4_1 size (dim A = 8000)
+test e_staged_rank_stage_41_size_reduced_within_estimate ... ok
+
+test result: ok. 1 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 9.52s
+
+     Running tests/boxrun.rs (target/release/deps/boxrun-a9cc8d0688d751aa)
+
+running 5 tests
+test box_acc_binding_is_part_of_the_header ... ok
+test scaling_check_catches_a_misdeclared_weight ... ok
+test xscan_json_provenance ... ok
+test chi_mismatch_is_an_error ... ok
+test kill_resume_shards_and_refusals ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.20s
+
+     Running tests/c27_joint.rs (target/release/deps/c27_joint-ef4842a2dd5febe3)
+
+running 3 tests
+test w12_rejects_suffix_window ... ok
+test joint_words_pair_1235 ... ok
+test per_predecessor_final_pair_1444 has been running for over 60 seconds
+test per_predecessor_final_pair_1444 ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 103.10s
+
+     Running tests/calc.rs (target/release/deps/calc-bc8c9812049ad9de)
+
+running 17 tests
+test box_route_without_library_exits_4_with_the_fetch_command ... ok
+test developer_single_prime_is_labelled ... ok
+test batch_outputs_survive_a_kill ... ok
+test batch_names_csv_quoting_and_incremental_outputs ... ok
+test lib_41_three_strands ... ignored, needs the l222_n4 library (tools/fetch_library.sh l222_n4); about 2 x 1.5 min
+test lib_check_library_4_strands ... ignored, needs the l2222_n4 library; --check-library on 6_1 and 8_15 (minutes)
+test lib_four_strands_markov ... ignored, needs the l2222_n4 library (tools/fetch_library.sh l2222_n4); 4 strands, several minutes
+test lib_stabilized_trefoil ... ignored, needs the l222_n4 library; about 2 x 1 min
+test json_csv_and_batch ... ok
+test n_below_the_color_is_zero_on_every_route ... ok
+test n_below_the_color_short_circuits_refusals ... ok
+test refusals_exit_1 ... ok
+test table_and_no_convention_option ... ok
+test box_live_matches_the_exact_path ... ok
+test simplification_and_broadcast ... ok
+test uncolored_route_two_primes_and_letters ... ok
+test exact2_memory_cap_and_shape_refusals ... ok
+
+test result: ok. 13 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 40.45s
+
+     Running tests/cclose.rs (target/release/deps/cclose-80680fca94100791)
+
+running 26 tests
+test colored_hopf_21_matches_full_cube ... ok
+test delta_tower_refuses_degree_above_63 ... ok
+test delta_tower_refuses_realistic_uncertified_pairs ... ok
+test delta_tower_refuses_uncertified_pairs ... ok
+test colored_kinks_match_full_cube ... ok
+test engine2_conway_extended ... ignored
+test colored_hopf_euler_characteristics ... ok
+test colored_hopf_22_matches_full_cube ... ok
+test engine2_small_braids_match_close_exact ... ok
+test engine2_conway_type_dims_and_adapter ... ok
+test exact_oracle_memory_cap ... ok
+test exact_oracle_returns_errors_instead_of_panicking ... ok
+test exact_type_dims_colored_validates_its_data - should panic ... ok
+test g4_certificate_holds_for_every_listed_pair ... ok
+test grassmannian_tables_equal_grtable_at_c0 ... ok
+test ladder_closure_equals_state_space_all_n ... ignored
+test delta_tower_resource_guard ... ok
+test mem_cap_env_child ... ok
+test mem_cap_reads_the_environment ... ok
+test ring_exponent_overflow_is_caught - should panic ... ok
+test ring_packing_and_weights ... ok
+test ring_too_many_variables - should panic ... ok
+test tau_matches_sbim_tau ... ok
+test exact_oracle_equals_delta_tower_on_ladders ... ok
+test engine2_conway_matches_close_exact ... ok
+test ladder_closure_equals_state_space_and_moy ... ok
+
+test result: ok. 24 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 8.92s
+
+     Running tests/dcoset.rs (target/release/deps/dcoset-9074e8a612d4ed93)
+
+running 6 tests
+test gl1_degree_sign ... ok
+test gl1_grassmannian_reduction ... ok
+test gl1_minperm_psi_bruhat ... ok
+test gl1_lemma87_sums ... ok
+test gl1_deodhar_sums_equal_ladder_char ... ok
+test gl1_flows_per_coset ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.41s
+
+     Running tests/hom_lazy.rs (target/release/deps/hom_lazy-96a09e19a6e8179a)
+
+running 3 tests
+test m5c_dedup_sparse_sweep_equals_reference ... ok
+test kernel_lazy_property ... ok
+test lazy_kernel_equals_reference ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.32s
+
+     Running tests/homprov.rs (target/release/deps/homprov-1817a027d7ff7953)
+
+running 21 tests
+test b1_hom_gens_equal_nakayama ... ok
+test b2_type_pairs_33_222_through_chain ... ignored, B2 (3,3) and (2,2,2) type pairs through the Chain: long (reported once)
+test b3_b4_faith_e1f1e1f1 ... ignored, B3/B4: (2,2) E1F1E1F1 End^0 (dim 48, about 20 s in debug)
+test b3_b4_faith_table ... ok
+test b4b_detecting_set_fallback ... ignored, B4b: (2,2) at degree 11 (hom_space of dim 69; long)
+test b5_genuineness ... ok
+test b6_search_pairs_match_exact ... ok
+test b7_determinism ... ok
+test b8_admission_order_and_scratch ... ok
+test b9_certify_checks_ends_and_degrees ... ok
+test b9_cost_table_admission ... ok
+test b9_has_hom_validates_header ... ok
+test b9_pairs_preconditions ... ok
+test b9_search_caches_bound_to_library ... ok
+test closure_22_through_chain ... ok
+test b2_hom60_through_exact ... ok
+test compile_time_send_sync ... ok
+test m5c_exact_admission_by_call_kind ... ok
+test closure_with_idempotent_313 ... ok
+test b2_type_pairs_22_212_search_alone ... ok
+test b2_type_pairs_22_212_through_chain ... ok
+
+test result: ok. 18 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 44.88s
+
+     Running tests/knotcov.rs (target/release/deps/knotcov-3cd6dea483b5e80f)
+
+running 2 tests
+test knot_jobs_lb_matches_decat_scan ... ok
+test knot_jobs_333_fig8 ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+     Running tests/leafgen.rs (target/release/deps/leafgen-fcdcfcae63cf8233)
+
+running 16 tests
+test braid_large ... ignored
+test braid_pieces_333 ... ignored
+test braid_pieces_large ... ignored
+test certify_all_to_333 ... ignored
+test certify_switchbacks_and_cups ... ignored
+test assoc_validator ... ok
+test elem_kinds_are_instances ... ok
+test far_commutation ... ok
+test far_commutation_3321 ... ignored
+test interp_gate_refuses_braid_fallback_323 ... ok
+test cups_and_caps_small ... ok
+test mirror_crossings_and_switchbacks_small ... ok
+test r1_switchback ... ok
+test r1_sideways_crossing_111_212 ... ok
+test braid_small_cells ... ok
+test braid_222 ... ok
+
+test result: ok. 10 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 9.57s
+
+     Running tests/leaves.rs (target/release/deps/leaves-f4d2391194d25d80)
+
+running 8 tests
+test sll_ex_7_39 ... ok
+test stage0_factorizations ... ok
+test sll_ex_7_40_7_41 ... ok
+test v0_leaves_vs_hom_space ... ok
+test validate_elem_small ... ok
+test g1a_closure_leaves_alone ... ok
+test stage0_product_closure_certified ... ok
+test m4c_chain_closure_222 ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.72s
+
+     Running tests/libbuild.rs (target/release/deps/libbuild-a4067183eaf36792)
+
+running 3 tests
+test plan_333_sets ... ok
+test resume_governing_header_and_replay_only ... ok
+test run_replay_resume_33 ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.65s
+
+     Running tests/m4a.rs (target/release/deps/m4a-a14a1e044521e411)
+
+running 30 tests
+test a11_reduced_coordinates ... ok
+test a12_point_independence ... ok
+test a13_cache_header_and_corruption ... ok
+test a15_arena_checks ... ok
+test a16_storage_and_thread_safety ... ok
+test a11_reduced_coordinates_22 ... ok
+test a1_cosets ... ok
+test a14_determinism ... ok
+test a10_certificates ... ok
+test a2_a3_flows_deodhar_and_fixed_points ... ok
+test a6_dots ... ok
+test a5_local_application_and_kron ... ok
+test a7_iv_e2_up_to_9 ... ignored, A7(iv) E2: a + b <= 9 ((3,3,3) windows); run before G1(b); cloud job (> 10 min on the laptop)
+test a7_iv_e3_up_to_9 ... ignored, A7(iv) E3: c <= 9 ((3,3,3) windows); run before G1(b)
+test a8_assoc ... ok
+test a4_whole_ladder_bridge ... ok
+test a9_rickard_33 ... ignored, A9: (3,3) Rickard templates (about 2 min per sign per prime)
+test a2_scan_blocks_and_maxima ... ok
+test perf_flowindex_2222 ... ignored, §3.6: FlowIndex of the (2,2,2,2) X with 51 840 flows (release)
+test perf_targets ... ignored, §3.6 performance targets: run with --release
+test a9_rickard_templates ... ok
+test review_a_certificate_rejects_non_bimodule_maps ... ok
+test review_b_added_templates_are_uncertified_until_checked ... ok
+test review_c_rickard_uniqueness_checked_at_compute_time ... ok
+test review_d_certified_flag_matches_assert_genuine ... ok
+test review_e_assoc_constants_per_window ... ok
+test review_g_points_have_no_seed_aliasing ... ok
+test review_c_rickard_rejects_a_zero_map_from_the_cache - should panic ... ok
+test a9_rickard_three_labels ... ok
+test a7_e2_e3_closed_forms ... ok
+
+test result: ok. 25 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.49s
+
+     Running tests/m5i.rs (target/release/deps/m5i-2819fb3c531cf172)
+
+running 3 tests
+test m5i_2402_end0_reference ... ignored
+test m5i_313_idempotent_end0_dec_closure ... ok
+test m5i_2402_prefix_propagation ... ok
+
+test result: ok. 2 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 32.89s
+
+     Running tests/ntrunc.rs (target/release/deps/ntrunc-c531b546dc8cba72)
+
+running 13 tests
+test closure_kills_map_detects_nonzero_maps ... ok
+test pruned_equals_unpruned_hopf_and_t24 ... ok
+test pruned_equals_unpruned_32_hopf ... ok
+test pruned_rickard_complexes_are_truncations ... ok
+test pruned_scan_refuses_unchecked_d2 ... ok
+test pruned_equals_unpruned_22_torus ... ok
+test pruning_statistics ... ok
+test three_colored_hopf_and_trefoil_n5 ... ignored
+test three_colored_hopf_and_trefoil_n3_n4 ... ok
+test truncated_k0_class ... ok
+test pruned_equals_unpruned_random_words ... ok
+test three_colored_mixed_words_n4 ... ok
+test pruned_equals_unpruned_22_all_words ... ok
+
+test result: ok. 12 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.98s
+
+     Running tests/pd.rs (target/release/deps/pd-88d2ab9a5255402d)
+
+running 11 tests
+test bracket_basics ... ok
+test parser_formats_and_errors ... ok
+test jones_matches_knot_atlas ... ok
+test knotinfo_braids_agree_up_to_mirror ... ok
+test signs_and_components_from_pd ... ok
+test report_strand_counts ... ok
+test split_diagrams ... ok
+test vogel_braids_preserve_link ... ok
+test simplified_braids_preserve_link ... ok
+test random_braids_roundtrip ... ok
+test random_diagrams_need_vogel_moves ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.03s
+
+     Running tests/rexplan.rs (target/release/deps/rexplan-efc763a240abaa1b)
+
+running 6 tests
+test max_table_and_canonical_max ... ok
+test singlestep_forms ... ok
+test window_splice_roundtrip ... ok
+test planner_connects_small ... ok
+test realized_chains_small ... ok
+test rex_class_pairs_small has been running for over 60 seconds
+test rex_class_pairs_small ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 70.41s
+
+     Running tests/schur.rs (target/release/deps/schur-7a7b96055df25540)
+
+running 28 tests
+test cli_json_has_gram_rows ... ok
+test marked_block_out_of_range_is_an_error ... ok
+test split_merge_rung_consistency ... ok
+test load_basis_rejects_malformed_or_corrupted_files ... ok
+test t_b_worked_examples ... ok
+test t_a_table_counts ... ok
+test t_c_reference_basis_2222 ... ignored
+test t_d_hom_formula ... ok
+test t_e2_singular_is_kl_of_pmax ... ok
+test canonical_basis_refuses_mu_of_other_length_before_searching - should panic ... ok
+test decat_scan_refuses_marked_block_out_of_range - should panic ... ok
+test t_e_uncolored_is_kl ... ok
+test t_h2_two_rung_ladders ... ok
+test t_h_rickard_rigidity ... ok
+test t_i_decompositions ... ok
+test t_f_hom_transfer ... ok
+test t_k_every_stage_and_k0 ... ok
+test t_k_mixed_colors ... ok
+test t_k_scan_conway_2colored ... ignored
+test t_c_reference_bases ... ok
+test t_l_closure_weights ... ok
+test t_m_agrees_with_crossing_rs ... ok
+test t_j_ranks_and_kappa ... ok
+test t_n_decategorified_chi ... ok
+test unreachable_blocks_are_refused_early ... ok
+test t_o_cache_round_trip ... ok
+test t_k_scans_default ... ok
+test t_g_products ... ok
+
+test result: ok. 26 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 1.33s
+
+     Running tests/sengine.rs (target/release/deps/sengine-6c643faf0a55bf8b)
+
+running 13 tests
+test library_trait_and_gram_at_point_on_11 ... ok
+test measured_costs_large ... ignored
+test known_homology_single_complexes ... ok
+test identical_traces_at_two_points_and_replay ... ok
+test pivot_assertion_and_api_misuse ... ok
+test replay_compares_pivot_values ... ok
+test replay_refuses_a_degenerate_point ... ok
+test replay_refuses_a_foreign_trace ... ok
+test streaming_equals_full_and_known_model ... ok
+test markowitz_heap_equals_rescan_order ... ok
+test streaming_sensitivity_ignored_eligibility_is_caught ... ok
+test memory_accounting_and_refusal ... ok
+test measured_costs_small ... ok
+
+test result: ok. 12 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 2.29s
+
+     Running tests/sindec.rs (target/release/deps/sindec-f89522ff4064eefe)
+
+running 18 tests
+test d3_33_all_pairs_and_decdata_timing ... ignored
+test d1_kill_counts_333 ... ok
+test d10_killed ... ok
+test d5_against_xengine_33 ... ignored
+test d1_types_small ... ok
+test d5_three_strand_braid_relation ... ok
+test d3_d10_dec_rung_small ... ok
+test d4_dec_word_crossing_terms ... ok
+test d8_freeze_and_missing ... ok
+test d9_send_sync_threads ... ok
+test d7_restrict ... ok
+test dechom_negative ... ok
+test gate_plan_333 ... ignored
+test dechom_decomposable_lq ... ok
+test d5_against_xengine_small ... ok
+test d7_layer_a_round_trip_and_stale_stamp ... ok
+test m5c_leaf_iso_refusal_is_engineering ... ok
+test m5c_layer_a_route_stamp ... ok
+
+test result: ok. 15 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 6.69s
+
+     Running tests/swire.rs (target/release/deps/swire-336a1650a0dad8b5)
+
+running 5 tests
+test sengine_against_xengine_33 ... ignored, M6a-1b: (3,3) against xengine (cloud, minutes)
+test objects_111_against_engine2 ... ok
+test type_counts_41_333 ... ok
+test box_loop_against_exact_22_32 ... ok
+test sengine_against_xengine_22_32 ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 3.90s
+
+     Running tests/thmassoc.rs (target/release/deps/thmassoc-9b216f548ff34d00)
+
+running 7 tests
+test braid_middle_313_232 ... ignored
+test spot_check_333 ... ignored
+test lightloc_matches_sbim ... ok
+test marking_and_smapio_roundtrip ... ok
+test spot_check_accepts_and_rejects ... ok
+test theorem_agrees_with_numeric_small ... ok
+test braid_middle_small_cells ... ok
+
+test result: ok. 5 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 8.65s
+
+     Running tests/xengine.rs (target/release/deps/xengine-02714b4fcb22b3ab)
+
+running 22 tests
+test identity_decomposition_is_exercised ... ok
+test cli_singular_method_matches_cube_output ... ok
+test canonical_ladders_are_indecomposable ... ok
+test reduced_theory ... ok
+test rejects_unsupported_input ... ok
+test mirror_is_negative_braid ... ok
+test stages_k0_and_lower_bound ... ok
+test rungwise_and_direct_decompositions_agree ... ok
+test three_colored_32_hopf ... ignored
+test three_colored_33_hopf_and_trefoil ... ignored
+test three_colored_33_kink ... ignored
+test euler_characteristic_equals_decat_chi ... ok
+test three_colored_31 ... ok
+test v1_colored_unknots_and_unlinks ... ok
+test v2_labels_above_n_and_wedge_n ... ok
+test v3_duality_at_n_equals_a_plus_one ... ok
+test v5_wang_two_colored_torus_knots ... ok
+test v4_hopf_links_bigraded ... ok
+test two_primes_agree ... ok
+test reduced_rank_level_oracles ... ok
+test v9_full_cube ... ok
+test v8_cabling ... ok
+
+test result: ok. 19 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 9.26s
+
+     Running tests/xstream.rs (target/release/deps/xstream-6f11b4541477f200)
+
+running 7 tests
+test g2x_sigma5_33 ... ignored
+test compact_store_round_trip ... ok
+test streaming_equals_full_build_32 ... ignored
+test streaming_equals_full_build_33_pruned ... ignored
+test close_stage_refuses_n_above_prune_n ... ok
+test close_stage_equals_separate_scan ... ok
+test streaming_equals_full_build ... ok
+
+test result: ok. 4 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 5.77s
+
+   Doc-tests krhom
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+TESTS_DONE 0
