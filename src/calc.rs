@@ -393,6 +393,11 @@ fn map_engine(field: &str, e: String) -> CalcErr {
 pub fn run_prime<F: PrimeField>(reg: &RegEntry, inst: &InstalledLib, p: &BoxParams) -> Result<PrimeOut, CalcErr> {
     let t0 = Instant::now();
     let lam = reg.lambda.clone();
+    // --checkpoint (src/calc_ckpt.rs): check or create this prime's manifest before any work
+    let ckpt = match crate::calc_ckpt::dir() {
+        Some(root) if !p.check_only => Some(crate::calc_ckpt::prepare(&root, reg, &F::name(), p)?.0),
+        _ => None,
+    };
     let (_, stamp) = match reg.provider.as_str() {
         "default" => crate::library::sindec::provider_for_stamped::<F>(&lam, Some(&inst.costs), 1.0),
         "m4c-lf" => crate::library::leaves::provider_for_stamped_m4c::<F>(&lam, Some(&inst.costs), 1.0, true),
@@ -420,7 +425,11 @@ pub fn run_prime<F: PrimeField>(reg: &RegEntry, inst: &InstalledLib, p: &BoxPara
     }
     let bo = loop {
         let o = BoxOpts::new(reg.n as usize, seed, p.ns.clone(), vec![mode], vec![p.word.len()], eng.clone());
-        match box_word(&lib, &p.word, &o) {
+        let r = match &ckpt {
+            Some(d) => crate::calc_ckpt::box_word_ckpt(&lib, &p.word, &o, d),
+            None => box_word(&lib, &p.word, &o),
+        };
+        match r {
             Ok(bo) => break bo,
             Err(e) if classify(&e) == ErrClass::Retry && seed < p.seed + p.retries => {
                 eprintln!("[{}] {}; retrying with seed {}", F::name(), e, seed + 1);

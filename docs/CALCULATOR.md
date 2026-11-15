@@ -233,8 +233,8 @@ Measured on the 4-core cloud machine (`KRHOM_THREADS=4`, both primes, this branc
   81, 361, 441, F31 = F32b, χ and scaling checks. Unreduced runs were not done: they need all 1 296
   box points instead of 216, i.e. at least 1 296 × 26.3 s ≈ 9.5 core-hours of scanning per prime
   for 6_1 (a lower bound: determinant passes and finish come on top; the C2-7 report estimates about
-  4 h wall per (knot, prime) with 4 shards). Use `--reduced` for speed. Runs are not resumable yet
-  (the production `sbox box/finish` driver is).
+  4 h wall per (knot, prime) with 4 shards). Use `--reduced` for speed. Long runs: use
+  `--checkpoint DIR` (section 9) so that an interrupted run resumes.
 - Memory: `--mem-mb` is the per-point budget (default 3200 at 3 strands, 3000 at 4 strands); the
   closure estimate cap `KRHOM_MEM_CAP_MB` is set from `--mem-cap-mb` before any engine work, on
   every route. Without the flag: the environment variable if set; else on the box route 4500 ×
@@ -312,7 +312,7 @@ Advanced (documented, supported):
   about 4 cable strands used 0.4–6 GB in tests). `singular` is the default for colored input.
 - `--closure tower|exact`, `--end right|left|alt`: the Soergel engine's closure.
 - `--no-simplify`, `--check-library`, `--lib-dir`, `--seed`, `--seed-retries`, `--mem-mb`,
-  `--mem-cap-mb`: see above.
+  `--mem-cap-mb`: see above; `--checkpoint DIR`: section 9.
 - Environment: `KRHOM_THREADS`, `KRHOM_LIB_DIR`, `KRHOM_MEM_CAP_MB`. krhom sets
   `KRHOM_COSTS_ANY_HOST=1` on the box route (the shipped cost tables name another host). The
   validation-only switches `KRHOM_FORCE_LADDER`, `KRHOM_NO_M5I`, `KRHOM_DCID_REF`, `KRHOM_M5I_*`,
@@ -336,3 +336,48 @@ in one process.
 `sbox` and the other developer binaries are built only with the `dev` feature
 (`cargo build --release --features dev`); `tools/dev/box.sh` and `tools/dev/finish.sh` drive a
 sharded 4-strand run.
+
+## 9. Resumable runs (`--checkpoint DIR`)
+
+3-4 strand colored runs can take hours. With `--checkpoint DIR` the box route saves its progress
+in `DIR`; after an interruption (kill, reboot, out of time) rerun **the same command with the same
+`DIR`**: the box points already saved are not scanned again, the rest are, and krhom then closes,
+checks and compares the primes and prints exactly what an uninterrupted run prints (stdout equal
+except the `time` line; the per-prime summary on stderr says how many points were already done).
+
+```sh
+krhom 2,3,4 --braid "1 1 2 -1 -3 2 -3" --colors 2 --reduced --checkpoint ck_6_1
+# ... interrupted; later, the same command:
+krhom 2,3,4 --braid "1 1 2 -1 -3 2 -3" --colors 2 --reduced --checkpoint ck_6_1
+```
+
+- Scope: the 3-4 strand box route only (other routes take seconds and ignore the flag). One braid
+  per directory: `--checkpoint` with `--file` is refused (exit 1), as is `--checkpoint` with
+  `--check-library` (no box scan).
+- Layout: `DIR/f31/` and `DIR/f32b/`, one per prime, each with `manifest.txt` and one
+  `seed<S>/` directory per node seed (a "redraw the nodes" retry uses `seed<S+1>/`). The
+  `seed<S>/` directories are the checkpointed driver of `sbox box` (`src/colored/boxrun.rs`):
+  `run.hdr` (governing header: library hash, engine stamp, record traces and stage bindings),
+  `w0_s<stage>_<mode>.acc` (accumulators with a done-point bitmap, written atomically) and
+  `commits.log`.
+- The manifest holds the full input of the prime: the braid actually computed (after
+  simplification), strands, labels, the N computed, reduced/unreduced, the seed, box N, library id,
+  prime, data commit and provider, and the krhom commit. A rerun whose input differs in any of
+  these is refused before any work (exit 1, the differing lines are listed): use another
+  directory, or delete `DIR` to start over. A krhom rebuilt from another commit therefore cannot
+  continue an old directory. boxrun additionally refuses a `run.hdr` or checkpoint header that does
+  not match (library content, engine version, record trace).
+- Certification is unchanged: the same production options, the generator-only determinant pass
+  (at the points before any scan and again at every needed point before closing), frozen-structure
+  replay at every point, Freivalds D², χ = decat_chi and the D14 scaling check per prime, and the
+  two-prime comparison. Rerunning a finished directory scans nothing and repeats the closing and
+  every check.
+- Saves: at most every 60 s (`KRHOM_CKPT_SECS=S` to change; 0 = after every batch of 16
+  points); a kill loses at most the points scanned since the last save. Do not run two krhom
+  processes on the same `DIR` at the same time.
+- Parallelism: `KRHOM_THREADS` points are scanned at a time, as without the flag. To spread one
+  word over several machines use the developer driver directly: `sbox box --dir D_k --shard k/K`
+  on each machine, then `sbox finish --dirs D_0,...` (built with `--features dev`;
+  `tools/dev/box.sh`, `tools/dev/finish.sh`).
+- Test hook: `KRHOM_CKPT_STOP_AFTER=M` stops after M points of the invocation without saving the
+  points since the last save (a simulated kill; exit 75).

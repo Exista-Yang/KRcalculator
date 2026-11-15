@@ -31,6 +31,7 @@
 
 pub mod algebra;
 pub mod calc;
+pub mod calc_ckpt;
 pub mod colored;
 pub mod combinat;
 pub mod input;
