@@ -1,11 +1,11 @@
 lambda: 2,2,2,2
 field: F32B
 label: l2222_n4_c27/f32b (delta on top of l2222_n4 + l2222_n4_c25 + l2222_n4_c24, f32b)
-code commit: f16e2c3 (branch colored-2c4-unblock)
+code commit: 7f8043c (branch colored-2c4-unblock)
 layer-A stamps: M4c-lf stamp (provider m4c-lf) plus the C2-7 route token c27=joint(sfx4,keep40,w12)+eqpairs (KRHOM_LEAVES_C27=1); sindec::route_header drops the token, so read with --stamp-route
 files: 14 layer_a, 162 tmpl (written in C2-7)
 restore: restore l2222_n4, l2222_n4_c25, l2222_n4_c24 (f32b) in that order, then: cat layerA_tmpl_delta.tar.gz.part-* | tar -C CACHE_DIR -xzf -
 use: KRHOM_COSTS_ANY_HOST=1 libbuild one/replay | sbox --replay --cache CACHE_DIR --costs c2/costs_2222_c25.txt --provider m4c-lf --stamp-route
-jobs: the 6 class-A blockers (pairs 1235 1444 1470 1894 1769 1812) and later C2-7 jobs, see colored-2c4-unblock docs/colored_design/c2/C2_7_report.md
+jobs: the 6 class-A blockers (pairs 1235 1444 1470 1894 1769 1812; both primes) and, F31 only, the class-B jobs 1471 926 949 997 1054 1540 986 (986 with costs_2222_c27.txt); see colored-2c4-unblock docs/colored_design/c2/C2_7_report.md
 sha256:
 a407774a115d84ccd54c48f9fc84bd5f7bbc786bdc9a398073bca8de24007438  layerA_tmpl_delta.tar.gz.part-000
