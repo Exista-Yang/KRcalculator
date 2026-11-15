@@ -420,3 +420,249 @@ fn lib_check_library_4_strands() {
         assert!(b.err.contains(&format!("pair {} ", p)), "8_15: pair {} not listed:\n{}", p, b.err);
     }
 }
+
+// ------------------------------------------------------------------ F-CLI
+
+/// Terms (t, q) -> k of every "Poincare polynomial:" line, in order.
+fn polys(s: &str) -> Vec<std::collections::BTreeMap<(i32, i32), i64>> {
+    s.lines()
+        .filter_map(|l| l.trim().strip_prefix("Poincare polynomial: "))
+        .map(|p| {
+            let mut m = std::collections::BTreeMap::new();
+            if p.trim() == "0" {
+                return m;
+            }
+            for term in p.split(" + ") {
+                let ti = term.find('t').unwrap();
+                let k: i64 = if ti == 0 { 1 } else { term[..ti].parse().unwrap() };
+                let qi = term.find('q').unwrap();
+                let t: i32 = term[ti + 2..qi].parse().unwrap();
+                let q: i32 = term[qi + 2..].parse().unwrap();
+                m.insert((t, q), k);
+            }
+            m
+        })
+        .collect()
+}
+/// Graded Euler characteristic q -> sum (-1)^t k.
+fn euler(p: &std::collections::BTreeMap<(i32, i32), i64>) -> std::collections::BTreeMap<i32, i64> {
+    let mut e = std::collections::BTreeMap::new();
+    for (&(t, q), &k) in p {
+        *e.entry(q).or_insert(0) += if t.rem_euclid(2) == 0 { k } else { -k };
+    }
+    e.retain(|_, v| *v != 0);
+    e
+}
+/// The quantum dimension [N choose a]_q (symmetric, step 2).
+fn qbinom(n: usize, a: usize) -> std::collections::BTreeMap<i32, i64> {
+    // subsets of size a of {0..n-1}: q-degree 2 * (sum - a(a-1)/2) - a(n-a)
+    let mut m = std::collections::BTreeMap::new();
+    for mask in 0u32..(1 << n) {
+        if mask.count_ones() as usize != a {
+            continue;
+        }
+        let s: i32 = (0..n).filter(|i| mask >> i & 1 == 1).map(|i| i as i32).sum();
+        *m.entry(2 * (s - (a * (a - 1) / 2) as i32) - (a * (n - a)) as i32).or_insert(0) += 1;
+    }
+    m
+}
+fn lmul(a: &std::collections::BTreeMap<i32, i64>, b: &std::collections::BTreeMap<i32, i64>) -> std::collections::BTreeMap<i32, i64> {
+    let mut m = std::collections::BTreeMap::new();
+    for (x, u) in a {
+        for (y, v) in b {
+            *m.entry(x + y).or_insert(0) += u * v;
+        }
+    }
+    m.retain(|_, v| *v != 0);
+    m
+}
+
+/// F-CLI item 1: limits are refused with exit 1 before any engine work.
+#[test]
+fn fcli_limits_refused_before_engine_work() {
+    for (args, needle) in [
+        (&["33", "--braid", "aaa"][..], "N <= 32"),
+        (&["2", "--braid", "1 2 3 4 5 6 7 8 9 10"][..], "at most 10 strands"),
+        (&["33", "--braid", "aaa", "--colors", "2", "--colored-method", "cable"][..], "N <= 32"),
+        (&["36", "--braid", "aaa", "--colors", "3"][..], "above its limit 5e7"),
+        (&["120", "--braid", "aaa", "--colors", "2"][..], "above its limit 5e7"),
+        (&["2,3,40", "--braid", "1 1", "--colors", "3,3"][..], "N = 40 with labels [3, 3]"),
+    ] {
+        let r = krhom(args);
+        assert_eq!(r.code, 1, "{:?}: exit {}\n{}", args, r.code, r.err);
+        assert!(r.err.contains(needle), "{:?}: {}", args, r.err);
+        assert!(!r.err.contains("[F_2147483647]") && !r.err.contains("panicked"), "{:?}: an engine ran:\n{}", args, r.err);
+    }
+    // just inside the limits: the exact closure has no N cap; reduced color 3 at N = 36 has dim C(36,3)
+    let r = krhom(&["33", "--braid", "aaa", "--closure", "exact"]);
+    ok(&r, "N = 33 exact closure");
+    let r = krhom(&["36", "--braid", "aaa", "--colors", "3", "--reduced", "--mem-cap-mb", "1"]);
+    assert_eq!(r.code, 5, "reduced passes the dimension check and meets the memory cap: {}", r.err);
+}
+
+/// F-CLI item 2: --mark K (Hopf link with colors (2,1); a 3-component chain; Borromean rings).
+#[test]
+fn fcli_mark_component() {
+    let run = |extra: &[&str]| {
+        let mut a = vec!["2,3,4", "--braid", "1 1"];
+        a.extend_from_slice(extra);
+        let r = krhom(&a);
+        ok(&r, &format!("{:?}", a));
+        r
+    };
+    let unred = run(&["--colors", "2,1"]);
+    let red = run(&["--colors", "2,1", "--reduced"]);
+    let m0 = run(&["--colors", "2,1", "--reduced", "--mark", "0"]);
+    let m1 = run(&["--colors", "2,1", "--reduced", "--mark", "1"]);
+    let swapped = run(&["--colors", "1,2", "--reduced"]);
+    assert_eq!(blocks(&m0.out), blocks(&red.out));
+    assert!(m0.out.contains("reduced (component 0 marked"), "{}", m0.out);
+    assert!(m1.out.contains("reduced (component 1 marked") && m1.out.contains("conjugated braid: 1 1  (component 1 moved from bottom position 1 to 0"), "{}", m1.out);
+    // marking the color-1 component = putting it first
+    assert_eq!(blocks(&m1.out), blocks(&swapped.out));
+    assert_ne!(blocks(&m0.out), blocks(&m1.out));
+    // hand-checkable: N = 2 marked color 2 (wedge^2 C^2 is a line) = unreduced; marked color 1 = q^-2
+    assert_eq!(polys(&m0.out)[0], polys(&unred.out)[0]);
+    assert!(m1.out.contains("N = 2\n  Poincare polynomial: t^0q^-2\n"), "{}", m1.out);
+    // chi(unreduced) = chi(reduced, K marked) * qdim(wedge^{c_K} C^N) for every N
+    let (pu, p0, p1) = (polys(&unred.out), polys(&m0.out), polys(&m1.out));
+    for (i, n) in [2usize, 3, 4].iter().enumerate() {
+        assert_eq!(euler(&pu[i]), lmul(&euler(&p0[i]), &qbinom(*n, 2)), "N = {} mark 0", n);
+        assert_eq!(euler(&pu[i]), lmul(&euler(&p1[i]), &qbinom(*n, 1)), "N = {} mark 1", n);
+    }
+    // ranks too (the Hopf homology is in even t): 2 * 1, 9 = 3 * 3, 24 = 4 * 6 = 6 * 4
+    assert_eq!(ranks(&unred.out), vec![2, 9, 24]);
+    assert_eq!(ranks(&m0.out), vec![2, 3, 4]);
+    assert_eq!(ranks(&m1.out), vec![1, 3, 6]);
+    // 3-component chain (components 0, 1, 2; 1 in the middle), uncolored: every mark satisfies
+    // the Euler identity; the ends are symmetric
+    let u = krhom(&["2,3", "--braid", "1 1 2 2"]);
+    ok(&u, "chain");
+    let mut outs = vec![];
+    for k in ["0", "1", "2"] {
+        let r = krhom(&["2,3", "--braid", "1 1 2 2", "--reduced", "--mark", k]);
+        ok(&r, &format!("chain mark {}", k));
+        let (pu, pr) = (polys(&u.out), polys(&r.out));
+        for (i, n) in [2usize, 3].iter().enumerate() {
+            assert_eq!(euler(&pu[i]), lmul(&euler(&pr[i]), &qbinom(*n, 1)), "chain mark {} N = {}", k, n);
+        }
+        outs.push(blocks(&r.out));
+    }
+    assert_eq!(outs[0], outs[2]);
+    // Borromean rings from the link table: all marks agree (symmetry)
+    let b: Vec<String> = ["0", "1", "2"].iter().map(|k| blocks(&krhom(&["2,3", "--link", "L6a4{0,0}", "--reduced", "--mark", k]).out)).collect();
+    assert!(!b[0].is_empty() && b[0] == b[1] && b[1] == b[2], "{:?}", b);
+    // refusals
+    refused(&["2", "--braid", "1 1", "--mark", "1"], 1, "add --reduced");
+    refused(&["2", "--braid", "aaa", "--reduced", "--mark", "1"], 1, "only --mark 0");
+    refused(&["2", "--braid", "1 1", "--reduced", "--mark", "2"], 1, "the link has 2 components");
+    refused(&["2", "--braid", "1 1", "--reduced", "--mark", "x"], 1, "expected a component number");
+    ok(&krhom(&["2", "--braid", "aaa", "--reduced", "--mark", "0"]), "knot mark 0");
+}
+
+/// F-CLI item 3: --knot / --link NAME from the shipped tables.
+#[test]
+fn fcli_knot_and_link_names() {
+    let a = krhom(&["2,3", "--knot", "4_1"]);
+    let b = krhom(&["2,3", "--braid", "1 -2 1 -2"]);
+    ok(&a, "4_1");
+    ok(&b, "1 -2 1 -2");
+    assert_eq!(blocks(&a.out), blocks(&b.out));
+    assert!(a.out.starts_with("name: 4_1\nsource: knot 4_1 from data/knots_upto12.jsonl (KnotInfo braid; KnotInfo chirality)\n"), "{}", a.out);
+    // KnotInfo chirality: 3_1 is the braid [1,1,1]
+    assert_eq!(blocks(&krhom(&["2", "--knot", "3_1"]).out), blocks(&krhom(&["2", "--braid", "aaa"]).out));
+    // oriented links: L2a1{1} = sigma_1^2, L2a1{0} = sigma_1^-2
+    let l = krhom(&["2", "--link", "L2a1{1}"]);
+    ok(&l, "L2a1{1}");
+    assert!(l.out.contains("source: link L2a1{1} from data/links_upto11.jsonl"), "{}", l.out);
+    assert_eq!(blocks(&l.out), blocks(&krhom(&["2", "--braid", "1 1"]).out));
+    assert_eq!(blocks(&krhom(&["2", "--link", "L2a1{0}"]).out), blocks(&krhom(&["2", "--braid", "-1 -1"]).out));
+    // case-insensitive unique match
+    ok(&krhom(&["2", "--link", "l2a1{1}"]), "lower case");
+    refused(&["2", "--link", "L2a1"], 1, "LinkInfo lists 2 orientations: L2a1{0}, L2a1{1}");
+    refused(&["2", "--knot", "4_2"], 1, "close matches: 4_1,");
+    refused(&["2", "--knot", "L2a1{1}"], 1, "use --link L2a1{1}");
+    refused(&["2", "--knot", "4_1", "--strands", "4"], 1, "drop --strands");
+    refused(&["2", "--knot", "4_1", "--braid", "aaa"], 1, "exactly one of");
+    // the JSON records the name as the input
+    let j = empty_lib().join("k.json");
+    ok(&krhom(&["2", "--knot", "4_1", "--json", j.to_str().unwrap()]), "json");
+    let s = std::fs::read_to_string(&j).unwrap();
+    assert!(s.contains("\"input\":{\"kind\":\"knot\",\"text\":\"4_1\"") && s.contains("\"braid\":[1, -2, 1, -2]"), "{}", s);
+}
+
+/// The table parser reads every record of both tables.
+#[test]
+fn fcli_tables_parse_completely() {
+    let d = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("data");
+    for (f, n) in [("knots_upto12.jsonl", 2977), ("links_upto11.jsonl", 4188)] {
+        let t = std::fs::read_to_string(d.join(f)).unwrap();
+        let mut k = 0;
+        for l in t.lines() {
+            // the shape the CLI parser relies on
+            assert!(l.starts_with("{\"name\":\"") && l.contains("\"braid\":{\"strands\":") && l.contains(",\"word\":["), "{}", &l[..80]);
+            k += 1;
+        }
+        assert_eq!(k, n, "{}", f);
+    }
+    // the last knot runs through the lookup
+    let r = krhom(&["1", "--knot", "12n_888"]);
+    ok(&r, "12n_888");
+    assert!(r.out.contains("braid: 1 1 1 2 2 2 1 1 1 2 2 2"), "{}", r.out);
+}
+
+/// F-CLI item 4: --latex.
+#[test]
+fn fcli_latex() {
+    let d = empty_lib();
+    let tex = d.join("a.tex");
+    let r = krhom(&["2,3", "--knot", "3_1", "--colors", "2", "--reduced", "--latex", tex.to_str().unwrap()]);
+    ok(&r, "latex");
+    let s = std::fs::read_to_string(&tex).unwrap();
+    assert!(s.contains("\\documentclass{article}") && s.contains("\\usepackage{graphicx}") && s.trim_end().ends_with("\\end{document}"), "{}", s);
+    assert_eq!(s.matches("\\begin{tabular}").count(), 2);
+    assert_eq!(s.matches("\\end{tabular}").count(), 2);
+    assert_eq!(s.matches("\\begin{table}").count(), s.matches("\\end{table}").count());
+    assert!(s.contains("\\section*{knot 3\\_1}"), "{}", s);
+    assert!(s.contains("\\caption{knot 3\\_1: braid $1\\,1\\,1$ on 2 strands, colors [2], $N = 3$, reduced (strand at bottom position 0 marked); coefficients Q;"), "{}", s);
+    // N = 3 table: rows t = 0..3, columns q = -12..-4 step 2
+    assert!(s.contains("$t \\backslash q$ & $-12$ & $-10$ & $-8$ & $-6$ & $-4$ \\\\\n\\hline\n$0$ &  &  &  &  & 1 \\\\\n$1$ &  &  &  &  &  \\\\\n$2$ &  &  & 1 &  &  \\\\\n$3$ & 1 &  &  &  &  \\\\\n"), "{}", s);
+    // --file: one section per input, errors and zero results included; braces escaped
+    let f = d.join("f.txt");
+    std::fs::write(&f, "tref; aaa\nhopf_{x}; 1 1\nbad; 1 0\n").unwrap();
+    let tex2 = d.join("f.tex");
+    let r = krhom(&["1,2", "--file", f.to_str().unwrap(), "--colors", "2", "--latex", tex2.to_str().unwrap()]);
+    assert_eq!(r.code, 1);
+    let s = std::fs::read_to_string(&tex2).unwrap();
+    assert_eq!(s.matches("\\section*{").count(), 3, "{}", s);
+    assert!(s.contains("\\section*{hopf\\_\\{x\\} (braid 1 1)}") && s.contains("Not computed: exit 1 (unsupported)") && s.contains("(the homology is 0)"), "{}", s);
+    refused(&["2", "--braid", "aaa", "--latex", "/nonexistent/dir/x.tex"], 1, "--latex /nonexistent/dir/x.tex");
+}
+
+/// F-CLI item 5: --estimate outside the box route is a note, nothing is computed.
+#[test]
+fn fcli_estimate_fast_routes() {
+    for args in [&["2,3", "--braid", "aaa", "--colors", "2", "--estimate"][..], &["2,3", "--braid", "aBaB", "--estimate"][..]] {
+        let r = krhom(args);
+        ok(&r, &format!("{:?}", args));
+        assert!(r.out.contains("estimate: fast route (") && r.out.contains("no estimate needed"), "{}", r.out);
+        assert!(!r.out.contains("Poincare") && !r.err.contains("[F_2147483647]"), "{}\n{}", r.out, r.err);
+    }
+    // the box route still needs the library (exit 4 before any estimate)
+    refused(&["2,3,4", "--braid", "aBaB", "--colors", "2", "--estimate"], 4, "tools/fetch_library.sh l222_n4");
+    refused(&["2", "--braid", "aBaB", "--colors", "2", "--estimate", "--check-library"], 1, "exclusive");
+}
+
+#[test]
+#[ignore = "needs the l222_n4 library; about 2 x 1 min"]
+fn lib_fcli_knot_name_and_estimate() {
+    let a = lib_run(&["2,3,4", "--knot", "4_1", "--colors", "2", "--reduced"]);
+    let b = lib_run(&["2,3,4", "--braid", "1 -2 1 -2", "--colors", "2", "--reduced"]);
+    ok(&a, "--knot 4_1");
+    ok(&b, "--braid 4_1");
+    assert_eq!(blocks(&a.out), blocks(&b.out));
+    let e = lib_run(&["2,3,4", "--knot", "4_1", "--colors", "2", "--reduced", "--estimate"]);
+    ok(&e, "estimate");
+    assert!(e.out.contains("estimate: F_2147483647: ") && e.out.contains("box points (reduced grid)") && e.out.contains("estimate: total: about"), "{}", e.out);
+    assert!(!e.out.contains("Poincare"), "{}", e.out);
+}

@@ -23,8 +23,9 @@ Contents:
 ## 1. Usage
 
 ```
-krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS) [--colors c | c1,c2,...] [--reduced]
-               [--table]
+krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS | --knot NAME | --link NAME)
+               [--colors c | c1,c2,...] [--reduced [--mark K]]
+               [--table] [--latex OUT] [--estimate]
                [--json OUT] [--csv OUT] [--no-simplify] [--check-library] [--lib-dir DIR]
                [--seed S] [--seed-retries K] [--mem-mb M] [--mem-cap-mb M]
                [--colored-method cable|cube|singular] [--cube] [--closure tower|exact] [--end right|left|alt]
@@ -38,10 +39,15 @@ krhom N[,N...] (--braid WORD [--strands n] | --pd PD | --file BRAIDS) [--colors 
 | `--pd PD` | A PD code instead of a braid, e.g. `"[[1,4,2,5],[3,6,4,1],[5,2,6,3]]"` (converted with Vogel's algorithm and simplified). |
 | `--colors` | A single color applies to every component (`--colors 2`); a list gives one color per link component, numbered by the smallest bottom strand position. Default: all 1 (uncolored). |
 | `--reduced` | Reduced homology: the strand at bottom position 0 is marked; the reduced unknot is `t^0q^0`. |
+| `--mark K` | With `--reduced`: mark link component K instead (0-based, krhom's numbering: components are numbered by their smallest bottom strand position, the order of `--colors`). krhom conjugates the braid so that component K passes through bottom position 0 (a cyclic rotation of the word when one does it, else (σ1⋯σp) β (σp⁻¹⋯σ1⁻¹), freely reduced); a conjugate braid has the same closure and the engines are unchanged. The line `conjugated braid: ...` shows the word used, and the method line says `reduced (component K marked ...)`. For a knot only `--mark 0` is accepted; `--mark` without `--reduced` is refused. |
+| `--knot NAME` | The braid of a prime knot from `data/knots_upto12.jsonl` (`3_1` … `12n_888`; the KnotInfo braid, so KnotInfo's chirality). The header starts with `name: NAME` and `source: knot NAME from data/knots_upto12.jsonl (KnotInfo braid; KnotInfo chirality)`. `--strands` must be absent or equal the table's. |
+| `--link NAME` | The braid of an oriented prime link from `data/links_upto11.jsonl`, named with LinkInfo's orientation suffix, e.g. `L2a1{1}` (σ1²) or `L2a1{0}` (σ1⁻²); an unoriented name (`L2a1`) is refused with the list of its orientations. An unknown name (knot or link) exits 1 with up to 5 close matches. The tables are read from the source tree's `data/` (override: `$KRHOM_DATA_DIR`). |
 | `--file BRAIDS` | Batch: one braid per line, optional `NAME;` prefix, blank lines and `#` comments ignored. N, colors, `--strands` and `--reduced` apply to every line. One output block per line, headed `name: NAME` (printed first, also for a line that fails to parse). An error on one line is reported (stdout: `error: NAME: exit C (kind)`; stderr: `krhom: NAME: message`) and the batch continues; the exit code is that of the first failing line. |
 | `--json OUT` | Machine-readable results (an array with `--file`): input (`kind`, the input string as `text`, N, mode, the parsed `braid` array, ...), route, library, per-prime provenance (seeds, timings, χ and scaling checks, layer-A loads, VmHWM), results with terms `[t,q,k]`, and the error if any. With `--file` the array is rewritten after every finished line (atomically: temporary file + rename), so an abort (out of memory under `ulimit -v`, SIGKILL, a timeout) keeps the finished records. |
 | `--csv OUT` | Rows `name,N,reduced,t,q,rank` (a zero polynomial is one row with empty t, q and rank 0). The name is quoted per RFC 4180 when it contains a comma, a quote or a line break (`"L6a5{0,1}"`). The header is written at start and each line's rows are appended and flushed when it finishes. |
 | `--table` | After each N block, the bigraded table: rows t ascending, columns q ascending (step 2 when all q have one parity), entries = dimensions, blank for 0 (KnotJob-style). Also in `--file` mode. |
+| `--latex OUT` | A LaTeX file with one `tabular` per N (rows t, columns q, as `--table`) in a `table` float whose caption names the knot/braid, the colors, N, reduced/unreduced (and the marked component) and the coefficients (`Q`). With `--file`: one `\section*` per input (a failed line gets a "Not computed: exit C" note). The file is a complete document, `\documentclass{article}` + `\usepackage{graphicx}` (wide tables are scaled to the line width), that compiles standalone with `pdflatex OUT`; the part between `% ---- krhom tables begin` and `% ---- krhom tables end` can be pasted into a document that loads graphicx. Rewritten after every finished input. |
+| `--estimate` | Do not compute; estimate. On the 3-4 strand box route krhom loads the library, runs the record scan and times the determinant pass and replay of ONE box point per prime (the single-point path of `sbox point`), then prints `estimate:` lines: the number of box points (216 reduced / 1296 unreduced for a 4-strand word), and an extrapolated wall time and peak memory for the full run at the current thread count (`KRHOM_THREADS`). It is an estimate: the closure phase is not included (minutes on 4 strands), points differ in cost, and threads contend for memory bandwidth. On other routes it prints `estimate: fast route (ROUTE), no estimate needed` (the full cube: no estimate) and computes nothing. Exit 0. Not with `--check-library`. |
 
 Examples:
 
@@ -54,6 +60,11 @@ krhom 2,3 --braid "1 1" --colors 2,1                    # Hopf link, colors (2,1
 krhom 2,3,4 --braid aBaB                                # uncolored 4_1 (Soergel engine)
 krhom 3 --pd "[[1,4,2,5],[3,6,4,1],[5,2,6,3]]" --reduced
 krhom 2,3 --file knots.txt --colors 2 --csv out.csv --json out.json
+krhom 2,3,4 --knot 4_1 --colors 2 --reduced               # same as --braid "1 -2 1 -2"
+krhom 2,3,4 --knot 6_1 --colors 2 --reduced --estimate    # time one box point, extrapolate
+krhom 2,3,4 --braid "1 1" --colors 2,1 --reduced --mark 1 # Hopf link, the color-1 component marked
+krhom 2,3 --link "L6a4{0,0}" --reduced --mark 2           # Borromean rings, component 2 marked
+krhom 2,3 --knot 3_1 --colors 2 --latex trefoil.tex       # pdflatex trefoil.tex
 ```
 
 Output (stdout):
@@ -90,8 +101,8 @@ lines go to stderr.
 
 | Input | Route (automatic) | N | Strands |
 |---|---|---|---|
-| all colors 1 | localized Soergel engine (engine2), two primes | 1 ≤ N ≤ 32 (tower closure) | ≤ 10 (tower closure); about 5 in practice |
-| colored, ≤ 2 strands after simplification | exact singular Soergel engine (xengine), two primes | a(N − a) ≤ 255 for every color a (N ≤ 256 for color 1, N ≤ 129 for color 2, N ≤ 88 for color 3), and the closure's memory estimate under `--mem-cap-mb` (default 768 MB; e.g. color 3 at N = 30 needs about 1.5 TB and is refused with exit 5) | 1–2, colors 1..3 |
+| all colors 1 | localized Soergel engine (engine2), two primes | 1 ≤ N ≤ 32 (tower closure; N > 32 is refused with exit 1, `--closure exact` has no such cap) | ≤ 10 (tower closure; more strands are refused with exit 1 before any engine work); about 5 in practice |
+| colored, ≤ 2 strands after simplification | exact singular Soergel engine (xengine), two primes | a(N − a) ≤ 255 for every color a (N ≤ 256 for color 1, N ≤ 129 for color 2, N ≤ 88 for color 3); dim A_λ = ∏ C(N, a_i) over the unmarked strands ≤ 5·10⁷ (the exact oracle's limit; e.g. color 3 needs N ≤ 35 and color 2 N ≤ 119 unreduced; refused with exit 1 before any engine work), and the closure's memory estimate under `--mem-cap-mb` (default 768 MB; e.g. color 3 at N = 30 needs about 1.5 TB and is refused with exit 5) | 1–2, colors 1..3 |
 | colored, uniform color 2, 3 strands | localized box engine + library `l222_n4` (labels 2,2,2), two primes | N ≤ 4 | 3 |
 | colored, uniform color 2, 4 strands | localized box engine + library `l2222_n4` (labels 2,2,2,2), two primes | N ≤ 4 | 4 |
 | anything else colored | refused (exit 1) with this matrix; `--colored-method cube` is exact over Q but exponential (tiny inputs only) | | |
@@ -183,7 +194,7 @@ details go to stderr and `--json`; stdout says `coefficients: Q`.
 | Code | Meaning | Example message (stderr, prefix `krhom: `) |
 |---|---|---|
 | 0 | success | |
-| 1 | usage or unsupported input | `N = 130 with color 2: the exact 2-strand engine supports a(N - a) <= 255 ...`; `labels [2, 2, 1] on 3 strands are not uniform; supported on 3-4 strands: ...`; `no library for labels [3, 3, 3] on 3 strands ...`; `N = 5 is above the library's N <= 4 ...`; `split link (sigma_2 never occurs): compute the pieces separately`; `3 colors given, but the link has 1 components ...`; `braid "a1" mixes letters and integers ...`; `uncolored input: drop --colored-method singular ...`; `validation-only environment switches change the computation on the box route: unset KRHOM_NO_M5I` |
+| 1 | usage or unsupported input | `N = 130 with color 2: the exact 2-strand engine supports a(N - a) <= 255 ...`; `N = 36 with labels [3, 3]: the exact 2-strand engine's algebra A_lambda has dimension 50979600 ..., above its limit 5e7 ...`; `N = 33: the tower closure supports N <= 32 ...; use --closure exact for larger N`; `11 strands: the tower closure of the Soergel engine supports at most 10 strands ...`; `--knot 4_2: unknown knot name (data/knots_upto12.jsonl); close matches: 4_1, 5_2, 6_2, 7_2, 8_2`; `--mark 1: a knot has one component; only --mark 0 is accepted`; `labels [2, 2, 1] on 3 strands are not uniform; supported on 3-4 strands: ...`; `no library for labels [3, 3, 3] on 3 strands ...`; `N = 5 is above the library's N <= 4 ...`; `split link (sigma_2 never occurs): compute the pieces separately`; `3 colors given, but the link has 1 components ...`; `braid "a1" mixes letters and integers ...`; `uncolored input: drop --colored-method singular ...`; `validation-only environment switches change the computation on the box route: unset KRHOM_NO_M5I` |
 | 2 | engine or certification failure | `localized engine failed on F_2147483647: <error>. This is a certification failure; please report it with --json output.` |
 | 3 | the two primes disagree; no result printed | `the two primes disagree (torsion or a bug); no result printed: N = 3: ...` |
 | 4 | library missing, wrong version, stamp mismatch, damaged, or not covering the word | `library l222_n4 (F_2147483647) is not installed under <root>: run tools/fetch_library.sh l222_n4 (about 3.5 MB per prime)`; `damaged install: 1 of the 5921 files listed in .../LIBRARY.txt are missing (...): run tools/fetch_library.sh --force l2222_n4`; `library l2222_n4 does not cover this word: 11 jobs not certified for both primes: pair 926 (p=..., rung=...), ...` |
