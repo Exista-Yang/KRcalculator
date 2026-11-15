@@ -251,11 +251,48 @@ TESTS_PLACEHOLDER
 
 ## Acceptance runs
 
-DEMO_PLACEHOLDER
+### Demonstrations (runs_calc2/demo.sh; each command's stdout/stderr/exit in runs_calc2/demo/)
 
-H_PLACEHOLDER
+| Item | Command | Exit | Result |
+|---|---|---|---|
+| 1 | `krhom 30 --braid "1 1 1" --colors 3` | 5 | stderr `exact oracle for [3, 3] at N = 30 needs about 1516633 MB (dim A_lambda 16483600), above the memory cap of 768 MB (...); with krhom use --mem-cap-mb M to raise it ...` (was exit 2 "panicked ... please report this") |
+| 1 | `krhom 2,3 --braid "1 1 1" --colors 2 --mem-cap-mb 1` | 5 | `... above the memory cap of 1 MB ...` (the flag now reaches this route) |
+| 1 | `krhom 130 --braid "1 1 1" --colors 2` | 1 | `N = 130 with color 2: the exact 2-strand engine supports a(N - a) <= 255 for every color a (here 2 * 128 = 256), i.e. N <= 256 for color 1, N <= 129 for color 2, N <= 88 for color 3` |
+| 2 | `krhom 1,2 --braid aBaB --colors 3` | 0 | `method: none (every N is below the color 3: ...)`, N = 1, 2: `Poincare polynomial: 0` (was exit 1 "no library") |
+| 2 | `krhom 2,3 --braid "1 1 1" --colors 4` | 0 | zero for N = 2, 3 (was exit 1 "colors 1..=3") |
+| 3, 4 | `krhom 2 --file i3.txt --csv i3.csv --json i3.json` (lines `L6a5{0,1}; aaa`, `bad; 1 0`, `"q"; aBaB`) | 1 | stdout `name: bad` / `error: bad: exit 1 (unsupported)`; CSV rows `"L6a5{0,1}",2,false,0,-3,1`, `"""q""",2,false,-2,5,1`; JSON array of 3 |
+| 5 | `timeout -s KILL 20 krhom 5 --file i5.txt --colors 2 --json i5.json --csv i5.csv` (line 1 `aaa`, line 2 80 crossings) | 137 (killed during line 2) | i5.json is a valid array with the `first` record; i5.csv has the header and the 29 rows of `first` |
+| 15, 16 | `krhom 2 --braid aaa --convention knotjob --table`; `... --reduced`; `krhom 2,3,4 --braid "1 1 1" --colors 2 --table` | 0 | see §16 and §15 |
 
-RANDCHECK_PLACEHOLDER
+
+### H3–H8 re-run (runs_calc2/hrun.sh, outputs in runs_calc2/h/, compared by runs_calc2/cmp_h.sh)
+
+The same 12 commands as CALC-1 (H3 4_1 both modes, H4 stabilized trefoil and its 2-strand
+reference both modes, H5 `1 2 3` and `1 1 1 2 3` on 4 strands both modes, H6 `--check-library`
+for 6_1 and 8_15), KRHOM_THREADS=4, sequentially. **stdout is identical to runs_calc/*.out for all
+12** after dropping the `time` line and the timing on the exit line (runs_calc/h3_u.out has no exit
+line at all; the new one is `exit 0`). H6: 6_1 exit 0 `check-library: library l2222_n4 covers this
+word (2 primes; no box scan run)` (383 s); 8_15 exit 4 with the same 11 missing jobs (87 s).
+H7: the refusal / exit-code matrix of tests/calc.rs passes (`refusals_exit_1` with the one
+CALC-2 change described in item 2, plus the new tests). H8: after all runs `find <dir> -newer
+<dir>/LIBRARY.txt -type f` is empty in all four library directories, the counts are 2873/3048,
+2873/3029, 233/471, 233/471, and `tools/fetch_library.sh --verify-only l222_n4 l2222_n4` exits 0.
+
+
+### randcheck --quick
+
+`tools/randcheck.py --seed 20261115 --quick --out runs_calc2/random` (log
+runs_calc2/randcheck_quick.log; report runs_calc2/random/20261115/{summary.md,examples.jsonl}):
+self-tests passed (convention incl. the new Hopf self-test, 4_1 anchor, libraries) in 152 s;
+final line
+
+```
+seed=20261115 n=10 PASS 10 FAIL 0 WARN 0 SKIP 0 TIMEOUT 0 ERROR 0; checks: primes 21, seeds 13, chi 42, isotopy 6, markov 5, mirror 8, duality-N3 18, reversal 0, N2 21, lewark 10, unknot 4, closed-form 45, cross-engine 8; 429s
+```
+
+exit 0. (CALC-1, runs_calc/h10_quick.log, had closed-form 35 for the same seed, now 45: T2-01 `1 1 1 -1 1 -1 1 -1`
+has writhe 2 and is now checked against the Hopf closed form.)
+
 
 ## Commits
 
