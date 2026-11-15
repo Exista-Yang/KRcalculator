@@ -1,8 +1,0 @@
-[sindec] M5i: provider chain failed for 1,1,0,0/0,1,0,1/1,1,0,0/0,1,0,1 -> 0,2,0,0/0,0,1,1/2,0,0,0/0,0,1,1 ([Exact] Exact pairs: not admitted: labels [2, 2, 2, 2] (max 2 > 2 or caps: fibre product 20736 / 1600, unknowns 538776 /); Exact fallback (538776 unknowns)
-[sindec] M5i: provider chain failed for 2,0,0,0/0,0,1,1/0,1,1,0/0,0,2,0 -> 1,0,1,0/0,0,1,1/1,1,0,0/0,0,2,0 ([Exact] Exact pairs: not admitted: labels [2, 2, 2, 2] (max 2 > 2 or caps: fibre product 5760 / 1600, unknowns 136736 / ); Exact fallback (136736 unknowns)
-[sindec] M5i: provider chain failed for 1,1,0,0/0,1,0,1/1,1,0,0/0,1,0,1 -> 1,0,1,0/0,1,0,1/1,1,0,0/0,0,1,1 ([Exact] Exact pairs: not admitted: labels [2, 2, 2, 2] (max 2 > 2 or caps: fibre product 27648 / 1600, unknowns 321800 /); Exact fallback (1402792 unknowns)
-[sindec] M5i: closure of 1,0,1,0/0,0,1,1/1,1,0,0/0,1,0,1 (ins) failed through the chain ([Exact] Exact closure: not admitted: labels [2, 2, 2, 2] (max 2 > 2 or caps: fibre product 576 / 1600, unknowns 50040 / ); Exact fallback (≤ 510792 unknowns per degree)
-memory allocation of 11222336 bytes failed
-stack backtrace:
-note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
-[sindec] M5i: closure of 1,0,1,0/0,0,1,1/1,1,0,0/0,1,0,1 (outs) failed through the chain ([Exact] Exact closure: not admitted: labels [2, 2, 2, 2] (max 2 > 2 or caps: fibre product 576 / 1600, unknowns 50040 / ); Exact fallback (≤ 510792 unknowns per degree)

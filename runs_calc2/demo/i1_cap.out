@@ -1,3 +1,0 @@
-gl_N for N in [30]  strands 2  crossings 3  components 1  colors [3]
-braid: 1 1 1
-method: singular (exact 2-strand singular Soergel engine)

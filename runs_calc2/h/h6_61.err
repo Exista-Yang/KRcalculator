@@ -1,8 +1,0 @@
-[costs] warning: /root/.cache/krhom/lib/l2222_n4/f31/costs.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
-[costs] warning: /root/.cache/krhom/lib/l2222_n4/f31/costs.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
-[swire] M5i: 2 idempotent types in the library: 1,0,1,0/0,1,0,1/1,0,1,0/0,1,0,1 (m = 1290), 1,0,1,0/0,0,1,1/1,1,0,0/0,1,0,1 (m = 516)
-[F_2147483647] library: 1119 layer-A loads (0 rejected, 1037 by route stamp; preflight 2873 stamped files ok, 0 legacy), 94 types, 192.9s; record scan not needed (closure data for every closable type); 192.9s; VmHWM 958 MB
-[costs] warning: /root/.cache/krhom/lib/l2222_n4/f32b/costs.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
-[costs] warning: /root/.cache/krhom/lib/l2222_n4/f32b/costs.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
-[swire] M5i: 2 idempotent types in the library: 1,0,1,0/0,1,0,1/1,0,1,0/0,1,0,1 (m = 1290), 1,0,1,0/0,0,1,1/1,1,0,0/0,1,0,1 (m = 516)
-[F_4294967291] library: 1119 layer-A loads (0 rejected, 1039 by route stamp; preflight 2873 stamped files ok, 0 legacy), 94 types, 188.6s; record scan not needed (closure data for every closable type); 188.6s; VmHWM 1046 MB

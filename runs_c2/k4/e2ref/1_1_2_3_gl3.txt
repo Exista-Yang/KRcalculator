@@ -1,2 +1,0 @@
-word [3, 2, 1, 1] gl_3 unreduced: t^0q^-4 + t^0q^-2 + t^0q^0 + t^2q^-10 + 2t^2q^-8 + 2t^2q^-6 + t^2q^-4  (rank 9)
-word [3, 2, 1, 1] gl_3 reduced: t^0q^-2 + t^2q^-8 + t^2q^-6  (rank 3)

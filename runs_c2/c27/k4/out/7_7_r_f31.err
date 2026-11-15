@@ -1,8 +1,0 @@
-[costs] warning: /home/user/work/costs_2222_c25.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
-[costs] warning: /home/user/work/costs_2222_c25.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
-[swire] M5i: 2 idempotent types in the library: 1,0,1,0/0,1,0,1/1,0,1,0/0,1,0,1 (m = 1290), 1,0,1,0/0,0,1,1/1,1,0,0/0,1,0,1 (m = 516)
-library: 94 types, 94 closable, build 182.3s (1 provider calls, 1119 layer-A loads), hash d3d6c13945732476, commit fb2ba84cea876aeaff325d3c6376f9699e160d59-dirty
-word [-1, 2, -1, 2, -3, 2, -3]: chi = decat_chi for 3 closures; scaling: 800204 entries checked, 191246 zero at both points, 0 declared 0
-  accumulator stage 7 mode Some(0): 216 points, digest 74ef3e605d580059
-finish: shards [(0, 4), (1, 4), (2, 4), (3, 4)], determinant pass 40608 checks at 216 points, close 121.0s, total 706.4s
-exit 0

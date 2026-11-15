@@ -1,1 +1,0 @@
-krhom: exact oracle for [3, 3] at N = 30 needs about 1516633 MB (dim A_lambda 16483600), above the memory cap of 768 MB (set KRHOM_MEM_CAP_MB to raise it); with krhom use --mem-cap-mb M to raise it (the run then needs about that much memory)

@@ -1,4 +1,0 @@
-stage 4 N=3 unreduced: t^0q^0  (rank 1)
-stage 4 N=3 reduced: t^0q^0  (rank 1)
-stage 4 N=4 unreduced: t^-2q^7 + t^-2q^9 + t^-2q^11 + t^-1q^-1 + t^-1q^1 + t^-1q^3 + t^0q^-3 + t^0q^-1 + t^0q^1 + t^0q^3 + t^1q^-3 + t^1q^-1 + t^1q^1 + t^2q^-11 + t^2q^-9 + t^2q^-7  (rank 16)
-stage 4 N=4 reduced: t^-2q^8 + t^-1q^2 + t^0q^0 + t^1q^-2 + t^2q^-8  (rank 5)

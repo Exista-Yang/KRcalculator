@@ -1,3 +1,0 @@
-library: 4 types, 4 closable, build 25.7s (0 provider calls, 80 layer-A loads), hash cabf041aaa23a517, commit 4dbf8ba8920a52a47efe4938f391728e714c7880
-runs_m6a2a/demo_s5.sh: line 16: 29368 Killed                  KRHOM_THREADS=2 timeout -s KILL 150 /tmp/claude-0/-home-user-KRcalculator/d5be788e-2d13-5c75-99bc-08de38a294e5/scratchpad/sbox_m6a2a box --dir runs_m6a2a/s5/shard0 --shard 0/2 --ckpt-secs 20 --lam 3,3 --word '1 1 1 1 1' --n 6 --ns 3,4,5,6 --field 31 --seed 101 --modes u,r --mem-mb 3500 --cache /tmp/claude-0/-home-user-KRcalculator/d5be788e-2d13-5c75-99bc-08de38a294e5/scratchpad/cache33_f31
-exit 137 (killed)

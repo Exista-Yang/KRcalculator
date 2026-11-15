@@ -1,7 +1,0 @@
-1,0,1,0/0,1,0,1/1,0,1,0/0,1,0,1 block [2, 2, 2, 2] ladder E1.1,E0.1,F1.1,F0.1,E2.1,E1.1,F2.1,F1.1 flows 1296 End^0 unknowns 41345236 kill_level 3
-1,0,1,0/0,0,1,1/1,1,0,0/0,1,0,1 block [2, 2, 2, 2] ladder E1.2,E0.1,F1.3,F0.1,E2.1,E1.3,F2.1,F1.2 flows 576 End^0 unknowns 14425646 kill_level 4
-0,1,0,1/1,0,1,0/0,1,0,1/1,0,1,0 block [2, 2, 2, 2] ladder E0.1,F0.1,E1.1,F1.1,E2.2,E1.1,E0.1,F2.2,F1.1,F0.1 flows 7776 End^0 unknowns 2925614311 kill_level 4
-1,0,1,0/0,1,0,1/1,1,0,0/0,1,0,1 block [2, 3, 1, 2] ladder E1.2,E0.1,F1.3,F0.1,E2.1,E1.3,F2.1,F1.1 flows 384 End^0 unknowns 5453889 kill_level 4
-1,1,0,0/0,1,0,1/1,1,0,0/0,1,0,1 block [2, 4, 0, 2] ladder E1.2,E0.1,F1.3,F0.1,E2.1,E1.3,F2.1 flows 96 End^0 unknowns 196112 kill_level 4
-1,0,1,0/1,0,0,1/0,1,1,0/0,1,1,0 block [2, 2, 3, 1] ladder E0.1,E1.2,F1.2,F0.1,E2.2,F2.1,F1.1,E1.1 flows 576 End^0 unknowns 10782577 kill_level 4
-1,0,1,0/0,0,1,1/1,1,0,0/0,1,1,0 block [2, 2, 3, 1] ladder E1.2,E0.1,F1.2,F0.1,E2.2,F2.1,F1.1,E1.1 flows 1152 End^0 unknowns 63372234 kill_level 4

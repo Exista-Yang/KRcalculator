@@ -1,1 +1,0 @@
-box run shard 0/2: 200 points, 120 pending at start (resumed), 120 scanned (mean 2.695s/point), complete true, determinant pass 1600 checks at 200 points, 80 checkpoint files written, 166.8s, VmHWM 390 MB

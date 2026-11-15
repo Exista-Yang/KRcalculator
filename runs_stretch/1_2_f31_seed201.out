@@ -1,8 +1,0 @@
-stage 1 N=3 unreduced: t^0q^0  (rank 1)
-stage 1 N=3 reduced: t^0q^0  (rank 1)
-stage 1 N=4 unreduced: t^0q^-6 + 2t^0q^-4 + 3t^0q^-2 + 4t^0q^0 + 3t^0q^2 + 2t^0q^4 + t^0q^6  (rank 16)
-stage 1 N=4 reduced: t^0q^-3 + t^0q^-1 + t^0q^1 + t^0q^3  (rank 4)
-stage 2 N=3 unreduced: t^0q^0  (rank 1)
-stage 2 N=3 reduced: t^0q^0  (rank 1)
-stage 2 N=4 unreduced: t^0q^-3 + t^0q^-1 + t^0q^1 + t^0q^3  (rank 4)
-stage 2 N=4 reduced: t^0q^0  (rank 1)

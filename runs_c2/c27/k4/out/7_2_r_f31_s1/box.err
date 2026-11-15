@@ -1,9 +1,0 @@
-[costs] warning: /home/user/work/costs_2222_c25.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
-[costs] warning: /home/user/work/costs_2222_c25.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
-[swire] M5i: 2 idempotent types in the library: 1,0,1,0/0,1,0,1/1,0,1,0/0,1,0,1 (m = 1290), 1,0,1,0/0,0,1,1/1,1,0,0/0,1,0,1 (m = 516)
-library: 94 types, 94 closable, build 172.5s (1 provider calls, 1119 layer-A loads), hash 6e02446c810cd608, commit 7f8043c057efadb906eefd075d85434796b0725d-dirty
-runs_c2/c27/k4/box.sh: line 22:  9380 Killed                  timeout 36000 ./target/release/sbox box --lam 2,2,2,2 --word "1 1 1 2 -1 2 3 -2 3" --n 4 --ns 2,3,4 --field 31 --seed 201 --prune 4 --mem-mb 3000 --replay --cache /home/user/work/cache/f31 --costs /home/user/work/costs_2222_c25.txt --provider m4c-lf --stamp-route --stages 9 --modes r --dir runs_c2/c27/k4/out/7_2_r_f31_s1 --shard 1/4 --ckpt-secs 600
-[costs] warning: /home/user/work/costs_2222_c25.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
-[costs] warning: /home/user/work/costs_2222_c25.txt was measured on "4cpu-Intel_R__Xeon_R__Processor_@_2.30GHz", this machine is "4cpu-Intel_R__Xeon_R__Processor_@_2.10GHz" (KRHOM_COSTS_ANY_HOST)
-[swire] M5i: 2 idempotent types in the library: 1,0,1,0/0,1,0,1/1,0,1,0/0,1,0,1 (m = 1290), 1,0,1,0/0,0,1,1/1,1,0,0/0,1,0,1 (m = 516)
-library: 94 types, 94 closable, build 171.3s (1 provider calls, 1119 layer-A loads), hash 6e02446c810cd608, commit 7f8043c057efadb906eefd075d85434796b0725d-dirty

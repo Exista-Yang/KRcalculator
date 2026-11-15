@@ -1,3 +1,0 @@
-L6a5{0,1}; aaa
-bad; 1 0
-"q"; aBaB

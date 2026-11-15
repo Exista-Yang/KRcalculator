@@ -1,2 +1,0 @@
-word [3, 2, 1] gl_3 unreduced: t^0q^-2 + t^0q^0 + t^0q^2  (rank 3)
-word [3, 2, 1] gl_3 reduced: t^0q^0  (rank 1)

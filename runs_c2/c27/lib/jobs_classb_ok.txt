@@ -1,7 +1,0 @@
-pair 1471
-pair 926
-pair 1054
-pair 1540
-pair 986
-pair 949
-pair 997
