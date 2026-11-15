@@ -40,4 +40,4 @@ Restore: see each MANIFEST.txt (KRHOM_COSTS_ANY_HOST=1, --costs tests/data/hompr
   costs_2222_c25.txt). See colored-2c4-unblock docs/colored_design/c2/C2_7_report.md.
 - costs_2222_c27.txt: costs_2222_c25.txt + 2 measured records (the 271 848-unknown (2,2,2,2) Leaves step of class-B job
   986, both directions, 85 s / 48 s uncensored). Class-A jobs do not need it.
-- Update: l2222_n4_c27/f31 also holds the class-B jobs 1471, 926, 949, 997, 1054, 1540, 986 (F31 only, run; not yet replayed).
+- Update: l2222_n4_c27 also holds the class-B jobs 1471, 926, 949, 997, 1054, 1540, 986 (both primes, run = replay).
