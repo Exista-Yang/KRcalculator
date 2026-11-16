@@ -10,7 +10,8 @@ authors:
   - family-names: Yang
     given-names: Hongjian
     affiliation: Stanford University
-version: 0.1.0
+version: 0.1.1
+date-released: 2026-11-16
 license:
   - MIT
   - Apache-2.0

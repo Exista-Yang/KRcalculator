@@ -6,6 +6,11 @@ All notable changes to krhom are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-16
+
+### Added
+- GitHub release assets: the libraries `l222_n4` and `l2222_n4` (both primes) as tarballs, installable without git via `tools/fetch_library.sh --url https://github.com/Exista-Yang/KRcalculator/releases/download/v0.1.1 l222_n4 l2222_n4`.
+
 ### Fixed
 - `tools/fetch_library.sh` failed on systems with `safe.bareRepository=explicit` in their git configuration, and in the verification step with macOS's BSD `sha256sum`.
 
