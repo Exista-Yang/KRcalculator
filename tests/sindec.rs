@@ -29,7 +29,17 @@ fn cache_dir(name: &str) -> PathBuf {
     std::fs::create_dir_all(&d).unwrap();
     d
 }
+/// Every test in this file uses the shipped cost tables on whatever machine runs it. The host check
+/// is process-global (an environment variable), and one test needs it relaxed; setting it once for
+/// the whole binary keeps the provider stamp identical across tests that run in parallel (before,
+/// on a host whose class differs from the table's, a builder could compute its stamp before and
+/// another after the variable was set, and the layer-A reload in d7 then failed).
+fn any_host() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| unsafe { std::env::set_var("KRHOM_COSTS_ANY_HOST", "1") });
+}
 fn builder(lam: &[u8], prune: Option<u8>, cache: Option<PathBuf>) -> SIndec<F> {
+    any_host();
     let (prov, stamp) = provider_for_stamped::<F>(lam, Some(&costs()), 1.0);
     SIndec::with_stamp(lam, prov, stamp, SIndecOpts { cache_dir: cache, prune_n: prune, ..Default::default() })
 }
@@ -789,7 +799,7 @@ fn m5c_leaf_iso_refusal_is_engineering() {
     let (p, r) = (s.table(pp.p).fmt(), pp.rung);
     assert_eq!((p.as_str(), krhom::library::smapio::rung_str(&r).as_str()), ("1,2,0/1,1,1/1,1,1", "F1.1"));
     // the M5b provider (cost table v3; the table is stamped for the M5b host class)
-    unsafe { std::env::set_var("KRHOM_COSTS_ANY_HOST", "1") };
+    any_host();
     let costs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/homprov/costs_333.txt");
     let (prov, stamp) = provider_for_stamped::<F>(&lam, Some(&costs), 1.0);
     assert!(stamp.contains("273recs"), "{}", stamp);
