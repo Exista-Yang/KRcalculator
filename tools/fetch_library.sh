@@ -18,6 +18,11 @@
 #
 set -euo pipefail
 
+# git on a directory that may be a bare repository: with safe.bareRepository=explicit,
+# `git -C BARE` refuses implicit discovery, so bare repositories get an explicit --git-dir.
+gitd() { local d="$1"; shift
+  if [ -f "$d/HEAD" ] && [ -d "$d/objects" ] && [ ! -e "$d/.git" ]; then git --git-dir="$d" "$@"; else git -C "$d" "$@"; fi; }
+
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$here/.." && pwd)"
 registry="$repo_root/data/libraries.tsv"
@@ -53,9 +58,10 @@ git_dir0="$git_dir"
 assets_tsv="$repo_root/data/release_assets.tsv"
 [ -f "$registry" ] || die "registry $registry not found"
 
-if command -v sha256sum >/dev/null 2>&1; then sha() { sha256sum "$@"; }
-elif command -v shasum >/dev/null 2>&1; then sha() { shasum -a 256 "$@"; }
+if command -v sha256sum >/dev/null 2>&1; then sha_cmd=(sha256sum)
+elif command -v shasum >/dev/null 2>&1; then sha_cmd=(shasum -a 256)
 else die "need sha256sum or shasum"; fi
+sha() { "${sha_cmd[@]}" "$@"; }
 sha_of() { sha "$1" | awk '{print $1}'; }
 field_name() { case "$1" in f31) echo F_2147483647 ;; f32b) echo F_4294967291 ;; *) die "unknown field $1" ;; esac; }
 code_commit="$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -108,7 +114,15 @@ verify_installed() {
   local want; want=$(( $(grep -m1 '^files_layer_a: ' "$lib" | awk '{print $2}') + $(grep -m1 '^files_tmpl: ' "$lib" | awk '{print $2}') ))
   [ "$nlisted" = "$want" ] || { [ "$quiet" = 1 ] || echo "  $id/$fld: LIBRARY.txt lists $nlisted files, header says $want" >&2; return 1; }
   local bad
-  bad="$(cd "$dest" && sed -n '/^files:$/,$p' LIBRARY.txt | tail -n +2 | awk '{print $2"  "$3}' | sha -c --quiet 2>&1 || true)"
+  # Portable check (GNU sha256sum, BSD sha256sum on macOS, perl shasum): hash the listed files
+  # and compare with the list; no -c/--quiet flags, whose spelling differs between tools.
+  bad="$(cd "$dest" && sed -n '/^files:$/,$p' LIBRARY.txt | tail -n +2 | awk '{print $2, $3}' | {
+      want=$(mktemp) && cat > "$want"
+      awk '{print $2}' "$want" | while IFS= read -r f; do [ -f "$f" ] || echo "$f: FAILED (missing)"; done
+      awk '{print $2}' "$want" | while IFS= read -r f; do [ -f "$f" ] && printf '%s\0' "$f"; done \
+        | xargs -0 "${sha_cmd[@]}" 2>/dev/null \
+        | awk 'NR==FNR{h[$2]=$1; next} ($2 in h) && h[$2]!=$1 {print $2": FAILED"}' "$want" -
+      rm -f "$want"; } || true)"
   if [ -n "$bad" ]; then
     [ "$quiet" = 1 ] || { echo "  $id/$fld: $(echo "$bad" | grep -c "FAILED") listed file(s) missing or changed, e.g.:" >&2; echo "$bad" | head -3 | sed 's/^/    /' >&2; }
     return 1
@@ -141,24 +155,24 @@ new_tmp_repo() {
   [ -n "$tmp_repo" ] && [ -d "$tmp_repo" ] || die "mktemp gave no directory"
   git init -q --bare "$tmp_repo" || die "git init $tmp_repo failed"
   # no background gc / maintenance in a throw-away repository
-  git -C "$tmp_repo" config gc.auto 0 && git -C "$tmp_repo" config maintenance.auto false || die "git config in $tmp_repo failed"
+  gitd "$tmp_repo" config gc.auto 0 && gitd "$tmp_repo" config maintenance.auto false || die "git config in $tmp_repo failed"
 }
 remote_url() {
   if [ -n "$repo_url" ]; then echo "$repo_url"; return 0; fi
-  git -C "$git_dir" remote get-url origin 2>/dev/null || return 1
+  gitd "$git_dir" remote get-url origin 2>/dev/null || return 1
 }
 ensure_commit() {
   local commit="$1"
   # with --repo the checkout is not used (as before): the bytes come from URL
-  if { [ -z "$repo_url" ] || [ "$git_dir" != "$git_dir0" ]; } && git -C "$git_dir" cat-file -e "$commit^{commit}" 2>/dev/null; then return 0; fi
+  if { [ -z "$repo_url" ] || [ "$git_dir" != "$git_dir0" ]; } && gitd "$git_dir" cat-file -e "$commit^{commit}" 2>/dev/null; then return 0; fi
   if [ "$full_fetch" = 0 ]; then
     local url err
     url="$(remote_url)" || die "$git_dir has no origin remote: use --repo URL"
     echo "fetching data commit ${commit:0:12} (trees only; blobs on demand) from $url ..." >&2
     new_tmp_repo
-    git -C "$tmp_repo" remote add krhom "$url" || die "git remote add in $tmp_repo failed"
-    if err="$(git -C "$tmp_repo" fetch -q --no-tags --filter=blob:none --depth 1 krhom "$commit" 2>&1)" \
-       && git -C "$tmp_repo" cat-file -e "$commit^{commit}" 2>/dev/null; then
+    gitd "$tmp_repo" remote add krhom "$url" || die "git remote add in $tmp_repo failed"
+    if err="$(gitd "$tmp_repo" fetch -q --no-tags --filter=blob:none --depth 1 krhom "$commit" 2>&1)" \
+       && gitd "$tmp_repo" cat-file -e "$commit^{commit}" 2>/dev/null; then
       if grep -qi 'filtering not recognized' <<<"$err"; then
         echo "fetch_library: note: the server ignored the blob filter; the whole data commit snapshot was fetched" >&2
         fetch_mode="depth-1 snapshot; the server ignored the blob filter"
@@ -175,10 +189,10 @@ ensure_commit() {
   if [ -n "$repo_url" ]; then new_tmp_repo; git_dir="$tmp_repo"; fetch_mode="full history of the data commit"; fi
   local remote="${repo_url:-origin}"
   echo "fetching data commit ${commit:0:12} with its history from $remote ..." >&2
-  git -C "$git_dir" fetch -q --no-tags "$remote" "$commit" 2>/dev/null \
-    || git -C "$git_dir" fetch -q --no-tags "$remote" "refs/heads/data-gl6:refs/remotes/krhom-fetch/data-gl6" \
+  gitd "$git_dir" fetch -q --no-tags "$remote" "$commit" 2>/dev/null \
+    || gitd "$git_dir" fetch -q --no-tags "$remote" "refs/heads/data-gl6:refs/remotes/krhom-fetch/data-gl6" \
     || die "cannot fetch data commit $commit from $remote"
-  git -C "$git_dir" cat-file -e "$commit^{commit}" 2>/dev/null || die "data commit $commit not found in $remote (data-gl6 history)"
+  gitd "$git_dir" cat-file -e "$commit^{commit}" 2>/dev/null || die "data commit $commit not found in $remote (data-gl6 history)"
 }
 
 # release assets (--url): data/release_assets.tsv columns id field data_commit asset sha256 bytes
@@ -224,7 +238,7 @@ asset_prepare() { # asset_prepare ROW DIR: download, verify and extract the row'
 
 # src_cat COMMIT PATH: the bytes of PATH in the data commit, from git or the extracted asset
 src_cat() {
-  if [ -n "$url_base" ]; then cat "$staging/src/$2"; else git -C "$git_dir" show "$1:$2"; fi
+  if [ -n "$url_base" ]; then cat "$staging/src/$2"; else gitd "$git_dir" show "$1:$2"; fi
 }
 
 # --- install one registry row -----------------------------------------------------------------
