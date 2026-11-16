@@ -6,6 +6,9 @@ All notable changes to krhom are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- `tools/fetch_library.sh` failed on systems with `safe.bareRepository=explicit` in their git configuration, and in the verification step with macOS's BSD `sha256sum`.
+
 ## [0.1.0] - 2026-11-15
 
 First release of the calculator `krhom` (crate `krhom`, Rust edition 2024, Rust 1.85 or newer).
